@@ -37,12 +37,40 @@
     0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.4), 0 4px 10px rgba(var(--shadow-rgb), 0.08);
 }
 
-:root[data-theme='dusk'] {
+:root[data-mood='dusk'] {
   --accent: #9cc790;
   --shadow-soft:
     0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.6), 0 2px 5px rgba(var(--shadow-rgb), 0.25);
   --shadow-float:
     0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.7), 0 4px 10px rgba(var(--shadow-rgb), 0.3);
+}
+
+/* Dusk tokens at the CSS level too, so the very first paint matches the
+   system / host theme before any script runs. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #3a3346;
+    --bg-deep: #2c2737;
+    --surface: #4a4258;
+    --surface-sunk: #3a3347;
+    --ink: #f6ebdd;
+    --ink-soft: #c2b4c2;
+    --ink-faint: #7d7088;
+    --shadow-rgb: 16, 10, 26;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #3a3346;
+  --bg-deep: #2c2737;
+  --surface: #4a4258;
+  --surface-sunk: #3a3347;
+  --ink: #f6ebdd;
+  --ink-soft: #c2b4c2;
+  --ink-faint: #7d7088;
+  --shadow-rgb: 16, 10, 26;
+  color-scheme: dark;
 }
 
 * {
