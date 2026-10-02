@@ -1,66 +1,46 @@
 import type { Preview } from '../../app/scene';
-import { theme } from '../../design/theme';
-import { rand } from '../../core/math';
-import { fruitById } from './fruits';
-import { SoftBody } from './SoftBody';
-import { JellyWorld } from './JellyWorld';
-import { drawJelly, drawJellyShadow } from './renderJelly';
+import { getLab } from './Lab';
 
-/** Three tiny jellies living on the home card, jiggling now and then. */
+/**
+ * The home card shows your actual jelly — whatever state you left it in —
+ * re-photographed a few times a second, with a soft idle jiggle.
+ */
 export function jellyPreview(): Preview {
-  const world = new JellyWorld();
-  world.substeps = 2;
-  let built = { w: 0, h: 0, x: 0, y: 0 };
-  let time = 0;
-  let nextJiggle = 1.5;
-
-  const build = (x: number, y: number, w: number, h: number) => {
-    built = { w, h, x, y };
-    world.bodies = [];
-    world.left = x + 8;
-    world.right = x + w - 8;
-    world.top = y + 8;
-    world.floor = y + h * 0.74;
-    const r = Math.min(w * 0.16, h * 0.16);
-    const specs: [string, number][] = [
-      ['strawberry', 0.27],
-      ['orange', 0.55],
-      ['grape', 0.78],
-    ];
-    for (const [id, fx] of specs) {
-      const f = fruitById(id);
-      const b = SoftBody.fromFruit(f, r, x + w * fx, world.floor - r * f.size * 1.02);
-      world.add(b);
-    }
-  };
-
+  const shot = document.createElement('canvas');
+  let since = Infinity;
+  let jiggle = 0;
+  let jv = 0;
+  let t = 0;
   return {
     update(dt) {
-      if (!built.w) return;
-      time += dt;
-      world.step(dt);
-      nextJiggle -= dt;
-      if (nextJiggle <= 0) {
-        nextJiggle = rand(1.8, 3.5);
-        const b = world.bodies[Math.floor(rand(0, world.bodies.length))];
-        if (b) {
-          b.squish.velocity += rand(2.5, 4);
-          if (Math.random() < 0.5) b.face?.set('happy', 1);
-        }
-      }
+      since += dt;
+      t += dt;
+      jv += (-jiggle * 220 - jv * 9) * dt;
+      jiggle += jv * dt;
     },
     draw(ctx, x, y, w, h) {
-      if (Math.abs(w - built.w) > 1 || Math.abs(h - built.h) > 1 || Math.abs(x - built.x) > 1 || Math.abs(y - built.y) > 1)
-        build(x, y, w, h);
-      const t = theme.current;
-      for (const b of world.bodies) drawJellyShadow(ctx, t, b, world.floor);
-      for (const b of world.bodies) drawJelly(ctx, t, b, time);
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const sw = Math.round(w * dpr);
+      const sh = Math.round(h * 0.78 * dpr);
+      if (since > 0.4 || shot.width !== sw || shot.height !== sh) {
+        since = 0;
+        shot.width = sw;
+        shot.height = sh;
+        getLab().snapshot(shot);
+      }
+      const breathe = Math.sin(t * 1.8) * 0.01 + jiggle;
+      const cx = x + w / 2;
+      const by = y + h * 0.74;
+      ctx.save();
+      ctx.translate(cx, by);
+      ctx.scale(1 + breathe, 1 - breathe);
+      ctx.translate(-cx, -by);
+      ctx.drawImage(shot, x, y, w, h * 0.78);
+      ctx.restore();
     },
     poke() {
-      world.bodies.forEach((b, i) => {
-        for (let k = 0; k < b.n; k++) b.vy[k] -= 260 + i * 60;
-        b.face?.set('happy', 1.3);
-      });
+      jv += 1.6;
+      getLab().nudge();
     },
   };
 }

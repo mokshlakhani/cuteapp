@@ -2,618 +2,454 @@ import type { Scene, RoomNav } from '../../app/scene';
 import type { Pointer } from '../../core/input';
 import type { Insets } from '../../render/stage';
 import { theme } from '../../design/theme';
-import { roomTint, world } from '../../design/tokens';
-import { clamp, pick, rand, TAU } from '../../core/math';
+import { roomTint } from '../../design/tokens';
+import { clamp } from '../../core/math';
 import { rgba } from '../../core/color';
-import { panFor } from '../../core/audio';
 import { material, ui as uiSound } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
-import { settings } from '../../core/settings';
 import { paintBackdrop, paintGrain } from '../../render/paint';
-import { Particles } from '../../render/particles';
-import { Shake } from '../../render/camera';
-import { el, iconButton, Hint, Segmented, tactile } from '../../ui/components';
-import { icons } from '../../design/icons';
-import { FRUITS, type Fruit } from './fruits';
-import { SoftBody, type Crossing } from './SoftBody';
-import { JellyWorld } from './JellyWorld';
-import { drawJelly, drawJellyShadow } from './renderJelly';
+import { el, iconButton, Segmented, tactile } from '../../ui/components';
+import { getLab, type Lab } from './Lab';
+import { VARIETIES } from './varieties';
+import type { Piece } from './Piece';
 
 type Tool = 'hand' | 'knife';
 
 interface Hold {
-  body: SoftBody;
-  mode: 'pending' | 'grab' | 'squish';
-  t: number;
+  piece: Piece;
+  t0: number;
+  moved: boolean;
   step: number;
-  maxStretch: number;
 }
 
-interface Blade {
-  pts: { x: number; y: number; age: number }[];
-  /** Per body: where the blade entered (null = currently outside). */
-  entry: Map<number, Crossing | 'inside'>;
-  live: boolean;
-}
-
-const MAX_BODIES = 24;
-/** Smallest piece the knife will make (px radius) — still a satisfying crumb. */
-const MIN_PIECE_R = 12;
+const INSTRUCTIONS: Record<Tool, string> = {
+  knife: 'Draw a line across the slice — the knife lines up over it and cuts when you let go. Cut the pieces again, as small as you like.',
+  hand: 'Grab any piece — tip, corner, flesh or rind — and pull. Add a second finger while holding to twist it. Flick to toss.',
+};
 
 /**
- * Room: translucent fruit jellies. No goal — poke, squish, stretch with one
- * or two fingers, toss them around, or switch to the knife and slice.
+ * Room: Melon Jelly — a specimen table with a soft watermelon-jelly wedge,
+ * a cleaver, and the little control panel from the reference, laid out for a
+ * phone. The pieces keep soft-spot's faces.
  */
 export class JellyRoom implements Scene {
   readonly id = 'jelly';
   readonly tint = roomTint.jelly;
   readonly ui: HTMLElement;
 
+  private lab: Lab;
   private w = 0;
   private h = 0;
-  private floorY = 0;
-  private baseR = 70;
-  private safe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
-  private world: JellyWorld;
-  private particles = new Particles();
-  private shake = new Shake();
-  private time = 0;
-  private tool: Tool = 'hand';
+  private tool: Tool = 'knife';
   private holds = new Map<number, Hold>();
-  private blades = new Map<number, Blade>();
-  private trails: Blade[] = [];
-  private lookAt: { x: number; y: number } | null = null;
-  private nextIdle = 3;
-  private started = false;
+  private pointers = new Map<number, { x: number; y: number }>();
+  private twistAngle: number | null = null;
+  private stroke: { id: number; ax: number; ay: number; bx: number; by: number; aimed: boolean } | null = null;
+  private statsT = 0;
 
   private segmented: Segmented<Tool>;
   private sheet: HTMLDivElement;
   private sheetOpen = false;
-  private plus: HTMLButtonElement;
-  private hint = new Hint('squish, stretch or toss', 'hand');
-  private knifeHint = new Hint('swipe through to slice', 'knife');
+  private specBtn: HTMLButtonElement;
+  private instr: HTMLParagraphElement;
+  private instrLabel: HTMLSpanElement;
+  private statEls: Record<'mass' | 'volume' | 'kinetic' | 'pieces', HTMLElement>;
+  private head: HTMLElement;
+  private foot: HTMLElement;
+  private swatches = new Map<string, HTMLButtonElement>();
+  private toggles: Record<'slow' | 'mesh' | 'pause', HTMLButtonElement>;
 
   constructor(_nav: RoomNav) {
-    this.world = new JellyWorld({
-      impact: (b, speed, x) => this.onImpact(b, speed, x),
-      bump: (a, b, speed) => this.onBump(a, b, speed),
-    });
+    this.lab = getLab();
+    this.lab.events = {
+      impact: (p, v) => this.onImpact(p, v),
+      bump: (_a, _b, v) => {
+        material.plop(30, clamp(v / 400, 0, 1));
+        if (v > 160) haptics.play('tick');
+      },
+      cut: (n) => this.onCut(n),
+      land: () => {
+        material.thump(0.35);
+        haptics.play('snap');
+      },
+    };
 
-    this.ui = el('div', 'room room-jelly');
+    this.ui = el('div', 'room room-lab');
+
+    // ——— header (title block from the reference) ———
+    this.head = el('header', 'lab-head', {}, [
+      el('p', 'lab-eyebrow', {}, ['Material studies · No. 006']),
+      el('h1', 'lab-title', {}, ['Melon Jelly.']),
+      el('p', 'lab-tagline', {}, ['A slice of summer. A little wobble. Too soft to share.']),
+    ]);
+
+    // ——— footer: instructions + live readout ———
+    this.instrLabel = el('span', 'lab-instr-label');
+    this.instr = el('p', 'lab-instr');
+    const stat = (label: string, unit: string) => {
+      const v = el('span', 'lab-stat-value');
+      const box = el('div', 'lab-stat', {}, [
+        el('span', 'lab-stat-label', {}, [label]),
+        el('span', 'lab-stat-line', {}, [v, el('span', 'lab-stat-unit', {}, [unit])]),
+      ]);
+      return { box, v };
+    };
+    const mass = stat('Mass', 'g');
+    const vol = stat('Volume', '% of rest');
+    const kin = stat('Kinetic', 'µJ');
+    const pcs = stat('Pieces', '');
+    this.statEls = { mass: mass.v, volume: vol.v, kinetic: kin.v, pieces: pcs.v };
+    this.foot = el('footer', 'lab-foot', {}, [this.instr, el('div', 'lab-stats', {}, [mass.box, vol.box, kin.box, pcs.box])]);
+
+    // ——— dock: tool + specimen panel ———
     this.segmented = new Segmented<Tool>(
       [
-        { value: 'hand', icon: 'hand', label: 'play' },
-        { value: 'knife', icon: 'knife', label: 'slice' },
+        { value: 'hand', icon: 'hand', label: 'hand' },
+        { value: 'knife', icon: 'knife', label: 'knife' },
       ],
-      'hand',
+      this.tool,
       (v) => this.setTool(v),
     );
-    this.plus = iconButton('plus', 'add a fruit', () => this.toggleSheet());
-    const dock = el('div', 'dock', {}, [this.segmented.root, el('div', 'dock-divider'), this.plus]);
-    this.sheet = el('div', 'sheet', { role: 'dialog', 'aria-label': 'add a fruit' });
-    this.ui.append(this.hint.root, this.knifeHint.root, this.sheet, dock);
+    this.specBtn = iconButton('sliders', 'the specimen', () => this.toggleSheet());
+    const dock = el('div', 'dock', {}, [this.segmented.root, el('div', 'dock-divider'), this.specBtn]);
+
+    // ——— the specimen sheet ———
+    this.sheet = el('div', 'sheet lab-sheet', { role: 'dialog', 'aria-label': 'the specimen' });
+    const varietyRow = el('div', 'lab-varieties');
+    for (const v of VARIETIES) {
+      const b = el('button', 'lab-variety', { type: 'button', 'aria-label': v.name });
+      b.innerHTML = `<span class="lab-swatch" style="--flesh:${v.flesh};--rind:${v.rind};--skin:${v.skin}"></span><span class="lab-variety-name">${v.name}</span>`;
+      tactile(b, () => this.setVariety(v.id));
+      this.swatches.set(v.id, b);
+      varietyRow.append(b);
+    }
+    const slider = (id: string, label: string, lo: string, hi: string, value: number, onInput: (v: number) => void) => {
+      // A slider, exactly like the reference panel's.
+      const out = el('span', 'lab-slider-value', {}, [value.toFixed(2)]);
+      const input = el('input', 'lab-range', {
+        type: 'range',
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: String(value),
+        id,
+        'aria-label': label,
+      }) as HTMLInputElement;
+      input.addEventListener('input', () => {
+        const v = parseFloat(input.value);
+        out.textContent = v.toFixed(2);
+        onInput(v);
+        haptics.play('tick');
+      });
+      input.addEventListener('pointerdown', (e) => e.stopPropagation());
+      const wrap = el('div', 'lab-slider', {}, [
+        el('div', 'lab-slider-head', {}, [el('span', 'lab-label', {}, [label]), out]),
+        input,
+        el('div', 'lab-slider-ends', {}, [el('span', '', {}, [lo]), el('span', '', {}, [hi])]),
+      ]);
+      return { wrap };
+    };
+    const firm = slider('lab-firmness', 'Firmness', 'trembling', 'set', this.lab.firmness, (v) => (this.lab.firmness = v));
+    const damp = slider('lab-damping', 'Internal damping', 'lively', 'syrupy', this.lab.dampingAmt, (v) => (this.lab.dampingAmt = v));
+    const textBtn = (label: string, fn: () => void, cls = '') => {
+      const b = el('button', `lab-btn ${cls}`, { type: 'button' }, [label]);
+      tactile(b, fn);
+      return b;
+    };
+    const check = (label: string, fn: (on: boolean) => void) => {
+      const b = el('button', 'lab-check', { type: 'button', role: 'switch', 'aria-checked': 'false' }, [
+        el('span', 'lab-check-box'),
+        label,
+      ]);
+      tactile(b, () => {
+        const on = !b.classList.contains('is-on');
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-checked', String(on));
+        fn(on);
+      });
+      return b;
+    };
+    this.toggles = {
+      slow: check('¼ speed', (on) => (this.lab.timeScale = on ? 0.25 : 1)),
+      mesh: check('Show mesh', (on) => this.lab.setShowMesh(on)),
+      pause: textBtn('Pause', () => this.togglePause(), 'lab-btn-wide'),
+    };
+    this.sheet.append(
+      el('div', 'lab-sheet-head', {}, [el('span', 'lab-label', {}, ['The specimen']), el('span', 'lab-fig', {}, ['fig. 6'])]),
+      el('span', 'lab-label', {}, ['Variety']),
+      varietyRow,
+      firm.wrap,
+      damp.wrap,
+      el('div', 'lab-row', {}, [textBtn('Give it a nudge', () => this.nudge()), textBtn('Reset', () => this.reset())]),
+      el('div', 'lab-row', {}, [this.toggles.slow, this.toggles.mesh]),
+      this.toggles.pause,
+    );
+
+    this.ui.append(this.head, this.foot, this.sheet, dock);
+    this.syncVariety();
+    this.setTool(this.tool, true);
+
+    // Desktop: scroll while holding to twist.
+    window.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.ui.classList.contains('is-active')) return;
+        for (const id of this.holds.keys()) this.lab.twist(id, e.deltaY * 0.004);
+      },
+      { passive: true },
+    );
   }
 
   layout(w: number, h: number, safe: Insets) {
     this.w = w;
     this.h = h;
-    this.safe = safe;
-    const usable = h - safe.bottom;
-    this.floorY = Math.round(usable * world.floorRatio);
-    // Sized so four or five jellies can sit side by side on a phone.
-    this.baseR = clamp(Math.min(w * 0.15, usable * 0.085), 42, 84);
-    const wd = this.world;
-    wd.left = 2;
-    wd.right = w - 2;
-    wd.top = safe.top + 2;
-    wd.floor = this.floorY;
-    this.particles.floorY = this.floorY;
-    this.particles.width = w;
-    // Keep everything inside if the screen changed size.
-    for (const b of wd.bodies) {
-      for (let i = 0; i < b.n; i++) {
-        b.x[i] = clamp(b.x[i], wd.left, wd.right);
-        b.y[i] = Math.min(b.y[i], wd.floor);
-      }
-    }
+    // The free band between the header and the footer + dock.
+    const top = safe.top + 150;
+    const bottom = h - safe.bottom - 18 - 64 - 112;
+    this.lab.resize(w, h, window.devicePixelRatio || 1, top, Math.max(top + 200, bottom));
+    requestAnimationFrame(() => this.relayoutFromDom());
   }
 
   enter() {
-    if (!this.started) {
-      this.started = true;
-      this.spawn(FRUITS[0], this.w / 2, this.floorY - this.baseR * 3.2, 0);
-    }
-    if (!settings.value.seenHints.includes(this.id)) this.hint.show(1500);
+    requestAnimationFrame(() => this.relayoutFromDom());
+  }
+
+  /** Use the real header/footer sizes for the camera's free band. */
+  private relayoutFromDom() {
+    const top = this.head.getBoundingClientRect().bottom + 8;
+    const bottom = this.foot.getBoundingClientRect().top - 8;
+    if (bottom - top > 160) this.lab.resize(this.w, this.h, window.devicePixelRatio || 1, top, bottom);
   }
 
   leave() {
-    this.hint.hide();
-    this.knifeHint.hide();
     this.toggleSheet(false);
-    for (const b of this.world.bodies) {
-      b.grabs.clear();
-      b.squish.target = 0;
-    }
+    for (const id of [...this.holds.keys()]) this.lab.release(id);
     this.holds.clear();
-    this.blades.clear();
+    this.pointers.clear();
+    this.lab.cancelKnife();
+    this.stroke = null;
   }
 
   // ——— chrome ———
 
-  private setTool(t: Tool) {
+  private setTool(t: Tool, silent = false) {
     this.tool = t;
-    for (const id of [...this.holds.keys()]) this.release(id);
-    this.toggleSheet(false);
-    haptics.play('tick');
-    if (t === 'knife' && !settings.value.seenHints.includes('jelly-knife')) {
-      this.hint.hide();
-      this.knifeHint.show(250);
-    } else {
-      this.knifeHint.hide();
-    }
-  }
-
-  private buildSheet() {
-    if (this.sheet.childElementCount) return;
-    const grid = el('div', 'sheet-grid');
-    FRUITS.forEach((f, i) => {
-      const b = el('button', 'fruit-btn', { type: 'button', 'aria-label': f.name, title: f.name });
-      b.style.setProperty('--i', String(i));
-      b.append(this.fruitIcon(f));
-      tactile(b, () => {
-        this.spawnFromTop(f);
-        this.toggleSheet(false);
-      });
-      grid.append(b);
-    });
-    const tidy = el('button', 'btn btn-text', { type: 'button' });
-    tidy.innerHTML = `${icons.sparkle}<span>fresh start</span>`;
-    tactile(tidy, () => {
-      this.tidy();
+    this.instrLabel.textContent = t === 'knife' ? 'Knife' : 'Hand';
+    this.instr.replaceChildren(this.instrLabel, ' ', INSTRUCTIONS[t]);
+    if (!silent) {
+      haptics.play('tick');
       this.toggleSheet(false);
-    });
-    this.sheet.append(grid, tidy);
-  }
-
-  /** Fruit icons are rendered by the real jelly renderer — one look. */
-  private fruitIcon(f: Fruit) {
-    const size = 60;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const c = document.createElement('canvas');
-    c.width = c.height = size * dpr;
-    c.style.width = c.style.height = `${size}px`;
-    const ctx = c.getContext('2d')!;
-    ctx.scale(dpr, dpr);
-    const r = 20 / Math.max(0.8, f.size);
-    const b = SoftBody.fromFruit(f, r, size / 2, size / 2 + 3);
-    drawJelly(ctx, theme.current, b, 0);
-    return c;
+    }
+    this.lab.cancelKnife();
+    this.stroke = null;
   }
 
   private toggleSheet(force?: boolean) {
     const open = force ?? !this.sheetOpen;
     if (open === this.sheetOpen) return;
     this.sheetOpen = open;
-    if (open) this.buildSheet();
     this.sheet.classList.toggle('is-open', open);
-    this.plus.classList.toggle('is-on', open);
+    this.specBtn.classList.toggle('is-on', open);
     uiSound.sheet(open);
   }
 
-  // ——— spawning ———
-
-  private spawn(f: Fruit, x: number, y: number, vy: number) {
-    const b = SoftBody.fromFruit(f, this.baseR, x, y);
-    for (let i = 0; i < b.n; i++) {
-      b.vy[i] = vy;
-      b.vx[i] = rand(-30, 30);
-    }
-    b.spawnPop.value = 0.3;
-    b.face!.set('surprised', 0.6);
-    this.world.add(b);
-    this.cull();
-    material.pop(0.6, panFor(x, this.w));
-    return b;
+  private setVariety(id: string) {
+    const v = VARIETIES.find((x) => x.id === id);
+    if (!v) return;
+    this.lab.setVariety(v);
+    this.syncVariety();
+    material.sparkle(0);
+    for (const e of this.lab.entries) e.piece.face?.set('happy', 1);
   }
 
-  private spawnFromTop(f: Fruit) {
-    // Drop into the emptiest spot so newcomers don't land on someone's head.
-    let x = this.w / 2;
-    let best = -1;
-    for (let k = 0; k < 9; k++) {
-      const cx = this.w * (0.2 + (0.6 * k) / 8) + rand(-8, 8);
-      let gap = Infinity;
-      for (const b of this.world.bodies) gap = Math.min(gap, Math.abs(b.cx - cx) - b.R);
-      if (gap > best) {
-        best = gap;
-        x = cx;
-      }
-    }
-    const y = Math.max(this.safe.top + this.baseR * 1.4 + 40, this.floorY * 0.3);
-    this.spawn(f, x, y, 80);
-    this.particles.emit({ kind: 'sparkle', x, y, count: 5, speed: [60, 180], size: [4, 7], life: [0.4, 0.7], color: '#ffffff' });
+  private syncVariety() {
+    for (const [id, b] of this.swatches) b.classList.toggle('is-on', id === this.lab.variety.id);
   }
 
-  private tidy() {
-    this.world.bodies.forEach((b, i) => {
-      b.dying = 0.001;
-      material.pop(rand(0.3, 0.9), panFor(b.cx, this.w), i * 0.04);
-      this.particles.emit({
-        kind: 'puff',
-        x: b.cx,
-        y: b.cy,
-        count: 3,
-        speed: [40, 120],
-        size: [b.R * 0.3, b.R * 0.5],
-        life: [0.35, 0.6],
-        color: '#ffffff',
-      });
-    });
-    this.holds.clear();
-    window.setTimeout(() => {
-      this.spawnFromTop(pick(FRUITS.slice(0, 7)));
-      material.sparkle(0);
-    }, 380);
+  private togglePause() {
+    this.lab.paused = !this.lab.paused;
+    this.toggles.pause.textContent = this.lab.paused ? 'Resume' : 'Pause';
+    this.toggles.pause.classList.toggle('is-on', this.lab.paused);
   }
 
-  /** Too many jellies? The tiniest, oldest crumbs quietly melt away. */
-  private cull() {
-    const alive = this.world.bodies.filter((b) => b.dying === 0);
-    let extra = alive.length - MAX_BODIES;
-    if (extra <= 0) return;
-    const victims = alive.filter((b) => b.grabs.size === 0).sort((a, b) => a.R - b.R || b.age - a.age);
-    for (const v of victims) {
-      if (extra-- <= 0) break;
-      v.dying = 0.001;
-      this.particles.emit({
-        kind: 'puff',
-        x: v.cx,
-        y: v.cy,
-        count: 2,
-        speed: [20, 60],
-        size: [v.R * 0.4, v.R * 0.6],
-        life: [0.3, 0.5],
-        color: '#ffffff',
-      });
+  private nudge() {
+    this.lab.nudge();
+    material.boop(40, 0.7);
+    material.boop(30, 0.5);
+    haptics.play('soft');
+  }
+
+  private reset() {
+    this.lab.reset();
+    material.pop(0.6);
+    material.sparkle(0);
+    haptics.play('tap');
+  }
+
+  // ——— events from the lab ———
+
+  private onImpact(p: Piece, v: number) {
+    const s = clamp(v / 420, 0, 1);
+    material.boop(p.inradius * 14, s);
+    if (v > 330) {
+      material.thump(s * 0.5);
+      haptics.play('soft');
+    } else if (v > 160) haptics.play('tap');
+  }
+
+  private onCut(n: number) {
+    if (n > 0) {
+      material.slice();
+      haptics.play('snap');
     }
   }
 
   // ——— input ———
 
   pointerDown(p: Pointer) {
-    this.lookAt = { x: p.x, y: p.y };
-    if (this.sheetOpen) this.toggleSheet(false);
-    if (this.tool === 'knife') {
-      const entry = new Map<number, Crossing | 'inside'>();
-      for (const b of this.world.bodies) if (b.contains(p.x, p.y)) entry.set(b.id, 'inside');
-      const blade: Blade = { pts: [{ x: p.x, y: p.y, age: 0 }], entry, live: true };
-      this.blades.set(p.id, blade);
-      this.trails.push(blade);
+    this.pointers.set(p.id, { x: p.x, y: p.y });
+    if (this.sheetOpen) {
+      this.toggleSheet(false);
       return;
     }
-    const b = this.world.pick(p.x, p.y);
-    if (!b) return;
-    this.world.bringToFront(b);
-    this.holds.set(p.id, { body: b, mode: 'pending', t: 0, step: 0, maxStretch: 1 });
-    b.face?.look((p.x - b.cx) / b.R, (p.y - b.cy) / b.R);
+    if (this.tool === 'knife') {
+      if (this.stroke) return;
+      this.stroke = { id: p.id, ax: p.x, ay: p.y, bx: p.x, by: p.y, aimed: false };
+      return;
+    }
+    // A second finger while holding a piece: twist it.
+    if (this.holds.size === 1 && !this.holds.has(p.id)) {
+      const [, other] = [...this.pointers].find(([id]) => this.holds.has(id)) ?? [];
+      if (other) this.twistAngle = Math.atan2(p.y - other.y, p.x - other.x);
+      return;
+    }
+    const piece = this.lab.grab(p.id, p.x, p.y);
+    if (piece) {
+      this.holds.set(p.id, { piece, t0: performance.now(), moved: false, step: 0 });
+      haptics.play('tick');
+      material.squeak(0.15);
+    }
   }
 
   pointerMove(p: Pointer) {
-    this.lookAt = { x: p.x, y: p.y };
+    this.pointers.set(p.id, { x: p.x, y: p.y });
     if (this.tool === 'knife') {
-      const blade = this.blades.get(p.id);
-      if (!blade) return;
-      blade.pts.push({ x: p.x, y: p.y, age: 0 });
-      if (blade.pts.length > 40) blade.pts.shift();
-      this.slice(blade, p.prevX, p.prevY, p.x, p.y);
+      const s = this.stroke;
+      if (!s || s.id !== p.id) return;
+      s.bx = p.x;
+      s.by = p.y;
+      if (Math.hypot(s.bx - s.ax, s.by - s.ay) > 14) {
+        const wasAimed = s.aimed;
+        s.aimed = this.lab.aimKnife(s.ax, s.ay, s.bx, s.by);
+        if (s.aimed && !wasAimed) material.pop(0.9);
+      }
       return;
     }
     const hold = this.holds.get(p.id);
-    if (!hold) return;
-    const b = hold.body;
-    if (hold.mode !== 'grab' && p.travel > 9) {
-      // Became a drag: grab right where the finger is.
-      if (hold.mode === 'squish') b.squish.target = 0;
-      hold.mode = 'grab';
-      b.grab(p.id, p.x, p.y);
-      haptics.play('tick');
-      if (!settings.value.seenHints.includes(this.id)) {
-        settings.markHintSeen(this.id);
-        this.hint.hide();
-      }
+    if (hold) {
+      if (p.travel > 8) hold.moved = true;
+      this.lab.drag(p.id, p.x, p.y);
+      return;
     }
-    if (hold.mode === 'grab') {
-      const g = b.grabs.get(p.id);
-      if (g) {
-        g.fx = p.x;
-        g.fy = p.y;
-      }
+    // Twisting with the second finger.
+    if (this.twistAngle != null && this.holds.size === 1) {
+      const [id] = [...this.holds.keys()];
+      const o = this.pointers.get(id);
+      if (!o) return;
+      const a = Math.atan2(p.y - o.y, p.x - o.x);
+      let d = a - this.twistAngle;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.twistAngle = a;
+      this.lab.twist(id, -d);
+      this.lab.drag(id, o.x, o.y);
     }
   }
 
-  pointerUp(p: Pointer) {
-    const blade = this.blades.get(p.id);
-    if (blade) {
-      blade.live = false;
-      this.blades.delete(p.id);
+  pointerUp(p: Pointer, cancelled: boolean) {
+    this.pointers.delete(p.id);
+    if (this.tool === 'knife') {
+      const s = this.stroke;
+      if (!s || s.id !== p.id) return;
+      this.stroke = null;
+      if (s.aimed && !cancelled) {
+        this.lab.chop();
+        material.squeak(0.3);
+      } else this.lab.cancelKnife();
+      return;
     }
-    this.release(p.id, p.vx, p.vy);
-  }
-
-  private release(id: number, fvx = 0, fvy = 0) {
-    const hold = this.holds.get(id);
-    if (!hold) return;
-    this.holds.delete(id);
-    const b = hold.body;
-    const pan = panFor(b.cx, this.w);
-    if (hold.mode === 'pending') {
-      // A quick tap: a little boing.
-      b.squish.velocity += 7;
-      b.face?.set('happy', 1.1);
-      material.boop(b.R, 0.5, pan);
+    if (!this.holds.has(p.id)) {
+      if (this.holds.size) this.twistAngle = null;
+      return;
+    }
+    const hold = this.holds.get(p.id)!;
+    this.holds.delete(p.id);
+    this.twistAngle = null;
+    // Hand over the flick's momentum.
+    const piece = this.lab.release(p.id);
+    if (!piece) return;
+    if (!hold.moved && performance.now() - hold.t0 < 280) {
+      this.lab.poke(piece, p.x, p.y);
+      piece.face?.set('happy', 1.1);
+      material.boop(piece.inradius * 14, 0.5);
       haptics.play('tap');
-      this.particles.emit({
-        kind: 'bubble',
-        x: b.cx,
-        y: b.minY + 6,
-        count: 2,
-        speed: [20, 50],
-        size: [2.5, 4.5],
-        life: [0.6, 1],
-        color: b.fruit.light,
-        angle: -Math.PI / 2,
-        spread: 1.2,
-      });
-    } else if (hold.mode === 'squish') {
-      b.squish.target = 0;
-      b.face?.set('happy', 1);
-      material.boop(b.R, 0.7, pan);
+    } else if (piece.wobble > 0.35) {
+      material.snapBack(clamp(piece.wobble, 0, 1));
       haptics.play('soft');
-    } else {
-      // A flick: hand the finger's momentum to the jelly (more where you held it).
-      const g = b.grabs.get(id);
-      const sp = Math.hypot(fvx, fvy);
-      if (g && sp > 200) {
-        const k = (Math.min(sp, 2600) / sp) * 0.32;
-        for (let i = 0; i < b.n; i++) {
-          const w = 0.55 + 0.45 * g.w[i];
-          b.vx[i] += fvx * k * w;
-          b.vy[i] += fvy * k * w;
-        }
-      }
-      b.grabs.delete(id);
-      if (hold.maxStretch > 1.45) {
-        material.snapBack(clamp((hold.maxStretch - 1.4) / 1.2, 0, 1), pan);
-        haptics.play('snap');
-      }
-      const speed = Math.hypot(b.vcx, b.vcy);
-      if (speed > 1100) b.face?.set('surprised', 0.6);
-      else b.face?.set('happy', 0.9);
     }
   }
 
-  // ——— knife ———
-
-  private slice(blade: Blade, ax: number, ay: number, bx: number, by: number) {
-    for (const body of [...this.world.bodies]) {
-      if (body.dying > 0) continue;
-      const cs = body.crossings(ax, ay, bx, by);
-      if (!cs.length) continue;
-      let state = blade.entry.get(body.id) ?? null;
-      for (const c of cs) {
-        if (state === null) state = c;
-        else if (state === 'inside')
-          state = null; // started inside: this is just an exit
-        else {
-          const ok = this.cut(body, state, c, ax + (bx - ax) * c.s, ay + (by - ay) * c.s);
-          state = null;
-          if (ok) break;
-        }
-      }
-      if (state === null) blade.entry.delete(body.id);
-      else blade.entry.set(body.id, state);
-    }
-  }
-
-  private cut(body: SoftBody, e1: Crossing, e2: Crossing, ex: number, ey: number) {
-    const pieces = body.split(e1, e2, MIN_PIECE_R);
-    const pan = panFor(ex, this.w);
-    if (!pieces) {
-      // Too small to split: a gentle nick wobble instead.
-      body.squish.velocity += 4;
-      material.squeak(0.2, pan);
-      return false;
-    }
-    const idx = this.world.bodies.indexOf(body);
-    this.world.bodies.splice(idx, 1, ...pieces);
-    for (const [id, h] of this.holds) if (h.body === body) this.holds.delete(id);
-    material.slice(pan);
-    haptics.play('snap');
-    // Juicy (but clean) droplets along the cut, in the fruit's light colour.
-    const f = body.fruit;
-    this.particles.emit({
-      kind: 'drop',
-      x: ex,
-      y: ey,
-      count: 9,
-      speed: [80, 260],
-      size: [2, 4.5],
-      life: [0.7, 1.2],
-      color: f.body,
-      vy: -120,
-    });
-    this.particles.emit({ kind: 'sparkle', x: ex, y: ey, count: 3, speed: [40, 140], size: [4, 7], life: [0.3, 0.6], color: '#ffffff' });
-    if (!settings.value.seenHints.includes('jelly-knife')) {
-      settings.markHintSeen('jelly-knife');
-      this.knifeHint.hide();
-    }
-    this.cull();
-    return true;
-  }
-
-  // ——— world events ———
-
-  private onImpact(b: SoftBody, speed: number, x: number) {
-    if (speed < 240 || b.dying > 0) return;
-    const s = clamp(speed / 1600, 0, 1);
-    const pan = panFor(x, this.w);
-    material.boop(b.R, s, pan);
-    if (speed > 1250) {
-      b.face?.set('dizzy', 1.8);
-      haptics.play('soft');
-      this.shake.kick(1.2);
-      this.particles.emit({
-        kind: 'puff',
-        x,
-        y: Math.min(this.floorY, b.maxY),
-        count: 4,
-        speed: [50, 140],
-        size: [b.R * 0.18, b.R * 0.3],
-        life: [0.3, 0.6],
-        color: '#ffffff',
-      });
-    } else {
-      if (speed > 600) haptics.play('tap');
-      if (b.face && b.face.expression === 'surprised') b.face.set('happy', 0.9);
-    }
-  }
-
-  private onBump(a: SoftBody, b: SoftBody, speed: number) {
-    const s = clamp(speed / 1200, 0, 1);
-    material.plop((a.R + b.R) / 2, s, panFor((a.cx + b.cx) / 2, this.w));
-    if (speed > 420) haptics.play('tick');
-    if (speed > 750) {
-      a.face?.set('surprised', 0.45);
-      b.face?.set('surprised', 0.45);
-    }
-  }
-
-  // ——— simulation ———
+  // ——— loop ———
 
   update(dt: number) {
-    this.time += dt;
-    this.shake.update(dt);
-
-    for (const [id, hold] of this.holds) {
-      hold.t += dt;
-      const b = hold.body;
-      if (!this.world.bodies.includes(b)) {
-        this.holds.delete(id);
-        continue;
+    this.lab.update(dt);
+    // Squeaks while stretching a held piece.
+    for (const hold of this.holds.values()) {
+      const step = Math.floor(hold.piece.wobble / 0.22);
+      if (step > hold.step) {
+        material.squeak(clamp(hold.piece.wobble / 1.2, 0, 1));
+        haptics.play('tick');
       }
-      if (hold.mode === 'pending' && hold.t > 0.11) {
-        // A held press: squish!
-        hold.mode = 'squish';
-        const p = this.lookAt ?? { x: b.cx, y: b.minY };
-        const dx = b.cx - p.x;
-        const dy = b.cy - p.y;
-        const d = Math.hypot(dx, dy);
-        // Pressing near the middle squashes from above; near an edge, from that side.
-        if (d < b.R * 0.35) {
-          b.squishNx = 0;
-          b.squishNy = 1;
-        } else {
-          b.squishNx = dx / d;
-          b.squishNy = dy / d;
-        }
-        b.squish.target = 0.3;
-        material.squish(0.7, panFor(b.cx, this.w));
-        haptics.play('soft');
-        if (!settings.value.seenHints.includes(this.id)) {
-          settings.markHintSeen(this.id);
-          this.hint.hide();
-        }
-      }
-      if (hold.mode === 'squish') b.face?.set('squeeze', 0.3);
-      if (hold.mode === 'grab') {
-        hold.maxStretch = Math.max(hold.maxStretch, b.stretch);
-        const step = Math.floor((b.stretch - 1.15) / 0.16);
-        if (step > hold.step && step > 0) {
-          material.squeak(clamp((b.stretch - 1.15) / 1.4, 0, 1), panFor(b.cx, this.w));
-          haptics.play('tick');
-        }
-        hold.step = Math.max(0, step);
-        if (b.stretch > 1.32) b.face?.set('wide', 0.35);
-        else if (b.face?.expression === 'calm') b.face.set('happy', 0.4);
-      }
+      hold.step = step;
     }
-
-    this.world.step(dt);
-    this.particles.update(dt);
-
-    // Faces look toward your finger, or where they're flying.
-    for (const b of this.world.bodies) {
-      if (!b.face) continue;
-      if (this.lookAt && (this.holds.size || this.blades.size)) {
-        b.face.look((this.lookAt.x - b.cx) / (b.R * 3), (this.lookAt.y - b.cy) / (b.R * 3));
-      } else {
-        b.face.look(b.vcx / 900, b.vcy / 900);
-      }
-    }
-
-    // Idle life: now and then someone has a little jiggle.
-    this.nextIdle -= dt;
-    if (this.nextIdle <= 0) {
-      this.nextIdle = rand(2.5, 6);
-      const idle = this.world.bodies.filter((b) => b.grabs.size === 0 && b.touchingFloor);
-      if (idle.length) {
-        const b = pick(idle);
-        b.squish.velocity += rand(1.5, 3);
-        if (Math.random() < 0.4) b.face?.set('happy', 1.2);
-      }
-    }
-
-    for (let i = this.trails.length - 1; i >= 0; i--) {
-      const tr = this.trails[i];
-      for (const p of tr.pts) p.age += dt;
-      tr.pts = tr.pts.filter((p) => p.age < 0.22);
-      if (!tr.live && !tr.pts.length) this.trails.splice(i, 1);
+    this.statsT -= dt;
+    if (this.statsT <= 0) {
+      this.statsT = 0.12;
+      const s = this.lab.stats();
+      this.statEls.mass.textContent = `≈${Math.round(s.mass)}`;
+      this.statEls.volume.textContent = s.volume.toFixed(1);
+      this.statEls.kinetic.textContent = s.kinetic < 10 ? s.kinetic.toFixed(2) : String(Math.round(s.kinetic));
+      this.statEls.pieces.textContent = String(s.pieces);
     }
   }
-
-  // ——— drawing ———
 
   draw(ctx: CanvasRenderingContext2D) {
     const t = theme.current;
-    paintBackdrop(ctx, this.w, this.h, t, { tint: this.tint, floorY: this.floorY });
-    ctx.save();
-    this.shake.apply(ctx, this.w / 2, this.h / 2);
-    for (const b of this.world.bodies) drawJellyShadow(ctx, t, b, this.floorY);
-    for (const b of this.world.bodies) drawJelly(ctx, t, b, this.time);
-    this.particles.draw(ctx);
-    this.drawTrails(ctx);
-    ctx.restore();
-    paintGrain(ctx, this.w, this.h, t);
-  }
-
-  /** The knife's trail: a soft tapered ribbon of light. */
-  private drawTrails(ctx: CanvasRenderingContext2D) {
-    for (const tr of this.trails) {
-      const pts = tr.pts;
-      if (pts.length < 2) continue;
+    paintBackdrop(ctx, this.w, this.h, t, { tint: this.tint, floorY: null });
+    ctx.drawImage(this.lab.render(), 0, 0, this.w, this.h);
+    // The guide line under the knife while you draw.
+    const s = this.stroke;
+    if (s && Math.hypot(s.bx - s.ax, s.by - s.ay) > 6) {
       ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1];
-        const b = pts[i];
-        const k = 1 - b.age / 0.22;
-        const taper = i / pts.length;
-        ctx.strokeStyle = rgba('#ffffff', 0.85 * k);
-        ctx.lineWidth = 1 + 7 * taper * k;
+      ctx.strokeStyle = rgba(t.ink, 0.45);
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(s.ax, s.ay);
+      ctx.lineTo(s.bx, s.by);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = rgba(t.ink, 0.55);
+      for (const [x, y] of [
+        [s.ax, s.ay],
+        [s.bx, s.by],
+      ]) {
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
-      }
-      const tip = pts[pts.length - 1];
-      if (tr.live) {
-        ctx.fillStyle = rgba('#ffffff', 0.9);
-        ctx.beginPath();
-        ctx.arc(tip.x, tip.y, 4.5, 0, TAU);
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
     }
+    paintGrain(ctx, this.w, this.h, t);
   }
 }
