@@ -68,7 +68,7 @@ export class JellyRoom implements Scene {
         material.plop(30, clamp(v / 400, 0, 1));
         if (v > 160) haptics.play('tick');
       },
-      cut: (n) => this.onCut(n),
+      cut: (n, small) => this.onCut(n, small),
       land: () => {
         material.thump(0.35);
         haptics.play('snap');
@@ -274,11 +274,14 @@ export class JellyRoom implements Scene {
     } else if (v > 160) haptics.play('tap');
   }
 
-  private onCut(n: number) {
+  private onCut(n: number, tooSmall: number) {
     if (n > 0) {
       material.slice();
       haptics.play('snap');
       this.doneHint('knife');
+    } else if (tooSmall > 0) {
+      material.squeak(0.4);
+      haptics.play('tap');
     }
   }
 

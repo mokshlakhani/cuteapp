@@ -103,6 +103,12 @@ export class Knife {
 
   /** Hover over a line on the floor (centre + direction). */
   aim(cx: number, cz: number, dx: number, dz: number) {
+    // A new stroke while the last chop is still coming down: finish that cut
+    // right now, so no cut is ever lost.
+    if (this.phase === 'chop' && !this.didCut) {
+      this.didCut = true;
+      this.onCut?.();
+    }
     this.target.set(cx, 0, cz);
     this.targetYaw = Math.atan2(-dz, dx);
     if (this.phase === 'hidden' || this.phase === 'lift') {
@@ -115,11 +121,16 @@ export class Knife {
     this.phase = 'aiming';
   }
 
+  /** Returns false if the knife wasn't ready (the caller then cuts at once). */
   chop() {
-    if (this.phase !== 'aiming') return;
+    if (this.phase !== 'aiming') return false;
+    // Drop exactly onto the line you drew, not where the hover had drifted.
+    this.pos.copy(this.target);
+    this.yaw = this.targetYaw;
     this.phase = 'chop';
     this.t = 0;
     this.didCut = false;
+    return true;
   }
 
   cancel() {
@@ -150,7 +161,7 @@ export class Knife {
         const T = 0.14;
         const u = Math.min(1, this.t / T);
         this.y = HOVER * (1 - ease.inCubic(u));
-        if (!this.didCut && this.y < 1.6) {
+        if (!this.didCut && this.y < 3.2) {
           this.didCut = true;
           this.onCut?.();
         }

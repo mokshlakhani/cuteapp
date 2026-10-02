@@ -6,6 +6,7 @@ import { polyCentroid } from '../../core/geometry';
 import { Piece, WEDGE, collidePieces, wedgeFootprint, type Bounds, type PhysicsParams } from './Piece';
 import { createShared, makeJellyMaterial, type LocalUniforms, type SharedUniforms } from './material';
 import { Knife } from './Knife';
+import { strokeHits, strokePlane } from './cutting';
 import { jellyFruit } from './fruits';
 
 /**
@@ -29,7 +30,7 @@ interface Entry {
 export interface LabEvents {
   impact?(p: Piece, speed: number): void;
   bump?(a: Piece, b: Piece, speed: number): void;
-  cut?(count: number): void;
+  cut?(count: number, tooSmall: number): void;
   land?(): void;
 }
 
@@ -40,12 +41,12 @@ export interface Stats {
   pieces: number;
 }
 
-const MAX_PIECES = 40;
+const MAX_PIECES = 48;
 /** Camera elevation: 90° would be straight down. */
 const TOP_VIEW_DEG = 74;
 /** How far a held jelly lifts off the table (cm). */
 const LIFT = 1.6;
-const MIN_VOLUME = 1.2;
+const MIN_VOLUME = 0.35;
 const FACE_PX = 128;
 
 export class Lab {
@@ -397,7 +398,8 @@ export class Lab {
       this.knife.cancel();
       return;
     }
-    this.knife.chop();
+    // If the knife couldn't start a chop, never swallow the cut.
+    if (!this.knife.chop()) this.applyCut();
   }
 
   cancelKnife() {
@@ -409,31 +411,23 @@ export class Lab {
     const c = this.pendingCut;
     this.pendingCut = null;
     if (!c) return;
-    const dirx = c.bx - c.ax;
-    const dirz = c.bz - c.az;
-    const len = Math.hypot(dirx, dirz) || 1;
-    const ux = dirx / len;
-    const uz = dirz / len;
+    const stroke = { ax: c.ax, az: c.az, bx: c.bx, bz: c.bz };
+    const plane = strokePlane(stroke);
     let cuts = 0;
+    let missed = 0;
     for (const e of [...this.entries]) {
       if (this.entries.length >= MAX_PIECES) break;
       const p = e.piece;
-      // Only pieces that straddle the blade and lie along the stroke.
-      let pos = 0;
-      let neg = 0;
-      let along = Infinity;
-      let alongMax = -Infinity;
-      for (let i = 0; i < p.n; i++) {
-        const s = c.nx * p.x[i] + c.nz * p.z[i] - c.d;
-        if (s > 0.15) pos++;
-        else if (s < -0.15) neg++;
-        const a = (p.x[i] - c.ax) * ux + (p.z[i] - c.az) * uz;
-        along = Math.min(along, a);
-        alongMax = Math.max(alongMax, a);
+      // Cut exactly what the blade passes through, seen from above.
+      if (!strokeHits(p, stroke)) continue;
+      const parts = p.split(plane.nx, 0, plane.nz, plane.d, MIN_VOLUME);
+      if (!parts) {
+        // Too tiny to split further: it still flinches under the blade.
+        missed++;
+        for (let i = 0; i < p.n; i++) p.vy[i] -= 30;
+        p.face?.set('squeeze', 0.5);
+        continue;
       }
-      if (!pos || !neg || alongMax < -1.5 || along > len + 1.5) continue;
-      const parts = p.split(c.nx, 0, c.nz, c.d, MIN_VOLUME);
-      if (!parts) continue;
       cuts++;
       const idx = this.entries.indexOf(e);
       this.disposeEntry(e);
@@ -443,8 +437,8 @@ export class Lab {
       const [a, b] = parts[0].restVolume >= parts[1].restVolume ? parts : [parts[1], parts[0]];
       for (const q of [a, b]) this.add(q);
       if (p.face) this.giveFace(a, p.face);
-      else if (a.inradius > 0.75) this.giveFace(a, new Face());
-      if (b.inradius > 0.75) this.giveFace(b, new Face());
+      else if (a.inradius > 0.7) this.giveFace(a, new Face());
+      if (b.inradius > 0.7) this.giveFace(b, new Face());
       for (const q of [a, b]) {
         if (q.face) {
           q.face.set('surprised', 0.8);
@@ -452,7 +446,7 @@ export class Lab {
         }
       }
     }
-    this.events.cut?.(cuts);
+    this.events.cut?.(cuts, missed);
   }
 
   // ——— simulation ———

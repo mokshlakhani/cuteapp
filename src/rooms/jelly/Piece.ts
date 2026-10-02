@@ -1,6 +1,6 @@
 import { clipHalfPlane, polyArea, polyCentroid, type Poly } from '../../core/geometry';
 import type { Face } from '../../render/face';
-import { extractRotation, m3, m3Det, m3Inverse, m3Mul, quatToM3, type M3, type Q4 } from './math3';
+import { extractRotation, m3, m3Det, m3Inverse, m3Mul, quatAxisAngle, quatToM3, type M3, type Q4 } from './math3';
 
 /**
  * One piece of melon jelly: a soft, rounded prism.
@@ -68,6 +68,8 @@ let nextId = 1;
 const MAX_FOOT_PARTICLES = 12;
 const K_WEIGHTS = 6;
 const PRESSURE = 2500;
+/** Smallest piece the knife will make (cm, inscribed radius). */
+const MIN_INRADIUS = 0.18;
 
 export function wedgeFootprint(R: number = WEDGE.radius): Poly {
   const { halfAngle: h, arcSegments: s } = WEDGE;
@@ -202,6 +204,8 @@ export class Piece {
   impact = 0;
   onFloor = false;
   age = 0;
+  /** 0..1: how strongly the goal pose leans back toward lying flat. */
+  upright = 0;
   /** Which fruit this jelly is (see fruits.ts). Kept through cuts. */
   fruit = 'watermelon';
   /** Size of the original fruit's cross-section texture (kept through cuts). */
@@ -216,6 +220,12 @@ export class Piece {
     this.b = Math.max(0.12, Math.min(bevel, (y1 - y0) * 0.32, this.inradius * 0.45));
     this.inset = insetPolygon(this.foot, this.b);
     if (this.inset.length < 3) this.inset = insetPolygon(this.foot, this.b * 0.5);
+    if (this.inset.length < 3) {
+      // A tiny sliver: shrink the rounding until it fits.
+      this.b = 0.06;
+      this.inset = insetPolygon(this.foot, this.b);
+      if (this.inset.length < 3) this.inset = this.foot;
+    }
     this.restVolume = Math.abs(polyArea(this.foot)) * (y1 - y0);
 
     // Particles: inset corners at two heights + the two cap centres.
@@ -470,11 +480,35 @@ export class Piece {
     } else {
       G.set(R);
     }
+    // Resting on the table, a jelly rolls back to lie flat: the whole goal
+    // pose is tipped part of the way back toward upright.
+    if (this.upright > 0) {
+      const ux = R[1];
+      const uy = R[4];
+      const uz = R[7];
+      const ang = Math.acos(Math.max(-1, Math.min(1, uy)));
+      if (ang > 0.01) {
+        let ax = -uz;
+        let az = ux;
+        const l = Math.hypot(ax, az);
+        if (l < 1e-4) {
+          ax = 1;
+          az = 0;
+        } else {
+          ax /= l;
+          az /= l;
+        }
+        const C = quatToM3(quatAxisAngle(ax, 0, az, ang * this.upright), tmpUp);
+        G.set(m3Mul(C, G, tmpUpG));
+      }
+    }
   }
 
   /** One sub-step of internal forces + integration. */
   step(h: number, p: PhysicsParams) {
     const held = this.grabs.size > 0;
+    // Only on the table and not held: let it settle flat.
+    this.upright = this.onFloor && !held ? 0.8 : 0;
     // While held, the jelly stays a bit firmer and settles faster, so it
     // follows your finger with a gentle wobble rather than a big slosh.
     this.frame(held ? Math.min(0.5, p.beta + 0.08) : p.beta);
@@ -513,11 +547,13 @@ export class Piece {
       // Resting on the floor, the jelly carries its own weight internally
       // (upper particles held up, lower ones pressed down; net force zero),
       // so it keeps its shape instead of slumping. Off in flight.
+      // Measured on the goal shape, not the current one, so a stray
+      // particle is never pushed further away.
       let a = 0;
-      for (let i = 0; i < n; i++) a += Math.abs(y[i] - this.cy);
+      for (let i = 0; i < n; i++) a += Math.abs(G[3] * qx[i] + G[4] * qy[i] + G[5] * qz[i]);
       a = Math.max(0.2, a / n);
       const gs = (p.gravity * h) / a;
-      for (let i = 0; i < n; i++) vy[i] += (y[i] - this.cy) * gs;
+      for (let i = 0; i < n; i++) vy[i] += (G[3] * qx[i] + G[4] * qy[i] + G[5] * qz[i]) * gs;
     }
     for (const g of this.grabs.values()) {
       for (let i = 0; i < n; i++) {
@@ -719,14 +755,15 @@ export class Piece {
       if (A.length < 3 || B.length < 3) return null;
       const h = this.y1 - this.y0;
       if (Math.abs(polyArea(A)) * h < minVolume || Math.abs(polyArea(B)) * h < minVolume) return null;
-      if (inradius(A) < 0.35 || inradius(B) < 0.35) return null;
+      // Even a thin sliver of rind or the very tip is a real piece.
+      if (inradius(A) < MIN_INRADIUS || inradius(B) < MIN_INRADIUS) return null;
       a = new Piece(A, this.y0, this.y1);
       b = new Piece(B, this.y0, this.y1);
     } else {
       // The piece is lying on its side: the cut slices it into two layers.
       const c = polyCentroid(this.foot);
       const yc = (dr - rnx * c.x - rnz * c.y) / rny;
-      if (yc < this.y0 + 0.5 || yc > this.y1 - 0.5) return null;
+      if (yc < this.y0 + 0.3 || yc > this.y1 - 0.3) return null;
       const area = Math.abs(polyArea(this.foot));
       if (area * (yc - this.y0) < minVolume || area * (this.y1 - yc) < minVolume) return null;
       a = new Piece(this.foot, this.y0, yc);
@@ -792,6 +829,8 @@ export class Piece {
 }
 
 const tmpInv = m3();
+const tmpUp = m3();
+const tmpUpG = m3();
 const scratchBufs: Float64Array[] = [];
 function scratch(n: number, slot: number) {
   let b = scratchBufs[slot];

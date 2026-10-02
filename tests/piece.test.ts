@@ -65,3 +65,83 @@ describe('melon jelly piece', () => {
     expect(Math.hypot(a.cx - b.cx, a.cz - b.cz)).toBeGreaterThan(3);
   });
 });
+
+describe('lying flat', () => {
+  it('a piece dropped on its side rolls back to lie flat', () => {
+    for (const tilt of [Math.PI / 2, 2.6]) {
+      const p = new Piece(wedgeFootprint(5.4), 0, 2.2);
+      p.placeRest(0.3, 0, 6, 0);
+      // Tip it over around the x axis.
+      const c = Math.cos(tilt);
+      const s = Math.sin(tilt);
+      for (let i = 0; i < p.n; i++) {
+        const y = p.y[i] - p.cy;
+        const z = p.z[i] - p.cz;
+        p.y[i] = p.cy + c * y - s * z;
+        p.z[i] = p.cz + s * y + c * z;
+      }
+      p.frame(P.beta);
+      simulate([p], 4);
+      expect(p.R[4]).toBeGreaterThan(0.95);
+    }
+  });
+
+  it('thin cut slices tipped on their side roll back flat too', async () => {
+    const { JELLY_FRUITS } = await import('../src/rooms/jelly/fruits');
+    for (const f of JELLY_FRUITS.filter((f) => f.code !== 0)) {
+      for (const w of [0.8, 1.2, 1.8]) {
+        const p = new Piece(f.footprint(), 0, f.height);
+        p.placeRest(0, 0, f.height / 2 + 0.3, 0);
+        simulate([p], 0.3);
+        const parts = p.split(1, 0, 0, p.cx + f.radius - w, 0.35);
+        expect(parts).not.toBeNull();
+        const s = parts!.reduce((a, b) => (a.restVolume < b.restVolume ? a : b));
+        // Roll it onto its side, a little above the table.
+        for (let i = 0; i < s.n; i++) {
+          const y = s.y[i] - s.cy;
+          const x = s.x[i] - s.cx;
+          s.x[i] = s.cx - y;
+          s.y[i] = s.cy + x + 1;
+        }
+        s.frame(P.beta);
+        simulate([s], 4);
+        expect(s.R[4]).toBeGreaterThan(0.95);
+      }
+    }
+  });
+});
+
+describe('knife', () => {
+  it('cuts every fruit wherever the stroke crosses it', async () => {
+    const { JELLY_FRUITS } = await import('../src/rooms/jelly/fruits');
+    const { strokeHits, strokePlane } = await import('../src/rooms/jelly/cutting');
+    let seed = 3;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (const f of JELLY_FRUITS) {
+      let hits = 0;
+      let splits = 0;
+      for (let k = 0; k < 30; k++) {
+        const p = new Piece(f.footprint(), 0, f.height);
+        p.placeRest(rnd() * 6, 0, f.height / 2 + 0.5, 0);
+        simulate([p], 0.6);
+        const a = rnd() * Math.PI;
+        const off = (rnd() - 0.5) * f.radius * 0.9;
+        const cx = p.cx + Math.cos(a + Math.PI / 2) * off;
+        const cz = p.cz + Math.sin(a + Math.PI / 2) * off;
+        const L = f.radius * 3;
+        const s = {
+          ax: cx - (Math.cos(a) * L) / 2,
+          az: cz - (Math.sin(a) * L) / 2,
+          bx: cx + (Math.cos(a) * L) / 2,
+          bz: cz + (Math.sin(a) * L) / 2,
+        };
+        if (!strokeHits(p, s)) continue;
+        hits++;
+        const pl = strokePlane(s);
+        if (p.split(pl.nx, 0, pl.nz, pl.d, 0.35)) splits++;
+      }
+      expect(hits).toBeGreaterThan(15);
+      expect(splits / hits).toBeGreaterThan(0.97);
+    }
+  });
+});
