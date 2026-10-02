@@ -85,8 +85,7 @@ export const themes: Record<Theme['name'], Theme> = {
 export const roomTint = {
   home: pastel.butter,
   melon: pastel.sage,
-  // The melon-jelly lab: a calm warm stone, like the reference table.
-  jelly: '#E3DACF',
+  jelly: pastel.peach,
   soon1: pastel.sky,
   soon2: pastel.lilac,
   soon3: pastel.peach,

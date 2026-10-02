@@ -4,14 +4,15 @@ import { Face, drawFace } from '../../render/face';
 import { clamp, rand } from '../../core/math';
 import { polyCentroid } from '../../core/geometry';
 import { Piece, WEDGE, collidePieces, wedgeFootprint, type Bounds, type PhysicsParams } from './Piece';
-import { applyVariety, createShared, makeJellyMaterial, type SharedUniforms } from './material';
+import { createShared, makeJellyMaterial, type LocalUniforms, type SharedUniforms } from './material';
 import { Knife } from './Knife';
-import { VARIETIES, type Variety } from './varieties';
+import { jellyFruit } from './fruits';
 
 /**
- * The melon-jelly specimen table: a small three.js world with the soft
- * pieces, the cleaver, one warm key light (upper left, like the rest of the
- * app), an environment for glossy reflections, and soft tinted shadows.
+ * The jelly table: a small three.js world seen from above, lit like the
+ * rest of soft spot — one soft key light from the upper left, a gentle fill,
+ * and warm cocoa-tinted shadows (never grey) — with the soft fruit jellies
+ * and the cleaver.
  */
 
 interface Entry {
@@ -20,7 +21,7 @@ interface Entry {
   wire: THREE.Mesh;
   geo: THREE.BufferGeometry;
   mat: THREE.MeshPhysicalMaterial;
-  local: { uFace: { value: THREE.Texture }; uFaceRect: { value: THREE.Vector4 } };
+  local: LocalUniforms;
   faceCanvas: HTMLCanvasElement | null;
   faceTex: THREE.CanvasTexture | null;
 }
@@ -40,6 +41,10 @@ export interface Stats {
 }
 
 const MAX_PIECES = 40;
+/** Camera elevation: 90° would be straight down. */
+const TOP_VIEW_DEG = 74;
+/** How far a held jelly lifts off the table (cm). */
+const LIFT = 1.6;
 const MIN_VOLUME = 1.2;
 const FACE_PX = 128;
 
@@ -50,7 +55,6 @@ export class Lab {
   readonly camera = new THREE.PerspectiveCamera(30, 1, 1, 400);
   readonly knife = new Knife();
   readonly shared: SharedUniforms;
-  variety: Variety = VARIETIES[0];
   entries: Entry[] = [];
   bounds: Bounds = { minX: -8, maxX: 8, minZ: -9, maxZ: 9 };
   firmness = 0.4;
@@ -108,7 +112,8 @@ export class Lab {
     this.key.shadow.blurSamples = 16;
     this.scene.add(this.key, this.key.target);
 
-    this.shadowMat = new THREE.ShadowMaterial({ color: new THREE.Color(this.variety.shadow), opacity: 0.3 });
+    // The app's warm shadow tone (design/tokens: shadowRgb), a little deeper.
+    this.shadowMat = new THREE.ShadowMaterial({ color: new THREE.Color('rgb(128, 84, 62)'), opacity: 0.32 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), this.shadowMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -118,7 +123,7 @@ export class Lab {
     this.knife.onCut = () => this.applyCut();
     this.knife.onLand = () => this.events.land?.();
 
-    this.shared = createShared(this.variety);
+    this.shared = createShared();
     this.reset();
   }
 
@@ -138,10 +143,12 @@ export class Lab {
     cam.fov = fov;
     const tanV = Math.tan(THREE.MathUtils.degToRad(fov / 2));
     const band = Math.max(160, bottom - top);
-    const needW = 13.5; // cm visible across
-    const needH = 12; // cm visible down the free band
-    const dist = clamp(Math.max(needW / 2 / (tanV * cam.aspect), (needH / 2) * (h / band) / tanV), 22, 140);
-    const elev = THREE.MathUtils.degToRad(52);
+    const needW = 17; // cm visible across
+    const needH = 17; // cm visible down the free band
+    const dist = clamp(Math.max(needW / 2 / (tanV * cam.aspect), ((needH / 2) * (h / band)) / tanV), 22, 140);
+    // A top view: almost straight down, with just a hint of perspective so
+    // the jellies still read as soft and thick.
+    const elev = THREE.MathUtils.degToRad(TOP_VIEW_DEG);
     cam.position.set(0, Math.sin(elev) * dist, Math.cos(elev) * dist);
     cam.lookAt(0, 0, 0);
     // Shift the picture so the table is centred in the free band.
@@ -200,7 +207,7 @@ export class Lab {
     geo.setIndex(new THREE.BufferAttribute(p.index, 1));
     p.updateMesh();
     geo.computeVertexNormals();
-    const { mat, local } = makeJellyMaterial(this.shared);
+    const { mat, local } = makeJellyMaterial(this.shared, jellyFruit(p.fruit), p.texR, p.texH);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -242,10 +249,30 @@ export class Lab {
     e.local.uFaceRect.value.set(p.faceX, p.faceZ, p.faceSize, 1);
   }
 
-  setVariety(v: Variety) {
-    this.variety = v;
-    applyVariety(this.shared, v);
-    this.shadowMat.color.set(v.shadow);
+  /** Drop a new fruit jelly onto the emptiest part of the table. */
+  addFruit(id: string) {
+    if (this.entries.length >= MAX_PIECES) return null;
+    const f = jellyFruit(id);
+    const p = new Piece(f.footprint(), 0, f.height);
+    p.fruit = f.id;
+    p.texR = f.radius;
+    p.texH = f.height;
+    const b = this.bounds;
+    let best = { x: 0, z: 0, gap: -Infinity };
+    for (let k = 0; k < 24; k++) {
+      const x = rand(b.minX + 3.5, b.maxX - 3.5);
+      const z = rand(b.minZ + 3.5, b.maxZ - 3.5);
+      let gap = Infinity;
+      for (const e of this.entries) gap = Math.min(gap, Math.hypot(e.piece.cx - x, e.piece.cz - z) - e.piece.radius);
+      if (gap > best.gap) best = { x, z, gap };
+    }
+    p.placeRest(rand(-0.6, 0.6) + (f.code === 0 ? -0.75 : 0), best.x, f.height / 2 + 6, best.z);
+    for (let i = 0; i < p.n; i++) p.vy[i] = -60;
+    this.add(p);
+    const face = new Face();
+    face.set('surprised', 0.8);
+    this.giveFace(p, face);
+    return p;
   }
 
   setShowMesh(on: boolean) {
@@ -287,11 +314,10 @@ export class Lab {
     if (!hit) return null;
     const [hx, hy, hz] = hit.piece.toRest(hit.point.x, hit.point.y, hit.point.z);
     hit.piece.grab(id, hx, hy, hz);
-    hit.piece.moveGrab(id, hit.point.x, hit.point.y, hit.point.z);
-    // Drag in a plane facing the camera, through the grabbed point.
-    const n = new THREE.Vector3();
-    this.camera.getWorldDirection(n).negate();
-    this.grabPlanes.set(id, { piece: hit.piece, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(n, hit.point) });
+    hit.piece.moveGrab(id, hit.point.x, hit.point.y + LIFT, hit.point.z);
+    // Seen from above, you slide jellies around the table, lifted a touch.
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
+    this.grabPlanes.set(id, { piece: hit.piece, plane });
     return hit.piece;
   }
 
@@ -303,8 +329,7 @@ export class Lab {
     if (!this.ray.ray.intersectPlane(g.plane, p)) return;
     p.x = clamp(p.x, this.bounds.minX, this.bounds.maxX);
     p.z = clamp(p.z, this.bounds.minZ, this.bounds.maxZ);
-    p.y = clamp(p.y, 0.4, 16);
-    g.piece.moveGrab(id, p.x, p.y, p.z);
+    g.piece.moveGrab(id, p.x, p.y + LIFT, p.z);
   }
 
   twist(id: number, delta: number) {
@@ -487,10 +512,10 @@ export class Lab {
     const f = p.face;
     if (!f) return;
     const speed = Math.hypot(p.vcx, p.vcy, p.vcz);
-    if (p.grabs.size) f.set(p.wobble > 0.32 ? 'wide' : 'happy', 0.3);
-    else if (p.impact > 260) f.set('dizzy', 1.5);
-    else if (!p.onFloor && speed > 220) f.set('surprised', 0.3);
-    else if (p.wobble > 0.45) f.set('squeeze', 0.25);
+    if (p.grabs.size) f.set(p.wobble > 0.5 ? 'wide' : 'happy', 0.3);
+    else if (p.impact > 320) f.set('dizzy', 1.5);
+    else if (!p.onFloor && speed > 240) f.set('surprised', 0.3);
+    else if (p.wobble > 0.8 && p.volumeRatio < 0.85) f.set('squeeze', 0.25);
     f.look(clamp(p.vcx / 200, -1, 1), clamp(-p.vcz / 200, -1, 1));
   }
 
@@ -526,7 +551,7 @@ export class Lab {
         ctx.clearRect(0, 0, FACE_PX, FACE_PX);
         ctx.save();
         ctx.translate(FACE_PX / 2, FACE_PX / 2);
-        drawFace(ctx, p.face, FACE_PX * 0.8, { ink: '#2B1712', blush: this.variety.blush });
+        drawFace(ctx, p.face, FACE_PX * 0.8, { ink: '#3A2621', blush: jellyFruit(p.fruit).blush });
         ctx.restore();
         e.faceTex.needsUpdate = true;
       }
@@ -550,9 +575,9 @@ export class Lab {
     previewCam.aspect = target.width / target.height;
     const tanH = Math.tan(THREE.MathUtils.degToRad(previewCam.fov / 2)) * Math.min(1, previewCam.aspect);
     const dist = (r * 1.55) / tanH;
-    const elev = THREE.MathUtils.degToRad(48);
+    const elev = THREE.MathUtils.degToRad(TOP_VIEW_DEG - 4);
     previewCam.position.set(cx, Math.sin(elev) * dist, cz + Math.cos(elev) * dist);
-    previewCam.lookAt(cx, 0.6, cz + 0.4);
+    previewCam.lookAt(cx, 0.6, cz);
     previewCam.updateProjectionMatrix();
     this.renderer.getSize(tmpSize);
     const ratio = this.renderer.getPixelRatio();

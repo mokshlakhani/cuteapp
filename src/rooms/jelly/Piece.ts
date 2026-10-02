@@ -69,8 +69,8 @@ const MAX_FOOT_PARTICLES = 12;
 const K_WEIGHTS = 6;
 const PRESSURE = 2500;
 
-export function wedgeFootprint(): Poly {
-  const { radius: R, halfAngle: h, arcSegments: s } = WEDGE;
+export function wedgeFootprint(R: number = WEDGE.radius): Poly {
+  const { halfAngle: h, arcSegments: s } = WEDGE;
   const pts: Poly = [{ x: 0, y: 0 }];
   for (let i = 0; i <= s; i++) {
     const a = Math.PI / 2 - h + (2 * h * i) / s;
@@ -202,6 +202,11 @@ export class Piece {
   impact = 0;
   onFloor = false;
   age = 0;
+  /** Which fruit this jelly is (see fruits.ts). Kept through cuts. */
+  fruit = 'watermelon';
+  /** Size of the original fruit's cross-section texture (kept through cuts). */
+  texR = WEDGE.radius;
+  texH = WEDGE.height;
 
   constructor(foot: Poly, y0: number, y1: number, bevel = WEDGE.bevel) {
     this.foot = polyArea(foot) < 0 ? [...foot].reverse() : foot;
@@ -470,11 +475,13 @@ export class Piece {
   /** One sub-step of internal forces + integration. */
   step(h: number, p: PhysicsParams) {
     const held = this.grabs.size > 0;
-    this.frame(held ? Math.min(0.75, p.beta + 0.3) : p.beta);
+    // While held, the jelly stays a bit firmer and settles faster, so it
+    // follows your finger with a gentle wobble rather than a big slosh.
+    this.frame(held ? Math.min(0.5, p.beta + 0.08) : p.beta);
     if (this.volumeRatio < 0.3) this.recover();
     const { n, x, y, z, vx, vy, vz, qx, qy, qz, G } = this;
-    const k = p.stiffness * (held ? 0.55 : 1);
-    const damp = Math.exp(-p.damping * h);
+    const k = p.stiffness * (held ? 0.9 : 1);
+    const damp = Math.exp(-p.damping * (held ? 2.2 : 1) * h);
     const air = Math.exp(-0.05 * h);
     // Internal pressure: a squashed jelly pushes back out (keeps its volume).
     const press = this.volumeRatio > 0.3 ? PRESSURE * Math.max(-0.25, Math.min(0.3, 1 - this.volumeRatio)) * h : 0;
@@ -516,9 +523,9 @@ export class Piece {
       for (let i = 0; i < n; i++) {
         const w = g.w[i];
         if (w < 0.02) continue;
-        vx[i] += ((g.tx[i] - x[i]) * 1500 - vx[i] * 34) * w * h;
-        vy[i] += ((g.ty[i] - y[i]) * 1500 - vy[i] * 34) * w * h;
-        vz[i] += ((g.tz[i] - z[i]) * 1500 - vz[i] * 34) * w * h;
+        vx[i] += ((g.tx[i] - x[i]) * 1300 - vx[i] * 42) * w * h;
+        vy[i] += ((g.ty[i] - y[i]) * 1300 - vy[i] * 42) * w * h;
+        vz[i] += ((g.tz[i] - z[i]) * 1300 - vz[i] * 42) * w * h;
       }
     }
     for (let i = 0; i < n; i++) {
@@ -725,6 +732,9 @@ export class Piece {
       a = new Piece(this.foot, this.y0, yc);
       b = new Piece(this.foot, yc, this.y1);
     }
+    a.fruit = b.fruit = this.fruit;
+    a.texR = b.texR = this.texR;
+    a.texH = b.texH = this.texH;
     a.placeFrom(this);
     b.placeFrom(this);
     // Nudge the halves apart along the cut normal.

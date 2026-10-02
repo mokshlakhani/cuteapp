@@ -11,7 +11,7 @@ came from the same shelf.
 | room                                  | what you do                                                                                                                                                                                                                                                                                      |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **pop** — watermelon & rubber bands   | Swipe across the melon to snap bands around its waist. It squeezes, bulges, gets nervous, creaks… and at some unknowable point it _pops_ — slow-motion, juice, flying bands, and a few dizzy little slices. Then a fresh melon drops in.                                                         |
-| **melon jelly** — a 3D watermelon-jelly specimen | A glossy, wobbly wedge of watermelon jelly on a table. **Knife:** draw a line across it and a cleaver lines up over it, then chops when you let go — cut the pieces again, as small as you like; flesh, rind, skin and seeds run all the way through. **Hand:** grab any corner and pull, flick to toss, add a second finger to twist. The specimen panel has three varieties (Crimson, Golden, Rosé), firmness and internal-damping sliders, nudge, reset, ¼ speed, show mesh and pause, with a live mass / volume / kinetic / pieces readout. Every piece keeps a little face. |
+| **jelly** — soft 3D fruit jellies | Seen from above: a wobbly watermelon slice on a table. **Knife:** draw a line and a cleaver lines up over it and chops when you let go — cut pieces again, as small as you like; peel, flesh and seeds run all the way through. **Hand:** grab and slide, flick to toss, second finger to twist. **+** adds more fruits (three watermelons, orange, lemon, kiwi, strawberry, apple, peach, dragon fruit); the settings sheet has firmness, settle, slow motion, show mesh, pause and a nudge. Every piece keeps a little face. |
 
 See **[DESIGN.md](DESIGN.md)** for the full design system: palette, type,
 lighting, faces, motion, the procedural sound palette, haptic vocabulary,
@@ -55,7 +55,7 @@ Config lives in `capacitor.config.ts` (app id `app.softspot.toys`).
   - Melon: an analytic silhouette deformed by band pinch, volume-conserving
     bulge, and springs for squash/sway/swell; the burst shatters the current
     outline into Voronoi chunks with impulse-based rigid-body physics.
-  - Melon jelly (three.js): each piece is a rounded convex prism simulated
+  - Jelly (three.js): each piece is a rounded convex prism simulated
     as a 3D shape-matching soft body (rotation via quaternion polar
     decomposition + area-preserving affine stretch, volume pressure, resting
     pre-stress so it holds its shape), skinned onto a smooth mesh. Cuts are
@@ -77,6 +77,6 @@ src/
   rooms/
     home/     the shelf
     melon/    Melon, Burst, MelonRoom, preview
-    jelly/    Piece (soft body), Lab (three.js scene), material, Knife, varieties, JellyRoom, preview
+    jelly/    Piece (soft body), Lab (three.js scene), material, fruits, Knife, JellyRoom, preview
 tests/        jelly physics, cutting & geometry tests (vitest)
 ```

@@ -15,7 +15,7 @@ const sleeping = (): Preview => ({ update() {}, draw() {}, poke() {} });
  */
 export const ROOMS: RoomInfo[] = [
   { id: 'melon', name: 'pop', tint: roomTint.melon, awake: true, create: (nav) => new MelonRoom(nav), preview: melonPreview },
-  { id: 'jelly', name: 'melon jelly', tint: roomTint.jelly, awake: true, create: (nav) => new JellyRoom(nav), preview: jellyPreview },
+  { id: 'jelly', name: 'jelly', tint: roomTint.jelly, awake: true, create: (nav) => new JellyRoom(nav), preview: jellyPreview },
   { id: 'soon1', name: 'soon', tint: roomTint.soon1, awake: false, preview: sleeping },
   { id: 'soon2', name: 'soon', tint: roomTint.soon2, awake: false, preview: sleeping },
   { id: 'soon3', name: 'soon', tint: roomTint.soon3, awake: false, preview: sleeping },

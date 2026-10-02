@@ -13,6 +13,8 @@ import { ease } from '../../design/motion';
 const BLADE_L = 10.8;
 const BLADE_H = 4.7;
 const HOVER = 4.6;
+/** Blade leaned back (rad) while aiming, so its face shows from above. */
+const AIM_TILT = -1.2;
 
 type Phase = 'hidden' | 'aiming' | 'chop' | 'hold' | 'lift';
 
@@ -28,16 +30,29 @@ export class Knife {
   private targetYaw = 0;
   private y = HOVER;
   private didCut = false;
+  private tilt = AIM_TILT;
   /** Called once, the moment the edge passes through the jelly. */
   onCut: (() => void) | null = null;
   /** Called when the blade meets the board. */
   onLand: (() => void) | null = null;
 
   constructor() {
-    const steel = new THREE.MeshStandardMaterial({ color: '#e3e8ec', metalness: 0.85, roughness: 0.2, envMapIntensity: 2.6, transparent: true });
+    const steel = new THREE.MeshStandardMaterial({
+      color: '#e3e8ec',
+      metalness: 0.85,
+      roughness: 0.2,
+      envMapIntensity: 2.6,
+      transparent: true,
+    });
     const edge = new THREE.MeshStandardMaterial({ color: '#f6f8fa', metalness: 1, roughness: 0.1, envMapIntensity: 3, transparent: true });
     const wood = new THREE.MeshStandardMaterial({ color: '#3b1f15', metalness: 0, roughness: 0.55, transparent: true });
-    const rivet = new THREE.MeshStandardMaterial({ color: '#f1f1ee', metalness: 0.9, roughness: 0.25, envMapIntensity: 2.6, transparent: true });
+    const rivet = new THREE.MeshStandardMaterial({
+      color: '#f1f1ee',
+      metalness: 0.9,
+      roughness: 0.25,
+      envMapIntensity: 2.6,
+      transparent: true,
+    });
     this.mats = [steel, edge, wood, rivet];
 
     // Blade outline (cleaver): straight edge that lifts slightly at the tip.
@@ -166,10 +181,15 @@ export class Knife {
       m.opacity = this.opacity;
       m.depthWrite = this.opacity > 0.98;
     }
-    // A little forward tilt while hovering, perfectly vertical when cutting.
-    const tilt = this.phase === 'aiming' ? 0.18 : this.phase === 'lift' ? 0.1 : 0;
+    // Seen from above, the knife hovers lying back so you see its blade,
+    // then swings upright as it chops.
+    let tilt = 0;
+    if (this.phase === 'aiming') tilt = AIM_TILT;
+    else if (this.phase === 'chop') tilt = AIM_TILT * Math.pow(1 - Math.min(1, this.t / 0.14), 2);
+    else if (this.phase === 'lift') tilt = AIM_TILT * ease.inOutSine(Math.min(1, this.t / 0.45));
+    this.tilt += (tilt - this.tilt) * (this.phase === 'aiming' ? 1 - Math.exp(-dt * 14) : 1);
     this.group.position.set(this.pos.x, this.y, this.pos.z);
     this.group.rotation.set(0, this.yaw, 0);
-    this.group.rotateX(tilt);
+    this.group.rotateX(this.tilt);
   }
 }

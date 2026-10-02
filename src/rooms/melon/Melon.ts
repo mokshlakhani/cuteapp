@@ -3,6 +3,7 @@ import { pastel, springs } from '../../design/tokens';
 import type { Theme } from '../../design/tokens';
 import { clamp, gauss, lerp, noise1, rand, smoothstep, TAU } from '../../core/math';
 import { mix, rgba } from '../../core/color';
+import { fruitPalette } from '../../design/fruitPalette';
 import { contactShadow, gloss, shade, smoothPath } from '../../render/paint';
 import { Face, drawFace } from '../../render/face';
 
@@ -16,20 +17,22 @@ import { Face, drawFace } from '../../render/face';
  * on the surface no matter how the melon deforms.
  */
 
+/** Built from the shared fruit palette, so it's the same melon as the jelly. */
+const FW = fruitPalette.watermelon;
 export const MELON = {
-  skin: '#9DCB86',
-  skinLight: '#BCDDA6',
-  skinDark: '#6FA862',
-  stripe: '#5F9A57',
-  rim: '#4E8448',
-  flesh: '#F2858D',
-  fleshDeep: '#EA6F7B',
-  fleshLight: '#F8B3B6',
-  rindInner: '#EAF4D8',
-  seed: '#4A3530',
+  skin: FW.skin,
+  skinLight: FW.skinLight,
+  skinDark: mix(FW.skin, FW.stripe, 0.55),
+  stripe: FW.stripe,
+  rim: mix(FW.stripe, '#2a1a14', 0.2),
+  flesh: FW.flesh,
+  fleshDeep: mix(FW.flesh, '#B8233A', 0.35),
+  fleshLight: FW.fleshLight,
+  rindInner: FW.rind,
+  seed: FW.seed,
   stem: '#8C7051',
-  leaf: '#8FC27A',
-  blush: '#F59AA2',
+  leaf: '#7CC86E',
+  blush: '#FF9AAE',
 };
 
 export const BAND_COLORS = [pastel.pink, pastel.sky, pastel.butter, pastel.lilac, pastel.peach, pastel.mint, pastel.berry];

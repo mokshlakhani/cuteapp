@@ -161,7 +161,27 @@ scene stays clean.
 - Chrome: back (top-left, rooms only) · sound (top-right, always) · optional
   dock (bottom-centre). That's it.
 
-## 12. Adding a room
+## 12. 3D rooms follow the same rules
+
+Some toys (like **jelly**) are rendered in 3D with three.js. They must still
+look like they came from the same shelf:
+
+- **Same chrome.** Back + sound in the top bar, one bottom dock built from
+  the shared `Segmented` / `iconButton`, sheets that rise from the dock, and
+  one-time `Hint`s. No room-specific headers, fonts or readouts.
+- **Same backdrop.** The 3D canvas is transparent and drawn over
+  `paintBackdrop` with the room's pastel tint, plus `paintGrain`.
+- **Same light & shadow.** One key light from the upper left; shadows use the
+  app's warm cocoa shadow tone, never grey or black.
+- **Same camera language.** A calm top view (≈74° down), so the toy reads
+  like an object on a table, the way 2D rooms read like a shelf.
+- **Same faces.** Faces are drawn with `render/face.ts` into a texture and
+  painted inside the jelly, so expressions match every other toy.
+- **Same fruit colours.** All fruit colours come from
+  `design/fruitPalette.ts` — the watermelon in **pop** and in **jelly** is
+  the same watermelon.
+
+## 13. Adding a room
 
 1. Create `src/rooms/<name>/<Name>Room.ts` implementing `Scene`
    (`src/app/scene.ts`). Draw with `paintBackdrop` / `paintGrain`, light toys
