@@ -121,7 +121,7 @@ spring and relax back to the base expression after a hold time.
   each other, even when mashed.
 - Rooms speak a shared vocabulary rather than building sounds:
   `ui.tap/toggle/whoosh/sheet`, `material.boop/plop/thump/pop/sparkle`,
-  elastic `twang/creak/burst`, jelly `squeak/snapBack/squish/slice`.
+  elastic `twang/creak/burst`, jelly `squeak/snapBack/squish/slice/boing/melt`.
 - Rate limits per word stop collisions from machine-gunning; voices are capped.
 - Music: generative warm pads (Fmaj9 → Am7 → B♭maj9 → C6/9), rare soft bells,
   the odd piano note — ~20 dB under the toys, never loops audibly.

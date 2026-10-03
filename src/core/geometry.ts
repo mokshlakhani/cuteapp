@@ -37,6 +37,25 @@ export function polyCentroid(p: Poly): Vec {
   return { x: cx / (3 * a), y: cy / (3 * a) };
 }
 
+/** Convex hull (monotone chain), counter-clockwise. */
+export function convexHull(pts: Poly): Poly {
+  const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cross = (o: Vec, a: Vec, b: Vec) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Poly = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: Poly = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
 export function pointInPoly(x: number, y: number, xs: ArrayLike<number>, ys: ArrayLike<number>, n: number) {
   let inside = false;
   for (let i = 0, j = n - 1; i < n; j = i++) {

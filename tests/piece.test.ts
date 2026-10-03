@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Piece, WEDGE, collidePieces, wedgeFootprint, type Bounds, type PhysicsParams } from '../src/rooms/jelly/Piece';
+import { Piece, WEDGE, collidePieces, mergePieces, wedgeFootprint, type Bounds, type PhysicsParams } from '../src/rooms/jelly/Piece';
+import { JELLY_FRUITS, jellyFruit } from '../src/rooms/jelly/fruits';
+import { bladeSpan, bladeTouches, cutPiece, strokePlane } from '../src/rooms/jelly/cutting';
+import { polyArea } from '../src/core/geometry';
 
 const P: PhysicsParams = { stiffness: 1800, damping: 7, beta: 0.3, gravity: 700 };
 const B: Bounds = { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
@@ -114,7 +117,7 @@ describe('lying flat', () => {
 describe('knife', () => {
   it('cuts every fruit wherever the stroke crosses it', async () => {
     const { JELLY_FRUITS } = await import('../src/rooms/jelly/fruits');
-    const { strokeHits, strokePlane } = await import('../src/rooms/jelly/cutting');
+    const { strokeHits, strokePlane, cutPiece } = await import('../src/rooms/jelly/cutting');
     let seed = 3;
     const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     for (const f of JELLY_FRUITS) {
@@ -138,10 +141,137 @@ describe('knife', () => {
         if (!strokeHits(p, s)) continue;
         hits++;
         const pl = strokePlane(s);
-        if (p.split(pl.nx, 0, pl.nz, pl.d, 0.35)) splits++;
+        if (cutPiece(p, pl, 0.35)) splits++;
       }
       expect(hits).toBeGreaterThan(15);
-      expect(splits / hits).toBeGreaterThan(0.97);
+      // Every stroke that touches a whole fruit cuts it.
+      expect(splits).toBe(hits);
     }
+  });
+});
+
+/** Largest per-frame vertex movement (cm) over the last second, sampled at 60 fps. */
+function restJitter(pieces: Piece[], settle: number) {
+  simulate(pieces, settle);
+  const h = 1 / 240;
+  let prev: number[][] | null = null;
+  let worst = 0;
+  for (let s = 0; s < 240; s++) {
+    for (const p of pieces) {
+      p.step(h, P);
+      p.collideBounds(B, 0.96);
+    }
+    for (let i = 0; i < pieces.length; i++) for (let j = i + 1; j < pieces.length; j++) collidePieces(pieces[i], pieces[j]);
+    if (s % 4) continue;
+    const cur = pieces.map((p) => {
+      p.frame(P.beta);
+      p.updateMesh();
+      return Array.from(p.pos);
+    });
+    if (prev) cur.forEach((c, k) => c.forEach((v, i) => (worst = Math.max(worst, Math.abs(v - prev![k][i])))));
+    prev = cur;
+  }
+  return worst;
+}
+
+describe('resting still', () => {
+  it('every fruit, whole or cut, lies still on the table (no buzzing)', () => {
+    for (const f of JELLY_FRUITS) {
+      const p = new Piece(f.footprint(), 0, f.height);
+      p.placeRest(0.4, 0, f.height / 2 + 0.3, 0);
+      const half = cutPiece(p, { nx: 1, nz: 0, d: p.cx + f.radius * 0.4 }, 0.35)!;
+      for (const q of [p, ...half]) {
+        expect(restJitter([q], 3)).toBeLessThan(0.02);
+        q.frame(P.beta);
+        expect(Math.abs(q.volumeRatio - 1)).toBeLessThan(0.08);
+      }
+    }
+  });
+
+  it('pieces packed side by side settle instead of jostling', () => {
+    const ps: Piece[] = [];
+    ['lemon', 'kiwi', 'strawberry', 'orange', 'peach', 'apple'].forEach((id, k) => {
+      const f = jellyFruit(id);
+      const p = new Piece(f.footprint(), 0, f.height);
+      // Touching neighbours in a tight row.
+      p.placeRest(k, -9 + k * (f.radius * 1.9), f.height / 2 + 0.2, 0);
+      ps.push(p);
+    });
+    expect(restJitter(ps, 4)).toBeLessThan(0.03);
+    for (const p of ps) expect(Math.abs(p.volumeRatio - 1)).toBeLessThan(0.1);
+  });
+
+  it('a jelly resting on another neither crushes it nor buzzes', () => {
+    const f = jellyFruit('orange');
+    const a = new Piece(f.footprint(), 0, f.height);
+    a.placeRest(0, 0, 1, 0);
+    const b = new Piece(f.footprint(), 0, f.height);
+    b.placeRest(0.5, 0, 3.5, 0);
+    expect(restJitter([a, b], 4)).toBeLessThan(0.03);
+    expect(a.stretch[1]).toBeGreaterThan(0.85);
+    expect(b.cy).toBeGreaterThan(a.cy + f.height * 0.7);
+  });
+});
+
+describe('knife reach', () => {
+  it('a short stroke still cuts everything under the whole blade', () => {
+    const f = jellyFruit('lemon');
+    const p = new Piece(f.footprint(), 0, f.height);
+    p.placeRest(0, 4.5, f.height / 2, 0);
+    // A 1 cm stroke centred 4.5 cm away: only the blade's own length reaches.
+    const s = { ax: -0.5, az: 0, bx: 0.5, bz: 0 };
+    expect(bladeTouches(p, bladeSpan(s))).toBe(false);
+    expect(bladeTouches(p, bladeSpan(s, 4.7))).toBe(true);
+  });
+
+  it('a graze near the edge slides in to a thin slice; a crumb is too small to cut', () => {
+    const f = jellyFruit('kiwi');
+    const p = new Piece(f.footprint(), 0, f.height);
+    p.placeRest(0, 0, f.height / 2, 0);
+    simulate([p], 0.3);
+    const parts = cutPiece(p, { nx: 1, nz: 0, d: p.cx + f.radius - 0.05 }, 0.35);
+    expect(parts).not.toBeNull();
+    let crumb = parts!.reduce((a, b) => (a.restVolume < b.restVolume ? a : b));
+    // Keep cutting the smallest piece until it can't be cut any more.
+    for (let k = 0; k < 20; k++) {
+      simulate([crumb], 0.2);
+      const pl = strokePlane({ ax: crumb.cx - 1, az: crumb.cz + 0.01 * k, bx: crumb.cx + 1, bz: crumb.cz });
+      const next = cutPiece(crumb, pl, 0.35);
+      if (!next) break;
+      crumb = next.reduce((a, b) => (a.restVolume < b.restVolume ? a : b));
+    }
+    expect(cutPiece(crumb, strokePlane({ ax: crumb.cx - 1, az: crumb.cz, bx: crumb.cx + 1, bz: crumb.cz }), 0.35)).toBeNull();
+    expect(crumb.restVolume).toBeLessThan(1.5);
+  });
+});
+
+describe('merging', () => {
+  it('two halves of a cut melt back into the slice they came from', () => {
+    const f = jellyFruit('orange');
+    const p = new Piece(f.footprint(), 0, f.height);
+    p.placeRest(0, 0, f.height / 2, 0);
+    simulate([p], 0.3);
+    const [a, b] = cutPiece(p, { nx: 1, nz: 0, d: p.cx + 0.6 }, 0.35)!;
+    a.fruit = b.fruit = 'orange';
+    const m = mergePieces(a, b);
+    expect(m.restVolume / p.restVolume).toBeCloseTo(1, 3);
+    expect(Math.abs(polyArea(m.foot)) / Math.abs(polyArea(p.foot))).toBeCloseTo(1, 2);
+    expect(m.fruit).toBe('orange');
+    expect(Math.hypot(m.cx - p.cx, m.cz - p.cz)).toBeLessThan(0.5);
+    expect(restJitter([m], 2)).toBeLessThan(0.01);
+  });
+
+  it('scattered crumbs melt into one piece of exactly their total volume', () => {
+    const w = new Piece(wedgeFootprint(), 0, WEDGE.height);
+    w.placeRest(0, 0, WEDGE.height / 2, 0);
+    simulate([w], 0.3);
+    const [a, rest] = cutPiece(w, { nx: 0, nz: 1, d: w.cz - 2.5 }, 0.35)!;
+    const [, b] = cutPiece(rest, { nx: 0, nz: 1, d: rest.cz + 1.5 }, 0.35)!;
+    const m = mergePieces(a, b);
+    expect(m.restVolume).toBeCloseTo(a.restVolume + b.restVolume, 3);
+    expect(m.inradius).toBeGreaterThan(Math.min(a.inradius, b.inradius));
+    m.placeRest(0, 0, m.y1, 0);
+    simulate([m], 2);
+    expect(Math.abs(m.volumeRatio - 1)).toBeLessThan(0.1);
   });
 });

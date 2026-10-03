@@ -220,6 +220,33 @@ export const material = {
     const f = scale(Math.round(lerp(7, 4, a)));
     audio.tone({ freq: f * 1.2, to: f * 0.85, glide: 0.14, decay: 0.16, gain: 0.05 + a * 0.05, pan });
   },
+  /** The knife bouncing off a piece too small to cut: a springy "boing". */
+  boing(pan = 0) {
+    if (!gate('boing', 120)) return;
+    const f = scale(9);
+    audio.tone({
+      freq: f * 1.5,
+      to: f * 0.9,
+      glide: 0.3,
+      decay: 0.42,
+      gain: 0.09,
+      pan,
+      type: 'triangle',
+      vibrato: { rate: 15, depth: f * 0.07 },
+      reverb: 0.2,
+      attack: 0.004,
+    });
+    // A tiny steel tink as the blade touches.
+    audio.tone({ freq: scale(19), decay: 0.09, gain: 0.025, pan, reverb: 0.3 });
+  },
+  /** Two jellies melting into one: a soft rising gloop. size 0..1. */
+  melt(size: number, pan = 0) {
+    if (!gate('melt', 150)) return;
+    const f = scale(Math.round(lerp(8, 4, clamp(size, 0, 1))));
+    audio.noise({ dur: 0.2, gain: 0.04, filter: 'lowpass', freq: 500, to: 1300, pan, attack: 0.03 });
+    audio.tone({ freq: f * 0.75, to: f * 1.25, glide: 0.2, decay: 0.26, gain: 0.08, pan, reverb: 0.2, attack: 0.02 });
+    audio.tone({ freq: scale(14), decay: 0.3, gain: 0.025, pan, reverb: 0.5, delay: 0.16 });
+  },
   /** A soft slice through jelly. */
   slice(pan = 0) {
     if (!gate('slice', 40)) return;

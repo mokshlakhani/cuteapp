@@ -27,7 +27,8 @@ interface Hold {
 
 /**
  * Room: jelly. Soft fruit jellies on a table, seen from above. Slice them
- * with the cleaver, or grab, slide, toss and twist them by hand. Chrome is
+ * with the knife, or grab, slide, toss and twist them by hand — and press
+ * two crumbs of the same fruit together to melt them back into one. Chrome is
  * the same as every other room: back + sound up top, one dock below, sheets
  * that rise from it, and a hint that appears once.
  */
@@ -58,6 +59,8 @@ export class JellyRoom implements Scene {
     knife: new Hint('draw a line across to slice', 'knife'),
     hand: new Hint('grab, slide or flick a jelly', 'hand'),
   };
+  private mergeHint = new Hint('too small to cut · push two together to melt', 'hand');
+  private pressStep = -1;
   private pauseRow!: HTMLButtonElement;
 
   constructor(_nav: RoomNav) {
@@ -69,6 +72,27 @@ export class JellyRoom implements Scene {
         if (v > 160) haptics.play('tick');
       },
       cut: (n, small) => this.onCut(n, small),
+      bounce: () => {
+        material.boing();
+        haptics.play('soft');
+        // Tiny crumbs can't be cut, but they can be melted back together.
+        this.showOnce('jelly-merge', this.mergeHint, 700);
+      },
+      pressing: (_a, _b, k) => {
+        const step = Math.floor(k * 3);
+        if (step > this.pressStep) {
+          material.squeak(0.3 + k * 0.5);
+          haptics.play('tick');
+        }
+        this.pressStep = step;
+      },
+      merge: (m, from) => {
+        material.melt(clamp(m.inradius / 3, 0, 1));
+        haptics.play('soft');
+        this.pressStep = -1;
+        for (const hold of this.holds.values()) if (from.includes(hold.piece)) hold.piece = m;
+        this.mergeHint.hide();
+      },
       land: () => {
         material.thump(0.35);
         haptics.play('snap');
@@ -166,7 +190,7 @@ export class JellyRoom implements Scene {
       nudge,
     );
 
-    this.ui.append(this.hints.knife.root, this.hints.hand.root, this.fruitSheet, this.settingsSheet, dock);
+    this.ui.append(this.hints.knife.root, this.hints.hand.root, this.mergeHint.root, this.fruitSheet, this.settingsSheet, dock);
 
     // Desktop: scroll while holding to twist.
     window.addEventListener(
@@ -216,6 +240,7 @@ export class JellyRoom implements Scene {
   leave() {
     this.toggle(null);
     for (const h of Object.values(this.hints)) h.hide();
+    this.mergeHint.hide();
     for (const id of [...this.holds.keys()]) this.lab.release(id);
     this.holds.clear();
     this.pointers.clear();
@@ -228,6 +253,15 @@ export class JellyRoom implements Scene {
   private showHint(t: Tool) {
     for (const [k, h] of Object.entries(this.hints)) if (k !== t) h.hide();
     if (!settings.value.seenHints.includes(`jelly-${t}`)) this.hints[t].show(t === 'knife' ? 1200 : 250);
+  }
+
+  /** A one-time tip that fades by itself after a few seconds. */
+  private showOnce(key: string, hint: Hint, delay: number) {
+    if (settings.value.seenHints.includes(key)) return;
+    settings.markHintSeen(key);
+    for (const h of Object.values(this.hints)) h.hide();
+    hint.show(delay);
+    window.setTimeout(() => hint.hide(), delay + 6000);
   }
 
   private doneHint(t: Tool) {
@@ -356,6 +390,12 @@ export class JellyRoom implements Scene {
       const s = this.stroke;
       if (!s || s.id !== p.id) return;
       this.stroke = null;
+      // Use exactly where the finger lifted, even if the last move was missed.
+      if (!cancelled && (s.bx !== p.x || s.by !== p.y)) {
+        s.bx = p.x;
+        s.by = p.y;
+        if (Math.hypot(s.bx - s.ax, s.by - s.ay) > 14) s.aimed = this.lab.aimKnife(s.ax, s.ay, s.bx, s.by) || s.aimed;
+      }
       if (s.aimed && !cancelled) {
         this.lab.chop();
         material.squeak(0.3);

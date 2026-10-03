@@ -1,4 +1,4 @@
-import { clipHalfPlane, polyArea, polyCentroid, type Poly } from '../../core/geometry';
+import { clipHalfPlane, convexHull, polyArea, polyCentroid, type Poly } from '../../core/geometry';
 import type { Face } from '../../render/face';
 import { extractRotation, m3, m3Det, m3Inverse, m3Mul, quatAxisAngle, quatToM3, type M3, type Q4 } from './math3';
 
@@ -181,6 +181,8 @@ export class Piece {
   volumeRatio = 1;
   /** How far the surface is from its goal shape (cm, mean). */
   wobble = 0;
+  /** Current stretch along the piece's own x/y/z axes (1 = rest). */
+  readonly stretch = new Float64Array([1, 1, 1]);
 
   // Collision planes (rest space): inset prism, and the outer prism for picking.
   readonly insetPlanes: Plane[];
@@ -202,6 +204,8 @@ export class Piece {
   faceSize = 0;
   /** Strongest floor/wall impact this frame (cm/s). */
   impact = 0;
+  /** Pieces pressed against this one this frame. */
+  readonly touching = new Set<Piece>();
   onFloor = false;
   age = 0;
   /** 0..1: how strongly the goal pose leans back toward lying flat. */
@@ -473,6 +477,8 @@ export class Piece {
     const Af = m3Mul(A, this.aqqInv, this.Aff);
     const det = m3Det(Af);
     this.volumeRatio = det;
+    // Stretch along each of the piece's own axes (diagonal of Rᵀ·Af).
+    for (let a = 0; a < 3; a++) this.stretch[a] = R[a] * Af[a] + R[3 + a] * Af[3 + a] + R[6 + a] * Af[6 + a];
     const G = this.G;
     if (det > 0.05) {
       const s = 1 / Math.cbrt(det);
@@ -518,7 +524,15 @@ export class Piece {
     const damp = Math.exp(-p.damping * (held ? 2.2 : 1) * h);
     const air = Math.exp(-0.05 * h);
     // Internal pressure: a squashed jelly pushes back out (keeps its volume).
-    const press = this.volumeRatio > 0.3 ? PRESSURE * Math.max(-0.25, Math.min(0.3, 1 - this.volumeRatio)) * h : 0;
+    // Each of the piece's own axes restores its own squash — a single radial
+    // push would mostly spread a thin slice sideways (its widest axis) and
+    // leave it flattened, collapsing and re-popping every few frames.
+    const R = this.R;
+    const on = this.volumeRatio > 0.3 ? PRESSURE * h : 0;
+    const st = this.stretch;
+    const pxa = on * Math.max(-0.25, Math.min(0.3, 1 - st[0]));
+    const pya = on * Math.max(-0.25, Math.min(0.3, 1 - st[1]));
+    const pza = on * Math.max(-0.25, Math.min(0.3, 1 - st[2]));
     let wob = 0;
     for (let i = 0; i < n; i++) {
       const gx = this.cx + G[0] * qx[i] + G[1] * qy[i] + G[2] * qz[i];
@@ -528,9 +542,12 @@ export class Piece {
       const dy = gy - y[i];
       const dz = gz - z[i];
       wob += Math.sqrt(dx * dx + dy * dy + dz * dz);
-      vx[i] += dx * k * h + (x[i] - this.cx) * press;
-      vy[i] += dy * k * h + (y[i] - this.cy) * press - p.gravity * h;
-      vz[i] += dz * k * h + (z[i] - this.cz) * press;
+      const lx = qx[i] * pxa;
+      const ly = qy[i] * pya;
+      const lz = qz[i] * pza;
+      vx[i] += dx * k * h + R[0] * lx + R[1] * ly + R[2] * lz;
+      vy[i] += dy * k * h + R[3] * lx + R[4] * ly + R[5] * lz - p.gravity * h;
+      vz[i] += dz * k * h + R[6] * lx + R[7] * ly + R[8] * lz;
       // Damp only the wobble — never the flight or the spin.
       const rx = x[i] - this.cx;
       const ry = y[i] - this.cy;
@@ -579,12 +596,16 @@ export class Piece {
       const qy = this.qy[i];
       const qz = this.qz[i];
       this.x[i] = this.cx + R[0] * qx + R[1] * qy + R[2] * qz;
-      this.y[i] = Math.max(this.b, this.cy + R[3] * qx + R[4] * qy + R[5] * qz);
+      this.y[i] = this.cy + R[3] * qx + R[4] * qy + R[5] * qz;
       this.z[i] = this.cz + R[6] * qx + R[7] * qy + R[8] * qz;
       this.vx[i] = this.vcx;
       this.vy[i] = Math.max(0, this.vcy);
       this.vz[i] = this.vcz;
     }
+    // Rebuild above the table, not squashed against it.
+    let minY = Infinity;
+    for (let i = 0; i < this.n; i++) minY = Math.min(minY, this.y[i]);
+    if (minY < this.b) for (let i = 0; i < this.n; i++) this.y[i] += this.b - minY;
     this.frame(0);
   }
 
@@ -856,6 +877,21 @@ function pushOut(A: Piece, B: Piece) {
   const mp = A.mass / A.n;
   const kA = B.mass / (mp + B.mass);
   const kB = mp / (mp + B.mass);
+  // B's flat top/bottom only push A out if A as a whole is above/below B
+  // (stacked). Side by side, a cap is never the way out: pushing a particle
+  // up or down there just fights the table and the shape, and the pair buzzes.
+  const ac = B.toRest(A.cx, A.cy, A.cz)[1];
+  const mid = (B.y0 + B.y1) / 2;
+  const half = (B.y1 - B.y0) / 2;
+  const capUp = ac > mid + half * 0.8;
+  const capDown = ac < mid - half * 0.8;
+  const deep = Math.max(0.35, B.inradius * 0.5);
+  let sepX = A.cx - B.cx;
+  let sepZ = A.cz - B.cz;
+  if (Math.hypot(sepX, sepZ) < 1e-4) {
+    sepX = A.id < B.id ? 1 : -1;
+    sepZ = 0;
+  }
   for (let i = 0; i < A.n; i++) {
     const [qx, qy, qz] = B.toRest(A.x[i], A.y[i], A.z[i]);
     let best = -Infinity;
@@ -867,42 +903,123 @@ function pushOut(A: Piece, B: Piece) {
         inside = false;
         break;
       }
+      if (p.ny > 0.5 ? !capUp : p.ny < -0.5 ? !capDown : false) continue;
       if (s > best) {
         best = s;
         bp = p;
       }
     }
     if (!inside || !bp) continue;
-    const depth = -best;
-    const nx = R[0] * bp.nx + R[1] * bp.ny + R[2] * bp.nz;
-    const ny = R[3] * bp.nx + R[4] * bp.ny + R[5] * bp.nz;
-    const nz = R[6] * bp.nx + R[7] * bp.ny + R[8] * bp.nz;
-    // A's particle vs B as a whole, shared by mass.
-    const ka = depth * kA * 0.8;
+    A.touching.add(B);
+    B.touching.add(A);
+    let depth = -best;
+    let nx = R[0] * bp.nx + R[1] * bp.ny + R[2] * bp.nz;
+    let ny = R[3] * bp.nx + R[4] * bp.ny + R[5] * bp.nz;
+    let nz = R[6] * bp.nx + R[7] * bp.ny + R[8] * bp.nz;
+    // Deep inside (pushed or dropped right into each other): the nearest face
+    // can point the wrong way and lock the two together, stretched and
+    // buzzing. Separate along the line between their centres instead.
+    if (depth > deep) {
+      const l = Math.hypot(sepX, sepZ);
+      if (l > 1e-4) {
+        nx = sepX / l;
+        ny = 0;
+        nz = sepZ / l;
+        depth = Math.min(depth, 0.5);
+      }
+    }
+    // A's particle vs B as a whole, shared by mass — except that a jelly
+    // resting on the table is a firm shelf: whatever sits on it is lifted,
+    // instead of the bottom one being shoved into the table (where only its
+    // top can give, so it squashes flat and buzzes under the weight).
+    let wa = kA;
+    let wb = kB;
+    if (ny > 0.5 && B.onFloor) {
+      wa = 1;
+      wb = 0;
+      // Sitting on a jelly that sits on the table counts as resting.
+      A.onFloor = true;
+    } else if (ny < -0.5 && A.onFloor) {
+      wa = 0;
+    }
+    const ka = depth * wa * 0.5;
     A.x[i] += nx * ka;
     A.y[i] += ny * ka;
     A.z[i] += nz * ka;
-    const kb = depth * kB * 0.8;
-    for (let j = 0; j < B.n; j++) {
-      B.x[j] -= nx * kb;
-      B.y[j] -= ny * kb;
-      B.z[j] -= nz * kb;
+    const kb = depth * wb * 0.5;
+    if (kb > 0) {
+      for (let j = 0; j < B.n; j++) {
+        B.x[j] -= nx * kb;
+        B.y[j] -= ny * kb;
+        B.z[j] -= nz * kb;
+      }
     }
     const vn = (A.vx[i] - B.vcx) * nx + (A.vy[i] - B.vcy) * ny + (A.vz[i] - B.vcz) * nz;
     if (vn < 0) {
       const imp = -vn * 1.1;
-      A.vx[i] += nx * imp * kA;
-      A.vy[i] += ny * imp * kA;
-      A.vz[i] += nz * imp * kA;
-      for (let j = 0; j < B.n; j++) {
-        B.vx[j] -= nx * imp * kB;
-        B.vy[j] -= ny * imp * kB;
-        B.vz[j] -= nz * imp * kB;
+      A.vx[i] += nx * imp * wa;
+      A.vy[i] += ny * imp * wa;
+      A.vz[i] += nz * imp * wa;
+      if (wb > 0) {
+        for (let j = 0; j < B.n; j++) {
+          B.vx[j] -= nx * imp * wb;
+          B.vy[j] -= ny * imp * wb;
+          B.vz[j] -= nz * imp * wb;
+        }
       }
       strongest = Math.max(strongest, -vn);
     }
   }
   return strongest;
+}
+
+/**
+ * Two pieces of the same fruit pressed together melt into one.
+ *
+ * The new footprint is the convex hull of both footprints in the fruit's
+ * own (rest) space — so two halves of one cut rejoin into the slice they came
+ * from — shrunk around its middle until the volume is exactly the two
+ * pieces' together. The solid texture still lines up: rind stays rind.
+ * Placed at their shared centre of mass, turned like the bigger piece.
+ */
+export function mergePieces(a: Piece, b: Piece): Piece {
+  const big = a.restVolume >= b.restVolume ? a : b;
+  const y0 = Math.min(a.y0, b.y0);
+  const y1 = Math.max(a.y1, b.y1);
+  const volume = a.restVolume + b.restVolume;
+  const hull = convexHull([...a.foot, ...b.foot]);
+  const area = Math.abs(polyArea(hull));
+  const k = Math.min(1, Math.sqrt(volume / (y1 - y0) / Math.max(1e-6, area)));
+  const c = polyCentroid(hull);
+  const foot = hull.map((q) => ({ x: c.x + (q.x - c.x) * k, y: c.y + (q.y - c.y) * k }));
+  const m = new Piece(foot, y0, y1);
+  m.fruit = big.fruit;
+  m.texR = big.texR;
+  m.texH = big.texH;
+  // Shared centre of mass, resting on the table; turned like the big piece.
+  const wa = a.restVolume / volume;
+  const wb = b.restVolume / volume;
+  const cx = a.cx * wa + b.cx * wb;
+  const cz = a.cz * wa + b.cz * wb;
+  const cy = Math.max(a.cy * wa + b.cy * wb, (m.y1 - m.y0) / 2 + 0.05);
+  const R = big.R;
+  m.q = [...big.q] as Q4;
+  const vx = a.vcx * wa + b.vcx * wb;
+  const vy = a.vcy * wa + b.vcy * wb;
+  const vz = a.vcz * wa + b.vcz * wb;
+  for (let i = 0; i < m.n; i++) {
+    const qx = m.qx[i];
+    const qy = m.qy[i];
+    const qz = m.qz[i];
+    m.x[i] = cx + R[0] * qx + R[1] * qy + R[2] * qz;
+    m.y[i] = cy + R[3] * qx + R[4] * qy + R[5] * qz;
+    m.z[i] = cz + R[6] * qx + R[7] * qy + R[8] * qz;
+    m.vx[i] = vx;
+    m.vy[i] = vy;
+    m.vz[i] = vz;
+  }
+  m.frame(0.3);
+  return m;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { Poly } from '../../core/geometry';
+import { convexHull, type Poly } from '../../core/geometry';
 import { fruitPalette as F } from '../../design/fruitPalette';
 import { wedgeFootprint } from './Piece';
 
@@ -45,24 +45,8 @@ function strawberry(k = 1): Poly {
   return hull(pts);
 }
 
-/** Convex hull (monotone chain) — every footprint must be convex. */
-function hull(pts: Poly): Poly {
-  const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Poly = [];
-  for (const q of p) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
-    lower.push(q);
-  }
-  const upper: Poly = [];
-  for (let i = p.length - 1; i >= 0; i--) {
-    const q = p[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
-    upper.push(q);
-  }
-  return lower.slice(0, -1).concat(upper.slice(0, -1));
-}
+/** Every footprint must be convex. */
+const hull = convexHull;
 
 const W = F.watermelon;
 
