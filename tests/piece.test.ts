@@ -274,4 +274,64 @@ describe('merging', () => {
     simulate([m], 2);
     expect(Math.abs(m.volumeRatio - 1)).toBeLessThan(0.1);
   });
+
+  it('cut into many pieces and melted back in any order, it is exactly the original', () => {
+    let seed = 11;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (const f of JELLY_FRUITS) {
+      const whole = new Piece(f.footprint(), 0, f.height);
+      whole.placeRest(0, 0, f.height / 2, 0);
+      simulate([whole], 0.2);
+      let pieces = [whole];
+      // Chop at random angles until there are plenty of pieces.
+      for (let k = 0; k < 30 && pieces.length < 10; k++) {
+        const i = Math.floor(rnd() * pieces.length);
+        const p = pieces[i];
+        const a = rnd() * Math.PI;
+        const nx = Math.cos(a);
+        const nz = Math.sin(a);
+        const parts = cutPiece(p, { nx, nz, d: nx * p.cx + nz * p.cz + (rnd() - 0.5) }, 0.35);
+        if (parts) pieces.splice(i, 1, ...parts);
+      }
+      expect(pieces.length).toBeGreaterThan(5);
+      // Melt them back together in a random order (not neighbour by neighbour).
+      while (pieces.length > 1) {
+        const i = Math.floor(rnd() * pieces.length);
+        let j = Math.floor(rnd() * (pieces.length - 1));
+        if (j >= i) j++;
+        const m = mergePieces(pieces[i], pieces[j]);
+        expect(m.restVolume).toBeGreaterThan(0);
+        pieces = pieces.filter((_, k) => k !== i && k !== j);
+        pieces.push(m);
+      }
+      const back = pieces[0];
+      expect(back.foot).toBe(whole.foot);
+      expect(back.y0).toBe(whole.y0);
+      expect(back.y1).toBe(whole.y1);
+      expect(back.mapK).toBe(1);
+      expect(back.restVolume).toBeCloseTo(whole.restVolume, 6);
+    }
+  });
+
+  it('neighbouring pieces rejoin seamlessly, and cutting a merged piece still lines up', () => {
+    const f = jellyFruit('kiwi');
+    const whole = new Piece(f.footprint(), 0, f.height);
+    whole.placeRest(0, 0, f.height / 2, 0);
+    simulate([whole], 0.2);
+    const [l, r] = cutPiece(whole, { nx: 1, nz: 0, d: whole.cx - 0.8 }, 0.35)!;
+    const [r1, r2] = cutPiece(r, { nx: 1, nz: 0, d: r.cx + 0.6 }, 0.35)!;
+    // Far-apart outer pieces: an approximate (shrunk) blob of the right volume.
+    const outer = mergePieces(l, r2);
+    expect(outer.mapK).toBeLessThan(1);
+    expect(outer.restVolume).toBeCloseTo(l.restVolume + r2.restVolume, 3);
+    // Cut that blob, then melt everything back: still the exact kiwi.
+    const [o1, o2] = cutPiece(outer, { nx: 0, nz: 1, d: outer.cz }, 0.35)!;
+    const back = mergePieces(mergePieces(o1, r1), o2);
+    expect(back.foot).toBe(whole.foot);
+    expect(back.restVolume).toBeCloseTo(whole.restVolume, 6);
+    // Two halves of a straight cut rejoin with no shrinking at all.
+    const half = mergePieces(r1, r2);
+    expect(half.mapK).toBe(1);
+    expect(half.restVolume).toBeCloseTo(r.restVolume, 6);
+  });
 });

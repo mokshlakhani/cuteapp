@@ -197,8 +197,9 @@ export class Knife {
       body.add(m);
     }
     body.add(blade, handle, bolster);
-    // Centre the edge on x = 0; pivot the wobble at the bolster.
-    body.position.x = BLADE_L / 2;
+    // The body is built heel-at-origin (edge along 0..BLADE_L). Pivot the
+    // wobble at the heel and put the heel at −BLADE_L/2, so the edge is
+    // centred on x = 0 — exactly the span the cut uses (KNIFE_EDGE_HALF).
     this.wob.position.x = -BLADE_L / 2;
     this.wob.add(body);
     this.group.add(this.wob);

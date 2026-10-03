@@ -32,12 +32,22 @@ export interface LabEvents {
   bump?(a: Piece, b: Piece, speed: number): void;
   cut?(count: number, tooSmall: number): void;
   /** The knife bounced off pieces too small to cut. */
-  bounce?(pieces: Piece[]): void;
+  bounce?(pieces: Piece[], tableFull: boolean): void;
   /** Two pieces are being pressed together (0..1 of the way to melting). */
   pressing?(a: Piece, b: Piece, amount: number): void;
   /** Two pieces melted into one. */
   merge?(merged: Piece, from: [Piece, Piece]): void;
   land?(): void;
+}
+
+interface CutLine {
+  nx: number;
+  nz: number;
+  d: number;
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
 }
 
 export interface Stats {
@@ -47,7 +57,7 @@ export interface Stats {
   pieces: number;
 }
 
-const MAX_PIECES = 48;
+const MAX_PIECES = 64;
 /** Camera elevation: 90° would be straight down. */
 const TOP_VIEW_DEG = 74;
 /** How far a held jelly lifts off the table (cm). */
@@ -82,7 +92,10 @@ export class Lab {
   private bumpCool = new Map<string, number>();
   private smoothVolume = 100;
   private idleT = 3;
-  private pendingCut: { nx: number; nz: number; d: number; ax: number; az: number; bx: number; bz: number } | null = null;
+  /** The line the knife is hovering over (not yet committed). */
+  private pendingCut: CutLine | null = null;
+  /** A chop on its way down: committed, so nothing can cancel it any more. */
+  private chopCut: CutLine | null = null;
   events: LabEvents = {};
 
   constructor() {
@@ -197,6 +210,7 @@ export class Lab {
     this.entries = [];
     this.grabPlanes.clear();
     this.pressT.clear();
+    this.pendingCut = this.chopCut = null;
     const w = new Piece(wedgeFootprint(), 0, WEDGE.height);
     // Apex points back-right, rind faces the viewer-left, like the reference.
     w.placeRest(-0.75, 0, WEDGE.height / 2 + 0.02, 0);
@@ -411,18 +425,23 @@ export class Lab {
       this.knife.cancel();
       return;
     }
+    // A chop still on its way down lands first.
+    if (this.chopCut) this.applyCut();
+    this.chopCut = this.pendingCut;
+    this.pendingCut = null;
     // If the knife couldn't start a chop, never swallow the cut.
     if (!this.knife.chop()) this.applyCut();
   }
 
+  /** Drop the line being aimed. A chop already coming down still lands. */
   cancelKnife() {
     this.pendingCut = null;
     this.knife.cancel();
   }
 
   private applyCut(): CutResult {
-    const c = this.pendingCut;
-    this.pendingCut = null;
+    const c = this.chopCut;
+    this.chopCut = null;
     if (!c) return 'none';
     const stroke = { ax: c.ax, az: c.az, bx: c.bx, bz: c.bz };
     const plane = strokePlane(stroke);
@@ -431,11 +450,13 @@ export class Lab {
     const blade = bladeSpan(stroke, KNIFE_EDGE_HALF);
     let cuts = 0;
     const tooSmall: Piece[] = [];
+    let full = false;
     for (const e of [...this.entries]) {
-      if (this.entries.length >= MAX_PIECES) break;
       const p = e.piece;
       if (!bladeTouches(p, blade)) continue;
-      const parts = cutPiece(p, plane, MIN_VOLUME);
+      // The table holds so many pieces; past that the blade bounces off.
+      const parts = this.entries.length < MAX_PIECES ? cutPiece(p, plane, MIN_VOLUME) : null;
+      if (!parts && this.entries.length >= MAX_PIECES) full = true;
       if (!parts) {
         tooSmall.push(p);
         continue;
@@ -467,7 +488,7 @@ export class Lab {
         }
         p.face?.set('happy', 1.2);
       }
-      this.events.bounce?.(tooSmall);
+      this.events.bounce?.(tooSmall, full);
     } else {
       // Mixed cut: the crumbs it couldn't split still flinch under the blade.
       for (const p of tooSmall) {
@@ -697,6 +718,10 @@ const tmpSize = new THREE.Vector2();
 let shared: Lab | null = null;
 /** One WebGL context for the whole app (room + home preview). */
 export function getLab() {
-  if (!shared) shared = new Lab();
+  if (!shared) {
+    shared = new Lab();
+    // Dev builds only: a handle for poking at the table from the console.
+    if (import.meta.env.DEV) (window as unknown as { __jellyLab: Lab }).__jellyLab = shared;
+  }
   return shared;
 }

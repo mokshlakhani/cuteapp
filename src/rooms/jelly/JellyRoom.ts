@@ -60,6 +60,7 @@ export class JellyRoom implements Scene {
     hand: new Hint('grab, slide or flick a jelly', 'hand'),
   };
   private mergeHint = new Hint('too small to cut · push two together to melt', 'hand');
+  private fullHint = new Hint('the table is full · melt some pieces together', 'hand');
   private pressStep = -1;
   private pauseRow!: HTMLButtonElement;
 
@@ -72,11 +73,13 @@ export class JellyRoom implements Scene {
         if (v > 160) haptics.play('tick');
       },
       cut: (n, small) => this.onCut(n, small),
-      bounce: () => {
+      bounce: (_p, full) => {
         material.boing();
         haptics.play('soft');
-        // Tiny crumbs can't be cut, but they can be melted back together.
-        this.showOnce('jelly-merge', this.mergeHint, 700);
+        // Tiny crumbs (or a full table) can't be cut, but pieces can be
+        // melted back together.
+        if (full) this.showOnce('jelly-full', this.fullHint, 500);
+        else this.showOnce('jelly-merge', this.mergeHint, 700);
       },
       pressing: (_a, _b, k) => {
         const step = Math.floor(k * 3);
@@ -190,7 +193,15 @@ export class JellyRoom implements Scene {
       nudge,
     );
 
-    this.ui.append(this.hints.knife.root, this.hints.hand.root, this.mergeHint.root, this.fruitSheet, this.settingsSheet, dock);
+    this.ui.append(
+      this.hints.knife.root,
+      this.hints.hand.root,
+      this.mergeHint.root,
+      this.fullHint.root,
+      this.fruitSheet,
+      this.settingsSheet,
+      dock,
+    );
 
     // Desktop: scroll while holding to twist.
     window.addEventListener(
@@ -241,6 +252,7 @@ export class JellyRoom implements Scene {
     this.toggle(null);
     for (const h of Object.values(this.hints)) h.hide();
     this.mergeHint.hide();
+    this.fullHint.hide();
     for (const id of [...this.holds.keys()]) this.lab.release(id);
     this.holds.clear();
     this.pointers.clear();
