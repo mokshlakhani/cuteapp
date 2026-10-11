@@ -16,7 +16,7 @@ import { Particles } from '../../render/particles';
 import { Shake } from '../../render/camera';
 import { el, iconButton, Hint, Segmented, tactile } from '../../ui/components';
 import { Sheet, type Bubble, type BubbleSize, type PopCause } from './Sheet';
-import { FILMS, drawRoll, drawSheet, drawSwatch, film, type Film } from './draw';
+import { FILMS, drawRoll, drawSheet, drawSwatch, film, warmPopped, type Film } from './draw';
 
 type Tool = 'press' | 'stretch';
 type Phase = 'unroll' | 'play' | 'done' | 'away';
@@ -95,6 +95,8 @@ export class WrapRoom implements Scene {
   private idleT = rand(2, 4);
   private untouched = 0;
   private dozing = false;
+  /** All popped looks painted for this sheet yet? */
+  private warm = false;
 
   private segmented: Segmented<Tool>;
   private plus: HTMLButtonElement;
@@ -164,6 +166,7 @@ export class WrapRoom implements Scene {
     this.syncPicker();
     // Day ↔ dusk: repaint the little swatches to match.
     theme.onChange(() => {
+      this.warm = false;
       for (const f of FILMS) this.swatches.get(f.id)?.replaceChildren(this.swatch(f));
     });
 
@@ -227,6 +230,7 @@ export class WrapRoom implements Scene {
     this.touches.clear();
     this.dozing = false;
     this.untouched = 0;
+    this.warm = false;
     if (unroll) {
       this.phase = 'unroll';
       this.phaseT = 0;
@@ -538,6 +542,8 @@ export class WrapRoom implements Scene {
     const s = this.sheet;
     if (!s) return;
     if (performance.now() - this.lastPop > 450) s.resetOrder();
+    // Paint the popped looks a few at a time, before they're needed.
+    if (!this.warm) this.warm = warmPopped(theme.current, this.film, s.radius);
 
     switch (this.phase) {
       case 'unroll': {

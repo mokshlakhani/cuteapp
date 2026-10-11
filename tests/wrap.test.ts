@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Sheet, type BubbleSize } from '../src/rooms/wrap/Sheet';
+import { POPPED_LOOKS } from '../src/rooms/wrap/popped';
 
 function run(s: Sheet, seconds: number) {
   const h = 1 / 240;
@@ -58,6 +59,30 @@ describe('bubble wrap sheet', () => {
     s.pop(tap, 'press');
     expect(power.get(4)).toBeGreaterThanOrEqual(0.3);
     expect(power.get(4)).toBeLessThan(0.5);
+  });
+
+  it('has at least 25 popped looks, all different', () => {
+    expect(POPPED_LOOKS.length).toBeGreaterThanOrEqual(25);
+    const keys = POPPED_LOOKS.map((l) => `${l.outline}|${l.creases.join('+')}|${l.extra}`);
+    expect(new Set(keys).size).toBe(POPPED_LOOKS.length);
+  });
+
+  it('gives popped bubbles random looks, never matching a popped neighbour', () => {
+    const seen = new Set<number>();
+    for (let k = 0; k < 4; k++) {
+      const s = new Sheet(350, 560, 'small', 0, 0, false);
+      for (const b of s.bubbles) s.pop(b, 'press');
+      for (const b of s.bubbles) {
+        expect(b.crumple).toBeGreaterThanOrEqual(0);
+        expect(b.crumple).toBeLessThan(POPPED_LOOKS.length);
+        seen.add(b.crumple);
+        for (const o of s.bubbles) {
+          if (o !== b && Math.hypot(o.u - b.u, o.v - b.v) < s.pitch * 1.6) expect(o.crumple).not.toBe(b.crumple);
+        }
+      }
+    }
+    // Over a few sheets, every look turns up.
+    expect(seen.size).toBe(POPPED_LOOKS.length);
   });
 
   it('knows its rows', () => {

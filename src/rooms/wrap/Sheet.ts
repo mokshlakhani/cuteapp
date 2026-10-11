@@ -2,6 +2,7 @@ import { Face } from '../../render/face';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { clamp, rand } from '../../core/math';
+import { POPPED_LOOKS } from './popped';
 
 /**
  * A sheet of bubble wrap lying on the table, seen from above.
@@ -54,7 +55,7 @@ export interface Bubble {
   strainT: number;
   /** Seconds since popping (drives the burst animation). */
   popT: number;
-  /** Crumple variant once flat. */
+  /** Which popped look it got (picked at random as it pops). */
   crumple: number;
   /** How hard it went: 0.3 for a quick tap … 1 for a full squeeze. */
   power: number;
@@ -209,7 +210,7 @@ export class Sheet {
           limit: rand(1.46, 1.7),
           strainT: 0,
           popT: 0,
-          crumple: Math.floor(rand(0, 4)),
+          crumple: 0,
           power: 0,
           row,
           voice: Math.floor(rand(0, 3)),
@@ -478,12 +479,26 @@ export class Sheet {
   pop(b: Bubble, cause: PopCause, power?: number) {
     if (b.popped) return;
     b.power = clamp(power ?? Math.max(0.3, b.press), 0, 1);
+    b.crumple = this.pickLook(b);
     b.popped = true;
     b.pressing = false;
     b.popT = 0;
     b.press = 1;
     this.kick(b.x, b.y, cause === 'strain' ? 40 : 50 + b.power * 60, this.pitch * 1.3);
     this.events.pop?.(b, cause, this.popOrder++);
+  }
+
+  /** A random popped look, never the same as a popped neighbour's. */
+  private pickLook(b: Bubble) {
+    const near = this.pitch * 1.6;
+    const taken = new Set<number>();
+    for (const o of this.bubbles) {
+      if (o.popped && o !== b && Math.hypot(o.u - b.u, o.v - b.v) < near) taken.add(o.crumple);
+    }
+    const n = POPPED_LOOKS.length;
+    let look = Math.floor(Math.random() * n);
+    for (let tries = 0; tries < n && taken.has(look); tries++) look = (look + 1 + Math.floor(Math.random() * 3)) % n;
+    return look;
   }
 
   /** Bubbles in a row (for "you popped the whole row" moments). */

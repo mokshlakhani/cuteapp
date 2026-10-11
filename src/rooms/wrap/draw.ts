@@ -1,10 +1,11 @@
 import { pastel, type Theme } from '../../design/tokens';
 import { mix, rgba } from '../../core/color';
 import { clamp, TAU } from '../../core/math';
-import { gloss, roundRect, smoothPath } from '../../render/paint';
+import { gloss, roundRect } from '../../render/paint';
 import { ease } from '../../design/motion';
 import { drawFace, Face } from '../../render/face';
 import type { Bubble, Sheet } from './Sheet';
+import { paintPopped, POPPED_LOOKS } from './popped';
 
 /**
  * How bubble wrap looks: a translucent pastel film with soft domes on it,
@@ -41,7 +42,7 @@ const dprNow = () => Math.min(2, window.devicePixelRatio || 1);
 function sprite(key: string, r: number, paint: (g: CanvasRenderingContext2D, R: number) => void) {
   let c = cache.get(key);
   if (c) return c;
-  if (cache.size > 80) cache.delete(cache.keys().next().value!);
+  if (cache.size > 240) cache.delete(cache.keys().next().value!);
   const dpr = dprNow();
   const R = r * dpr;
   const S = Math.ceil(R * 2.8);
@@ -113,52 +114,36 @@ function fullSprite(t: Theme, f: Film, r: number, cheeks: boolean) {
   });
 }
 
-/** A popped bubble: a flat, crinkled little disc. */
-function flatSprite(t: Theme, f: Film, r: number, variant: number) {
-  const key = `flat|${t.name}|${f.id}|${r.toFixed(1)}|${variant}|${dprNow()}`;
-  return sprite(key, r, (g, R) => {
-    let seed = variant * 7919 + 13;
-    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const n = 11;
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU + rnd() * 0.3;
-      const rr = R * (0.88 + rnd() * 0.2);
-      xs.push(Math.cos(a) * rr);
-      ys.push(Math.sin(a) * rr);
-    }
-    smoothPath(g, xs, ys, n);
-    g.fillStyle = rgba(mix(f.tint, '#ffffff', 0.35), 0.5);
-    g.fill();
-    g.strokeStyle = rgba(mix(deep(f.tint), '#5E4B42', 0.3), 0.3);
-    g.lineWidth = Math.max(1, R * 0.045);
-    g.stroke();
-    // Creases: a light edge with a soft dark side, like folded plastic.
-    g.lineCap = 'round';
-    for (let i = 0; i < 4; i++) {
-      const a = rnd() * TAU;
-      const r0 = R * (0.05 + rnd() * 0.25);
-      const r1 = R * (0.55 + rnd() * 0.3);
-      const bend = (rnd() - 0.5) * 0.6;
-      const path = () => {
-        g.beginPath();
-        g.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
-        g.quadraticCurveTo(Math.cos(a + bend) * (r0 + r1) * 0.5, Math.sin(a + bend) * (r0 + r1) * 0.5, Math.cos(a) * r1, Math.sin(a) * r1);
-      };
-      g.save();
-      g.translate(R * 0.03, R * 0.04);
-      path();
-      g.strokeStyle = `rgba(${t.shadowRgb},${0.14 * t.shadowStrength})`;
-      g.lineWidth = R * 0.07;
-      g.stroke();
-      g.restore();
-      path();
-      g.strokeStyle = rgba('#ffffff', 0.6);
-      g.lineWidth = R * 0.05;
-      g.stroke();
-    }
-  });
+/** A popped bubble: one of many flattened, crinkled looks (see popped.ts). */
+function flatSprite(t: Theme, f: Film, r: number, look: number) {
+  const key = `flat|${t.name}|${f.id}|${r}|${look}|${dprNow()}`;
+  return sprite(key, r, (g, R) =>
+    paintPopped(g, R, look, {
+      fill: rgba(mix(f.tint, '#ffffff', 0.35), 0.5),
+      rim: rgba(mix(deep(f.tint), '#5E4B42', 0.3), 0.3),
+      shadowRgb: t.shadowRgb,
+      shadowStrength: t.shadowStrength,
+      tint: f.tint,
+    }),
+  );
+}
+
+/** Popped sprites are shared across nearby sizes: radius in 2px steps. */
+const flatR = (r: number) => Math.max(4, Math.round(r / 2) * 2);
+
+/**
+ * Paint popped looks ahead of time, a few per call, so the first pops of a
+ * fresh sheet never wait on drawing. Returns true once they're all ready.
+ */
+export function warmPopped(t: Theme, f: Film, r: number, budget = 3) {
+  const R = flatR(r);
+  for (let i = 0; i < POPPED_LOOKS.length; i++) {
+    const key = `flat|${t.name}|${f.id}|${R}|${i}|${dprNow()}`;
+    if (cache.has(key)) continue;
+    if (budget-- <= 0) return false;
+    flatSprite(t, f, R, i);
+  }
+  return true;
 }
 
 function blit(ctx: CanvasRenderingContext2D, c: HTMLCanvasElement, scale: number, alpha = 1) {
@@ -189,7 +174,8 @@ export function drawBubble(ctx: CanvasRenderingContext2D, t: Theme, f: Film, b: 
   if (b.popped) {
     const k = clamp(b.popT / BURST, 0, 1);
     if (k < 1) blit(ctx, fullSprite(t, f, R, !!b.face), k0 * (1 + k * 0.25), 1 - k);
-    blit(ctx, flatSprite(t, f, R, b.crumple), k0 * (1.04 + b.wobble.value * 0.05), k);
+    const FR = flatR(b.r);
+    blit(ctx, flatSprite(t, f, FR, b.crumple), (b.r / FR) * (1.04 + b.wobble.value * 0.05), k);
     if (b.popT < RING) {
       // The puff of air leaving, as a soft ring.
       const q = b.popT / RING;
