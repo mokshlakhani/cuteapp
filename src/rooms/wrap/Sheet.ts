@@ -27,6 +27,12 @@ const K_HOME = 26;
 const K_GRAB = 2600;
 /** How quickly a held point catches up with the finger (1/s). */
 const GRAB_FOLLOW = 22;
+
+const STRAIN_STEPS: [number, number][] = [
+  [1, 0.35],
+  [2, 0.62],
+  [3, 0.84],
+];
 const DAMP_SPRING = 9;
 const DAMP_TABLE = 3.2;
 
@@ -50,6 +56,14 @@ export interface Bubble {
   popT: number;
   /** Crumple variant once flat. */
   crumple: number;
+  /** How hard it went: 0.3 for a quick tap … 1 for a full squeeze. */
+  power: number;
+  /** Which row it sits in (rows run across the sheet). */
+  row: number;
+  /** Its own little note offset, so lone pops never sound identical. */
+  voice: number;
+  /** Seconds until it wakes from a doze (a wake ripple sets these). */
+  wakeIn: number;
   wobble: Spring;
   face: Face | null;
   // Current frame, refreshed by `frame()`.
@@ -79,6 +93,8 @@ export interface SheetGrab {
 
 export interface SheetEvents {
   pop?(b: Bubble, cause: PopCause, order: number): void;
+  /** A pressed bubble crossed another step of resistance (1, 2, 3). */
+  strain?(b: Bubble, step: number): void;
 }
 
 export class Sheet {
@@ -185,15 +201,19 @@ export class Sheet {
         this.bubbles.push({
           u,
           v: m + row * rowStep,
-          r: this.radius,
+          r: this.radius * rand(0.95, 1.04),
           popped: false,
           press: 0,
-          toughness: rand(0.13, 0.26),
+          toughness: rand(0.26, 0.44),
           pressing: false,
           limit: rand(1.46, 1.7),
           strainT: 0,
           popT: 0,
           crumple: Math.floor(rand(0, 4)),
+          power: 0,
+          row,
+          voice: Math.floor(rand(0, 3)),
+          wakeIn: -1,
           wobble: new Spring(0, springs.wobbly),
           face,
           x: 0,
@@ -451,14 +471,24 @@ export class Sheet {
     return out;
   }
 
-  pop(b: Bubble, cause: PopCause) {
+  /**
+   * Pop a bubble. `power` is how hard it went (a full squeeze is 1, a quick
+   * tap about 0.3); by default it's read from how far it was pushed in.
+   */
+  pop(b: Bubble, cause: PopCause, power?: number) {
     if (b.popped) return;
+    b.power = clamp(power ?? Math.max(0.3, b.press), 0, 1);
     b.popped = true;
     b.pressing = false;
     b.popT = 0;
     b.press = 1;
-    this.kick(b.x, b.y, cause === 'strain' ? 40 : 90, this.pitch * 1.3);
+    this.kick(b.x, b.y, cause === 'strain' ? 40 : 50 + b.power * 60, this.pitch * 1.3);
     this.events.pop?.(b, cause, this.popOrder++);
+  }
+
+  /** Bubbles in a row (for "you popped the whole row" moments). */
+  rowOf(row: number) {
+    return this.bubbles.filter((b) => b.row === row);
   }
 
   /** Called when a run of pops has paused, so the next run starts low again. */
@@ -475,8 +505,11 @@ export class Sheet {
         continue;
       }
       if (b.pressing) {
+        const before = b.press;
         b.press += dt / b.toughness;
-        if (b.press >= 1) this.pop(b, 'press');
+        // Resistance you can feel: three little steps, then it gives.
+        for (const [step, at] of STRAIN_STEPS) if (before < at && b.press >= at) this.events.strain?.(b, step);
+        if (b.press >= 1) this.pop(b, 'press', 1);
       } else if (b.press > 0) {
         b.press = Math.max(0, b.press - dt * 6);
       }

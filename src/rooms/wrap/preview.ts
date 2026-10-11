@@ -13,11 +13,12 @@ export function wrapPreview(): Preview {
   let sheet: Sheet | null = null;
   let key = '';
   let refill = 0;
+  let quiet = 0;
   const make = (w: number, h: number) => {
     const s = new Sheet(w, h, 'jumbo');
     s.events = {
-      pop: (b) => {
-        material.bubblePop(0.7, 0);
+      pop: (b, _cause, order) => {
+        material.bubblePop(0.8, 0.9, order, 0, b.voice);
         b.wobble.impulse(9);
         if (b.face) {
           b.face.base = 'sleepy';
@@ -35,6 +36,9 @@ export function wrapPreview(): Preview {
       for (let i = 0; i < steps; i++) sheet.step(dt / steps);
       sheet.frame();
       sheet.update(dt);
+      // Pokes in quick succession climb the scale; a pause starts it low.
+      quiet += dt;
+      if (quiet > 0.6) sheet.resetOrder();
       if (sheet.remaining === 0) {
         refill += dt;
         if (refill > 1.2) {
@@ -42,6 +46,7 @@ export function wrapPreview(): Preview {
           for (const b of sheet.bubbles) {
             b.popped = false;
             b.press = 0;
+            b.popT = 0;
             b.wobble.impulse(rand(5, 9));
             if (b.face) {
               b.face.base = 'calm';
@@ -66,7 +71,8 @@ export function wrapPreview(): Preview {
       if (!sheet) return;
       const left = sheet.bubbles.filter((b) => !b.popped);
       const b = left[Math.floor(rand(0, left.length))];
-      if (b) sheet.pop(b, 'press');
+      quiet = 0;
+      if (b) sheet.pop(b, 'press', 1);
       else sheet.kick(sheet.x0 + sheet.W / 2, sheet.y0 + sheet.H / 2, 60, sheet.W);
     },
   };

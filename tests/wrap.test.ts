@@ -40,6 +40,39 @@ describe('bubble wrap sheet', () => {
     expect(popped).toEqual([8]);
   });
 
+  it('feels three steps of resistance, and a full squeeze pops hardest', () => {
+    const s = new Sheet(350, 560, 'regular', 0, 0, false);
+    const steps: number[] = [];
+    const power = new Map<number, number>();
+    s.events.strain = (_b, step) => steps.push(step);
+    s.events.pop = (b) => power.set(s.bubbles.indexOf(b), b.power);
+    s.bubbles[3].pressing = true;
+    run(s, 0.6);
+    expect(steps).toEqual([1, 2, 3]);
+    expect(power.get(3)).toBe(1);
+    // A quick tap: pressed for a moment, then let go.
+    const tap = s.bubbles[4];
+    tap.pressing = true;
+    run(s, 0.03);
+    tap.pressing = false;
+    s.pop(tap, 'press');
+    expect(power.get(4)).toBeGreaterThanOrEqual(0.3);
+    expect(power.get(4)).toBeLessThan(0.5);
+  });
+
+  it('knows its rows', () => {
+    const s = new Sheet(350, 560, 'regular', 0, 0, false);
+    const rows = new Set(s.bubbles.map((b) => b.row));
+    let total = 0;
+    for (const r of rows) {
+      const row = s.rowOf(r);
+      expect(row.length).toBeGreaterThanOrEqual(5);
+      expect(new Set(row.map((b) => b.v)).size).toBe(1);
+      total += row.length;
+    }
+    expect(total).toBe(s.bubbles.length);
+  });
+
   it('finds every bubble a finger rolls across, in order', () => {
     const s = new Sheet(350, 560, 'regular', 0, 0, false);
     const row = s.bubbles.filter((b) => b.v === s.bubbles[0].v);

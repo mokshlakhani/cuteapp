@@ -2,6 +2,7 @@ import { pastel, type Theme } from '../../design/tokens';
 import { mix, rgba } from '../../core/color';
 import { clamp, TAU } from '../../core/math';
 import { gloss, roundRect, smoothPath } from '../../render/paint';
+import { ease } from '../../design/motion';
 import { drawFace, Face } from '../../render/face';
 import type { Bubble, Sheet } from './Sheet';
 
@@ -171,17 +172,33 @@ function blit(ctx: CanvasRenderingContext2D, c: HTMLCanvasElement, scale: number
 
 // ——— bubbles ———
 
-/** How long a pop takes to flatten (s). */
-const BURST = 0.11;
+/** How long a pop takes to flatten, and the ring of air to fade (s). */
+const BURST = 0.1;
+const RING = 0.28;
 
-/** Draw one bubble at its place on the film, stretched with it. */
-export function drawBubble(ctx: CanvasRenderingContext2D, t: Theme, f: Film, b: Bubble) {
+/**
+ * Draw one bubble at its place on the film, stretched with it. `time` (s)
+ * drives the little tremble of a bubble about to give way.
+ */
+export function drawBubble(ctx: CanvasRenderingContext2D, t: Theme, f: Film, b: Bubble, time = 0) {
+  // Sprites are cached per whole-pixel radius; the rest is a scale.
+  const R = Math.max(4, Math.round(b.r));
+  const k0 = b.r / R;
   ctx.save();
   ctx.transform(b.ja, b.jb, b.jc, b.jd, b.x, b.y);
   if (b.popped) {
     const k = clamp(b.popT / BURST, 0, 1);
-    if (k < 1) blit(ctx, fullSprite(t, f, b.r, !!b.face), 1 + k * 0.22, 1 - k);
-    blit(ctx, flatSprite(t, f, b.r, b.crumple), 1.04 + b.wobble.value * 0.05, k);
+    if (k < 1) blit(ctx, fullSprite(t, f, R, !!b.face), k0 * (1 + k * 0.25), 1 - k);
+    blit(ctx, flatSprite(t, f, R, b.crumple), k0 * (1.04 + b.wobble.value * 0.05), k);
+    if (b.popT < RING) {
+      // The puff of air leaving, as a soft ring.
+      const q = b.popT / RING;
+      ctx.strokeStyle = rgba('#ffffff', 0.6 * (1 - q) * (0.45 + b.power * 0.55));
+      ctx.lineWidth = b.r * 0.14 * (1 - q) + 0.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, b.r * (1 + ease.outCubic(q) * (0.5 + b.power * 0.6)), 0, TAU);
+      ctx.stroke();
+    }
     if (b.face) {
       ctx.translate(0, b.r * 0.06);
       drawFace(ctx, b.face, b.r * 1.05, { ink: t.faceInk, blush: f.blush, alpha: 0.42 * k, blushScale: 0 });
@@ -190,21 +207,30 @@ export function drawBubble(ctx: CanvasRenderingContext2D, t: Theme, f: Film, b: 
     return;
   }
   const p = b.press;
-  const s = 1 + p * 0.1 + b.wobble.value * 0.06;
-  blit(ctx, fullSprite(t, f, b.r, !!b.face), s);
+  if (p > 0.55) {
+    // About to give: a tiny tremble.
+    const q = (p - 0.55) / 0.45;
+    ctx.translate(Math.sin(time * 95 + b.u) * b.r * 0.035 * q, Math.cos(time * 87 + b.v) * b.r * 0.03 * q);
+  }
+  // Pulled taut, the plastic thins and lets more light through.
+  const taut = clamp((b.stretch - 1.12) / 0.45, 0, 1);
+  const grow = 1 + p * 0.12 + b.wobble.value * 0.06;
+  blit(ctx, fullSprite(t, f, R, !!b.face), k0 * grow, 1 - taut * 0.35);
   if (p > 0.02) {
     // Pushed in: the top caves into a soft dimple.
-    const g = ctx.createRadialGradient(b.r * 0.05, b.r * 0.08, 0, 0, 0, b.r * 0.75 * s);
-    g.addColorStop(0, `rgba(${t.shadowRgb},${0.2 * p * t.shadowStrength})`);
+    const rr = b.r * 0.8 * grow;
+    const g = ctx.createRadialGradient(b.r * 0.06, b.r * 0.1, 0, 0, 0, rr);
+    g.addColorStop(0, `rgba(${t.shadowRgb},${0.3 * p * t.shadowStrength})`);
+    g.addColorStop(0.7, `rgba(${t.shadowRgb},${0.1 * p * t.shadowStrength})`);
     g.addColorStop(1, `rgba(${t.shadowRgb},0)`);
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 0, b.r * 0.75 * s, 0, TAU);
+    ctx.arc(0, 0, rr, 0, TAU);
     ctx.fill();
   }
   if (b.face) {
     ctx.translate(0, b.r * 0.08);
-    ctx.scale(s, s * (1 - p * 0.12));
+    ctx.scale(grow, grow * (1 - p * 0.14));
     drawFace(ctx, b.face, b.r * 1.15, { ink: t.faceInk, blush: f.blush, blushScale: 0 });
   }
   ctx.restore();
@@ -224,12 +250,22 @@ function ring(sheet: Sheet) {
 
 const ringCache = new WeakMap<Sheet, number[]>();
 
-function filmPath(ctx: CanvasRenderingContext2D, sheet: Sheet) {
+/** The film's outline: a smooth curve through its edge nodes. */
+function filmPath(sheet: Sheet) {
   let ids = ringCache.get(sheet);
   if (!ids) ringCache.set(sheet, (ids = ring(sheet)));
-  const xs = ids.map((k) => sheet.px[k]);
-  const ys = ids.map((k) => sheet.py[k]);
-  smoothPath(ctx, xs, ys, ids.length);
+  const { px, py } = sheet;
+  const n = ids.length;
+  const path = new Path2D();
+  const last = ids[n - 1];
+  path.moveTo((px[last] + px[ids[0]]) / 2, (py[last] + py[ids[0]]) / 2);
+  for (let i = 0; i < n; i++) {
+    const a = ids[i];
+    const b = ids[(i + 1) % n];
+    path.quadraticCurveTo(px[a], py[a], (px[a] + px[b]) / 2, (py[a] + py[b]) / 2);
+  }
+  path.closePath();
+  return path;
 }
 
 /** Room around the film in the cached shadow (px). */
@@ -263,7 +299,7 @@ function filmShadow(t: Theme, sheet: Sheet) {
 }
 
 /** The film itself, then its bubbles (flat ones first). */
-export function drawSheet(ctx: CanvasRenderingContext2D, t: Theme, f: Film, sheet: Sheet) {
+export function drawSheet(ctx: CanvasRenderingContext2D, t: Theme, f: Film, sheet: Sheet, time = 0) {
   // Stretch the cached shadow over where the film is now.
   let minX = Infinity;
   let minY = Infinity;
@@ -285,69 +321,91 @@ export function drawSheet(ctx: CanvasRenderingContext2D, t: Theme, f: Film, shee
     (sheet.H + SHADOW_PAD * 2) * sy,
   );
 
-  ctx.save();
-  filmPath(ctx, sheet);
+  const path = filmPath(sheet);
   ctx.fillStyle = rgba(mix(f.tint, '#ffffff', t.name === 'day' ? 0.45 : 0.15), t.name === 'day' ? 0.62 : 0.4);
-  ctx.fill();
-  ctx.restore();
+  ctx.fill(path);
 
   ctx.save();
-  filmPath(ctx, sheet);
-  ctx.clip();
+  ctx.clip(path);
   // A long soft sheen across the plastic.
-  const x0 = sheet.x0;
-  const y0 = sheet.y0;
-  const sheen = ctx.createLinearGradient(x0, y0, x0 + sheet.W, y0 + sheet.H);
+  const sheen = ctx.createLinearGradient(minX, minY, maxX, maxY);
   sheen.addColorStop(0, rgba('#ffffff', 0));
   sheen.addColorStop(0.3, rgba('#ffffff', 0.22));
   sheen.addColorStop(0.42, rgba('#ffffff', 0));
   sheen.addColorStop(0.7, rgba('#ffffff', 0.1));
   sheen.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = sheen;
-  ctx.fillRect(x0 - sheet.W, y0 - sheet.H, sheet.W * 3, sheet.H * 3);
+  ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
   ctx.restore();
 
-  ctx.save();
-  filmPath(ctx, sheet);
   ctx.strokeStyle = rgba('#ffffff', t.name === 'day' ? 0.75 : 0.25);
   ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
+  ctx.stroke(path);
 
-  for (const b of sheet.bubbles) if (b.popped) drawBubble(ctx, t, f, b);
-  for (const b of sheet.bubbles) if (!b.popped) drawBubble(ctx, t, f, b);
+  for (const b of sheet.bubbles) if (b.popped) drawBubble(ctx, t, f, b, time);
+  for (const b of sheet.bubbles) if (!b.popped) drawBubble(ctx, t, f, b, time);
 }
 
-/** The roll a fresh sheet unrolls from (y = its centre line). */
+/**
+ * The roll a sheet unrolls from or rolls up into, lying across the table
+ * (y = its centre line, r = its radius).
+ */
 export function drawRoll(ctx: CanvasRenderingContext2D, t: Theme, f: Film, x: number, y: number, w: number, r: number) {
-  const pad = 6;
-  // A soft offset shadow (no live blur), then the roll itself.
-  ctx.fillStyle = `rgba(${t.shadowRgb},${0.1 * t.shadowStrength})`;
-  roundRect(ctx, x - pad + 2, y - r + 5, w + pad * 2 + 2, r * 2 + 4, r + 2);
+  if (r < 0.5) return;
+  const pad = Math.min(8, r * 0.6);
+  const L = x - pad;
+  const W = w + pad * 2;
+  // A soft offset shadow (no live blur).
+  ctx.fillStyle = `rgba(${t.shadowRgb},${0.09 * t.shadowStrength})`;
+  roundRect(ctx, L + 2, y - r + r * 0.5, W + 2, r * 2 + 4, r + 2);
   ctx.fill();
-  roundRect(ctx, x - pad + 1, y - r + 3, w + pad * 2, r * 2, r);
+  roundRect(ctx, L + 1, y - r + r * 0.25, W, r * 2, r);
   ctx.fill();
+  // The cylinder: lit on top, deeper underneath.
   const g = ctx.createLinearGradient(0, y - r, 0, y + r);
-  g.addColorStop(0, mix(f.tint, '#ffffff', 0.75));
-  g.addColorStop(0.45, mix(f.tint, '#ffffff', 0.25));
+  g.addColorStop(0, mix(f.tint, '#ffffff', 0.8));
+  g.addColorStop(0.4, mix(f.tint, '#ffffff', 0.35));
   g.addColorStop(1, deep(f.tint));
   ctx.fillStyle = g;
-  roundRect(ctx, x - pad, y - r, w + pad * 2, r * 2, r);
+  roundRect(ctx, L, y - r, W, r * 2, r);
   ctx.fill();
-  // Rows of bubbles wrapped round the roll, seen edge-on.
+  // Bubbles wrapped round it: two staggered rows of little domes.
   ctx.save();
-  roundRect(ctx, x - pad, y - r, w + pad * 2, r * 2, r);
+  roundRect(ctx, L, y - r, W, r * 2, r);
   ctx.clip();
-  const step = Math.max(10, r * 1.2);
-  for (let bx = x + step / 2; bx < x + w; bx += step) {
-    ctx.fillStyle = rgba('#ffffff', 0.35);
-    ctx.beginPath();
-    ctx.ellipse(bx, y - r * 0.15, step * 0.32, r * 0.55, 0, 0, TAU);
-    ctx.fill();
+  const d = Math.max(5, r * 0.55);
+  for (let row = 0; row < 2; row++) {
+    const cy = y - r * 0.45 + row * r * 0.75;
+    for (let bx = x + d * (row ? 1 : 0.5); bx < x + w; bx += d * 1.25) {
+      ctx.fillStyle = rgba('#ffffff', row ? 0.22 : 0.4);
+      ctx.beginPath();
+      ctx.ellipse(bx, cy, d * 0.45, d * 0.32, 0, 0, TAU);
+      ctx.fill();
+    }
   }
-  ctx.fillStyle = rgba('#ffffff', 0.6);
-  ctx.fillRect(x, y - r * 0.62, w, Math.max(1.5, r * 0.14));
   ctx.restore();
+  // The rolled ends: a little spiral of plastic.
+  ctx.strokeStyle = rgba(mix(deep(f.tint), '#5E4B42', 0.3), 0.35);
+  ctx.lineWidth = 1.2;
+  for (const ex of [L + r * 0.55, L + W - r * 0.55]) {
+    ctx.beginPath();
+    for (let i = 0; i <= 24; i++) {
+      const a = (i / 24) * TAU * 1.6;
+      const rr = r * 0.12 + (i / 24) * r * 0.55;
+      const px = ex + Math.cos(a) * rr * 0.45;
+      const py = y + Math.sin(a) * rr;
+      if (i) ctx.lineTo(px, py);
+      else ctx.moveTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = rgba('#ffffff', 0.55);
+  ctx.lineWidth = Math.max(1.2, r * 0.12);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(L + r, y - r * 0.62);
+  ctx.lineTo(L + W - r, y - r * 0.62);
+  ctx.stroke();
 }
 
 /** A little patch of film for the sheet picker: three bubbles, one face. */
@@ -380,6 +438,9 @@ export function drawSwatch(ctx: CanvasRenderingContext2D, t: Theme, f: Film, siz
       press: 0,
       popT: 0,
       crumple: 0,
+      stretch: 1,
+      u: 0,
+      v: 0,
       wobble: { value: 0 },
       face: face ? new Face() : null,
     } as unknown as Bubble;

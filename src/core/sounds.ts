@@ -224,28 +224,77 @@ export const material = {
 
   /**
    * A bubble popping: a crisp crack, a puff of air and a tiny pitched "pk".
-   * size 0..1 (small → jumbo). `run` counts pops in a quick run, so rolling
-   * a finger across a row climbs the scale like a little xylophone.
+   * size 0..1 (small → jumbo); power 0..1 (a quick tap → a full squeeze, which
+   * pops louder, deeper and with more air). `run` counts pops in a quick run,
+   * so rolling a finger across a row climbs the scale like a xylophone.
+   * `voice` nudges each bubble's note so lone pops never sound identical.
    */
-  bubblePop(size: number, run = 0, pan = 0, delay = 0) {
-    if (!gate('bubblePop', 16)) return;
+  bubblePop(size: number, power = 1, run = 0, pan = 0, voice = 0) {
+    if (!gate('bubblePop', 14)) return;
     const z = clamp(size, 0, 1);
-    audio.noise({ dur: 0.016, attack: 0.0008, gain: 0.2 - z * 0.04, filter: 'highpass', freq: 3200 - z * 1400, q: 0.7, pan, delay });
+    const p = clamp(power, 0, 1);
+    const loud = 0.55 + p * 0.45;
+    // The crack: shorter and brighter for small bubbles.
     audio.noise({
-      dur: 0.05 + z * 0.05,
+      dur: 0.012 + z * 0.01,
+      attack: 0.0006,
+      gain: (0.17 + p * 0.08) * loud,
+      filter: 'highpass',
+      freq: 3600 - z * 1600,
+      q: 0.7,
+      pan,
+    });
+    // The air rushing out: a quick falling "pff".
+    audio.noise({
+      dur: 0.04 + z * 0.05 + p * 0.03,
       attack: 0.002,
-      gain: 0.07 + z * 0.06,
+      gain: (0.05 + z * 0.06) * (0.4 + p * 0.8),
       filter: 'bandpass',
-      freq: 1700 - z * 900,
-      to: 500 - z * 200,
+      freq: 1900 - z * 1000,
+      to: 520 - z * 220,
       q: 1.6,
       pan,
-      delay,
     });
-    const climb = run > 0 ? (run % 8) + (run >= 8 ? 1 : 0) : rand(0, 2);
-    const f = scale(Math.round(lerp(13, 8, z) + climb));
-    audio.tone({ freq: f * 1.5, to: f, glide: 0.025, decay: 0.06 + z * 0.04, gain: 0.06, pan, reverb: 0.18, delay });
-    if (z > 0.7) audio.tone({ freq: 150, to: 70, glide: 0.06, decay: 0.08, gain: 0.08, pan, delay });
+    const climb = run > 0 ? (run % 8) + (run >= 8 ? 1 : 0) : voice;
+    const f = scale(Math.round(lerp(13, 8, z) + climb - p * 0.6));
+    audio.tone({ freq: f * 1.5, to: f, glide: 0.025, decay: 0.05 + z * 0.04 + p * 0.03, gain: 0.05 + p * 0.025, pan, reverb: 0.18 });
+    // A soft body thump under big, hard pops.
+    if (z + p > 1.1) audio.tone({ freq: 160 - z * 50, to: 70, glide: 0.06, decay: 0.07 + z * 0.04, gain: 0.04 + z * 0.06, pan });
+  },
+  /** A held bubble straining under your finger. step 1..3 climbs. */
+  bubbleStrain(step: number, size: number, pan = 0) {
+    if (!gate('bubbleStrain', 40)) return;
+    const k = clamp(step / 3, 0, 1);
+    const z = clamp(size, 0, 1);
+    audio.creak({
+      dur: 0.05 + k * 0.05,
+      rate: 120 + k * 120,
+      rateEnd: 90 + k * 80,
+      freq: 1500 + k * 700 - z * 400,
+      gain: 0.025 + k * 0.035,
+      pan,
+    });
+    audio.tone({
+      freq: scale(9 + step * 2 - Math.round(z * 3)),
+      decay: 0.05,
+      gain: 0.012 + k * 0.012,
+      type: 'triangle',
+      pan,
+      lowpass: 2600,
+    });
+  },
+  /** A whole row popped in one go: a bright little chime along it. */
+  bubbleRow(pan = 0) {
+    [0, 2, 4, 7].forEach((step, i) =>
+      audio.tone({ freq: scale(15 + step), decay: 0.35, gain: 0.03, pan: pan + (i - 1.5) * 0.12, reverb: 0.55, delay: 0.04 + i * 0.05 }),
+    );
+  },
+  /** Every last bubble popped: a small, happy run of bells. */
+  tada() {
+    [0, 2, 4, 5, 7, 9].forEach((step, i) =>
+      audio.tone({ freq: scale(10 + step), decay: 0.6 + i * 0.08, gain: 0.04, pan: (i - 2.5) * 0.1, reverb: 0.6, delay: i * 0.075 }),
+    );
+    audio.tone({ freq: scale(5), decay: 1.1, gain: 0.05, reverb: 0.5, delay: 0.42 });
   },
   /** Plastic crinkling while it's being stretched. amount 0..1. */
   crinkle(amount: number, pan = 0) {
