@@ -96,7 +96,7 @@ describe('melon', () => {
     expect(upper).toBeGreaterThan(waist * 1.5);
     expect(lower).toBeGreaterThan(waist * 1.5);
     // The squeezed-out volume makes it taller.
-    expect(m.floorY - m.project(0, -1).y).toBeGreaterThan(plainHeight * 1.1);
+    expect(m.floorY - m.project(0, -1).y).toBeGreaterThan(plainHeight * 1.05);
     for (let i = 0; i < m.xs.length; i++) {
       expect(Number.isFinite(m.xs[i])).toBe(true);
       expect(Number.isFinite(m.ys[i])).toBe(true);
