@@ -148,6 +148,9 @@ export const material = {
   /** The big, soft, satisfying release. */
   burst(pan = 0) {
     audio.tone({ freq: 140, to: 38, glide: 0.35, decay: 0.45, gain: 0.42, pan, attack: 0.002 });
+    // The bang: a deep sub drop and a sharp crack of rind.
+    audio.tone({ freq: 72, to: 28, glide: 0.6, decay: 0.8, gain: 0.5, pan, attack: 0.002 });
+    audio.noise({ dur: 0.09, gain: 0.2, filter: 'highpass', freq: 1800, pan, attack: 0.001 });
     audio.noise({ dur: 0.35, gain: 0.22, filter: 'lowpass', freq: 3200, to: 300, pan, reverb: 0.35, attack: 0.002 });
     audio.noise({ dur: 0.05, gain: 0.12, filter: 'bandpass', freq: 2200, q: 1.4, pan });
     // Juicy splatter grains trailing behind.

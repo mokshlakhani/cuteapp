@@ -1,7 +1,7 @@
 import { Spring } from '../../design/motion';
 import { pastel, springs } from '../../design/tokens';
 import type { Theme } from '../../design/tokens';
-import { clamp, gauss, lerp, noise1, rand, smoothstep, TAU } from '../../core/math';
+import { clamp, gauss, lerp, noise1, rand, randInt, smoothstep, TAU } from '../../core/math';
 import { mix, rgba } from '../../core/color';
 import { fruitPalette } from '../../design/fruitPalette';
 import { contactShadow, gloss, shade, smoothPath } from '../../render/paint';
@@ -35,13 +35,48 @@ export const MELON = {
   blush: '#FF9AAE',
 };
 
-export const BAND_COLORS = [pastel.pink, pastel.sky, pastel.butter, pastel.lilac, pastel.peach, pastel.mint, pastel.berry];
+/**
+ * Rubber band colours: the shared pastels plus a few slightly stronger
+ * candy tones, so a melon wearing eighty bands reads as a rainbow wrap
+ * rather than a beige mass — still soft enough to sit on the backdrop.
+ */
+export const BAND_COLORS = [
+  pastel.pink,
+  pastel.sky,
+  pastel.butter,
+  pastel.lilac,
+  pastel.peach,
+  pastel.mint,
+  pastel.berry,
+  pastel.sage,
+  '#F2A3BC', // rose
+  '#93C4E6', // cornflower
+  '#F2C86B', // marigold
+  '#BBA3E6', // violet
+  '#F5AA7E', // tangerine
+  '#8FD1BE', // teal
+  '#B8D982', // lime
+  '#F08F8F', // coral
+];
 
-/** Where bands like to sit (normalised v). The face lives above this. */
-export const BAND_ZONE = { min: 0.0, max: 0.4 };
+/** The melon pops somewhere in this range of bands. Never shown, never the same. */
+export const BREAK_RANGE = { min: 40, max: 65 } as const;
+
+/** How far toward the poles a band can be placed (normalised v). */
+export const BAND_REACH = { min: -0.8, max: 0.84 };
+/** Spacing of bands lying side by side (normalised v). */
+const BAND_GAP = 0.024;
+/** Deepest a pile of bands can squeeze the melon (fraction of its radius). */
+const PINCH_MAX = 0.62;
+/** Smoothing kernel for where squeezed-out volume bulges (σ ≈ 0.2 in v). */
+const BLUR = Array.from({ length: 41 }, (_, i) => gauss(i - 20, 13));
+/** Flesh gives smoothly around a band: softens the groove walls (σ ≈ 0.09 in v). */
+const SOFT = Array.from({ length: 21 }, (_, i) => gauss(i - 10, 5.8));
 const FACE_V = -0.36;
 const ASPECT = 1.07;
-const N = 84;
+const N = 168;
+/** Resolution of the per-frame width profile (pinch + bulge along v). */
+const WN = 128;
 
 export interface Band {
   /** Normalised vertical position on the melon (animated). */
@@ -67,6 +102,10 @@ export class Melon {
   readonly squash = new Spring(0, springs.wobbly);
   readonly sway = new Spring(0, springs.wobbly);
   readonly swell = new Spring(0, springs.soft);
+  /** Waist wobble: each band snaps the waist tighter and it rings back. */
+  readonly throb = new Spring(0, { stiffness: 300, damping: 11 });
+  /** Extra waist squeeze in the last moments before the pop (set by the room). */
+  crush = 0;
   readonly face = new Face();
   shiver = 0;
   time = rand(0, 100);
@@ -79,6 +118,15 @@ export class Melon {
   private vStretch = 0;
   private q = 0;
   private offX = 0;
+  private readonly wTab = new Float32Array(WN + 1);
+  /** How free each height is to bulge (1 = no band near it). */
+  private readonly wFree = new Float32Array(WN + 1);
+  private readonly wRaw = new Float32Array(WN + 1);
+  private readonly pinch = new Float32Array(WN + 1);
+  /** Extra height from squeezed-out volume. */
+  private elong = 0;
+  /** Where the melon is squeezed tightest (normalised v): where it will give way. */
+  grooveV = 0.1;
 
   constructor() {
     this.reset();
@@ -87,11 +135,12 @@ export class Melon {
   reset() {
     this.bands = [];
     this.tension = 0;
-    // Somewhere between 16 and 30 bands. Never shown, never the same.
-    this.breakAt = Math.round(rand(16, 30));
+    this.crush = 0;
+    this.breakAt = randInt(BREAK_RANGE.min, BREAK_RANGE.max);
     this.squash.snap(0);
     this.sway.snap(0);
     this.swell.snap(0);
+    this.throb.snap(0);
     this.face.base = 'calm';
   }
 
@@ -113,14 +162,33 @@ export class Melon {
       thick: rand(0.9, 1.12),
       wob: rand(0, TAU),
     };
-    b.y.target = clamp(v + rand(-0.025, 0.025), BAND_ZONE.min, BAND_ZONE.max);
+    b.y.target = this.slotFor(clamp(v, BAND_REACH.min, BAND_REACH.max));
     b.loose.target = 0;
     this.bands.push(b);
     const t = this.fullness;
-    // The melon flinches: squash down, sway a little.
+    // The melon flinches: squash down, sway a little, and the waist snaps in.
     this.squash.impulse(1.6 + t * 1.2);
     this.sway.impulse(rand(-1, 1) * (1.2 + t));
+    this.throb.impulse(0.45 + t * 0.5);
     return b;
+  }
+
+  /**
+   * Bands stay where they're put. A band snapped on top of others settles
+   * right beside them, so a pile grows outward from where you swiped; once
+   * there's no room nearby it stacks on top.
+   */
+  private slotFor(v: number) {
+    const free = (y: number) => this.bands.every((b) => Math.abs(b.y.target - y) > BAND_GAP * 0.6);
+    if (free(v)) return v;
+    const first = Math.random() < 0.5 ? -1 : 1;
+    for (let k = 1; k <= 6; k++) {
+      for (const side of [first, -first]) {
+        const y = v + side * k * BAND_GAP;
+        if (y >= BAND_REACH.min && y <= BAND_REACH.max && free(y)) return y;
+      }
+    }
+    return clamp(v + rand(-1, 1) * BAND_GAP, BAND_REACH.min, BAND_REACH.max);
   }
 
   update(dt: number) {
@@ -132,6 +200,7 @@ export class Melon {
     this.squash.update(dt);
     this.sway.update(dt);
     this.swell.update(dt);
+    this.throb.update(dt);
     this.face.update(dt);
 
     // Visual tension eases toward a saturating curve of fullness: early bands
@@ -150,26 +219,91 @@ export class Melon {
     this.computeOutline();
   }
 
-  /** Width multiplier at normalised height v (pinch + bulge). */
+  /**
+   * Half-width (normalised, before aspect) at height v, from the table
+   * built each frame.
+   */
   private widthAt(v: number) {
-    const T = this.tension;
-    let sum = 0;
-    let notch = 0;
-    for (const b of this.bands) {
-      const tight = clamp(1 - b.loose.value, -0.35, 1);
-      const y = b.y.value;
-      sum += (0.03 + 0.05 * T) * tight * gauss(v - y, 0.2);
-      notch += (0.01 + 0.016 * T) * tight * gauss(v - y, 0.04);
+    const f = (clamp(v, -1, 1) + 1) * 0.5 * WN;
+    const i = Math.min(WN - 1, Math.floor(f));
+    const k = f - i;
+    return this.wTab[i] * (1 - k) + this.wTab[i + 1] * k;
+  }
+
+  /**
+   * A melon of (roughly) constant volume, squeezed by its bands.
+   *
+   * Every band compresses the melon right where it sits — a groove that gets
+   * deeper as more bands pile onto the same spot. The volume squeezed out of
+   * the grooves has to go somewhere: part of it pushes the melon taller, the
+   * rest swells the free, unbanded parts. So a pile round the middle makes an
+   * hourglass, a band near the top pinches off a little cap, and a few bands
+   * spread out make a string of soft bulges.
+   */
+  private buildWidths() {
+    const boost = 1 + this.crush * 2.5 + this.throb.value * 0.22;
+    const per = 0.045 * boost;
+    const r = this.wTab;
+    const w = this.wFree;
+    let deepest = 0;
+    let groove = this.grooveV;
+    for (let j = 0; j <= WN; j++) {
+      const v = (j / WN) * 2 - 1;
+      let sum = 0;
+      let notch = 0;
+      for (const b of this.bands) {
+        const tight = clamp(1 - b.loose.value, -0.35, 1.2);
+        const d = v - b.y.value;
+        sum += tight * gauss(d, 0.07);
+        notch += tight * gauss(d, 0.022);
+      }
+      this.pinch[j] = Math.min(0.8, PINCH_MAX * (1 - Math.exp((-Math.max(0, sum) * per) / PINCH_MAX)) + Math.min(notch * 0.012, 0.04));
     }
-    const PMAX = 0.3;
-    const pinch = PMAX * (1 - Math.exp(-sum / PMAX)) + Math.min(notch, 0.06);
-    const bulge = 0.085 * T + this.swell.value;
-    return 1 - pinch + bulge;
+    blur(this.pinch, this.wRaw, SOFT);
+    for (let j = 0; j <= WN; j++) {
+      const v = (j / WN) * 2 - 1;
+      const pinch = this.wRaw[j];
+      const free = 1 - clamp(pinch / PINCH_MAX, 0, 1);
+      r[j] = Math.sqrt(Math.max(0, 1 - v * v)) * (1 - pinch);
+      this.pinch[j] = free * free;
+      if (pinch > deepest) {
+        deepest = pinch;
+        groove = v;
+      }
+    }
+    // The rind is stiff: it spreads a bulge over a wide, smooth swell
+    // instead of puffing out in sharp ridges between the bands.
+    blur(this.pinch, w, BLUR);
+    let a = 0;
+    let bb = 0;
+    let c = 0;
+    let v0 = 0;
+    for (let j = 0; j <= WN; j++) {
+      const v = (j / WN) * 2 - 1;
+      const rc = r[j];
+      a += rc * rc;
+      bb += rc * rc * w[j];
+      c += rc * rc * w[j] * w[j];
+      v0 += 1 - v * v;
+    }
+    this.grooveV = groove;
+    // Displaced volume: some makes it taller, the rest bulges the free parts.
+    const lost = clamp(1 - a / v0, 0, 0.9);
+    this.elong = 0.5 * lost;
+    const pressure = 1 + this.swell.value * 2;
+    const target = (v0 * pressure) / (1 + this.elong);
+    // Solve a + 2·s·b + s²·c = target for the bulge s (volume of revolution).
+    let s = 0;
+    if (c > 1e-9) s = Math.max(0, (-bb + Math.sqrt(Math.max(0, bb * bb - c * (a - target)))) / c);
+    for (let j = 0; j <= WN; j++) r[j] *= 1 + s * w[j];
+    r[0] = r[WN] = 0;
   }
 
   private computeOutline() {
     const T = this.tension;
-    this.vStretch = 0.1 * T + this.swell.value * 0.6;
+    this.buildWidths();
+    // The squeezed-out volume pushes the lobes apart: the melon grows taller.
+    this.vStretch = this.elong + this.swell.value * 0.3;
     const breathe = Math.sin(this.time * 1.7) * 0.008 * (1 - T * 0.5);
     this.q = clamp(this.squash.value * 0.02 + breathe, -0.18, 0.22);
     const sh = this.shiver + smoothstep(0.62, 1, T) * 0.7;
@@ -179,8 +313,8 @@ export class Melon {
     for (let i = 0; i < N; i++) {
       const th = (i / N) * TAU;
       const v0 = Math.sin(th);
-      const u0 = Math.cos(th) * ASPECT;
-      const p = this.project(u0 * this.widthAt(v0), v0);
+      const u0 = Math.sign(Math.cos(th)) * this.widthAt(v0) * ASPECT;
+      const p = this.project(u0, v0);
       this.xs[i] = p.x;
       this.ys[i] = p.y;
     }
@@ -198,7 +332,7 @@ export class Melon {
 
   /** Half-width (px) of the deformed melon at normalised height v. */
   halfWidth(v: number) {
-    return Math.sqrt(Math.max(0, 1 - v * v)) * ASPECT * this.widthAt(v) * (1 + this.q * 0.9) * this.R;
+    return ASPECT * this.widthAt(v) * (1 + this.q * 0.9) * this.R;
   }
 
   /** Normalised v for a screen y (inverse of project, ignoring lean). */
@@ -337,12 +471,12 @@ export class Melon {
     const v = b.y.value;
     const hw = this.halfWidth(clamp(v, -0.98, 0.98));
     const p = this.project(0, v);
-    const th = Math.max(2, this.R * 0.05 * b.thick * (1 - T * 0.28));
+    const th = Math.max(2, this.R * 0.05 * b.thick * (1 - T * 0.3));
     const Lp = Math.max(0, L);
     const rx = hw + th * 0.25 + Lp * this.R * 0.55;
     const ry = hw * 0.15 + Lp * this.R * 0.3 + Math.sin(this.time * 2 + b.wob) * 0.6;
-    // Stretched rubber turns paler.
-    const col = mix(b.color, '#ffffff', 0.12 + T * 0.22);
+    // Stretched rubber turns a little paler.
+    const col = mix(b.color, '#ffffff', 0.08 + T * 0.14);
     ctx.save();
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -383,6 +517,23 @@ export class Melon {
   /** Approximate visual center of the body. */
   center() {
     return this.project(0, 0);
+  }
+}
+
+/** Normalised 1D convolution (edges renormalised), src → dst. */
+function blur(src: Float32Array, dst: Float32Array, kernel: number[]) {
+  const K = kernel.length >> 1;
+  const n = src.length;
+  for (let j = 0; j < n; j++) {
+    let acc = 0;
+    let wt = 0;
+    for (let k = -K; k <= K; k++) {
+      const i = j + k;
+      if (i < 0 || i >= n) continue;
+      acc += src[i] * kernel[k + K];
+      wt += kernel[k + K];
+    }
+    dst[j] = acc / wt;
   }
 }
 

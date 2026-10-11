@@ -14,10 +14,15 @@ import { paintBackdrop, paintGrain } from '../../render/paint';
 import { Particles } from '../../render/particles';
 import { Shake } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
-import { BAND_ZONE, MELON, Melon, nextBandColor } from './Melon';
+import { BAND_REACH, MELON, Melon, nextBandColor } from './Melon';
 import { Burst } from './Burst';
 
 type Phase = 'intro' | 'play' | 'critical' | 'burst' | 'clear';
+
+/** Seconds the melon strains before it gives way. */
+const CRITICAL = 0.8;
+/** The burst's slow motion: a long held breath, then time eases back in. */
+const SLOWMO = { scale: 0.1, hold: 0.5, back: 1.0 };
 
 interface Swipe {
   ax: number;
@@ -53,6 +58,10 @@ export class MelonRoom implements Scene {
   private timeScale = 1;
   private slowmo = 0; // real seconds since burst
   private flash = 0;
+  /** Shockwave from the burst, 0 → 1 (real time). */
+  private wave = 1;
+  private waveAt = { x: 0, y: 0 };
+  private released = false;
   private vy = 0; // drop-in velocity
   private nextColor = nextBandColor();
   private lastBandAt = 0;
@@ -195,7 +204,7 @@ export class MelonRoom implements Scene {
     this.lastBandAt = now;
     const m = this.melon;
     const fromV = clamp(m.vAt(y), -0.9, 0.9);
-    const v = clamp(fromV, BAND_ZONE.min, BAND_ZONE.max);
+    const v = clamp(fromV, BAND_REACH.min, BAND_REACH.max);
     m.addBand(v, fromV, this.nextColor);
     this.nextColor = nextBandColor(this.nextColor);
     const t = m.fullness;
@@ -231,7 +240,7 @@ export class MelonRoom implements Scene {
     this.phase = 'critical';
     this.phaseT = 0;
     this.melon.face.set('strain', 3);
-    this.melon.swell.target = 0.07;
+    this.melon.swell.target = 0.05;
     material.creak(1, 0);
     haptics.play('tick');
   }
@@ -243,28 +252,33 @@ export class MelonRoom implements Scene {
     this.phaseT = 0;
     this.quietFor = 0;
     this.slowmo = 0;
-    this.timeScale = 0.12;
+    this.timeScale = SLOWMO.scale;
     this.flash = 1;
-    this.shake.kick(7);
+    this.wave = 0;
+    this.released = false;
+    this.shake.kick(10);
     material.burst(0);
     haptics.play('burst');
 
     const bands = m.bands.map((b) => ({
       color: b.color,
-      y: b.y.value,
+      y: m.project(0, b.y.value).y,
       th: Math.max(2, m.R * 0.05 * b.thick * 0.75),
       rx: m.halfWidth(b.y.value),
     }));
-    this.burst.explode(m.outline(), c, m.R, bands);
+    // It gives way where it's squeezed tightest.
+    const waist = m.project(0, m.grooveV).y;
+    this.waveAt = { x: c.x, y: waist };
+    this.burst.explode(m.outline(), c, m.R, bands, waist);
 
     // Juice + seeds + air, all soft and cartoon-round.
     this.particles.emit({
       kind: 'drop',
       x: c.x,
-      y: c.y,
-      count: 46,
-      speed: [260, 900],
-      size: [3, 7.5],
+      y: waist,
+      count: 110,
+      speed: [300, 1350],
+      size: [3, 8],
       life: [1.2, 2.2],
       color: MELON.flesh,
       vy: -260,
@@ -272,19 +286,31 @@ export class MelonRoom implements Scene {
     this.particles.emit({
       kind: 'seed',
       x: c.x,
-      y: c.y,
-      count: 14,
-      speed: [250, 700],
+      y: waist,
+      count: 36,
+      speed: [300, 1050],
       size: [m.R * 0.04, m.R * 0.055],
       life: [3.5, 4.5],
       color: MELON.seed,
       vy: -320,
     });
+    // A fine mist of juice that outruns everything else.
+    this.particles.emit({
+      kind: 'drop',
+      x: c.x,
+      y: waist,
+      count: 50,
+      speed: [700, 1700],
+      size: [1.4, 3],
+      life: [0.6, 1.2],
+      color: MELON.fleshLight,
+      vy: -200,
+    });
     this.particles.emit({
       kind: 'puff',
       x: c.x,
       y: c.y,
-      count: 10,
+      count: 14,
       speed: [120, 320],
       size: [m.R * 0.15, m.R * 0.28],
       life: [0.5, 0.9],
@@ -305,16 +331,22 @@ export class MelonRoom implements Scene {
   // ——— simulation ———
 
   update(realDt: number) {
-    // Slow-motion curve: a held breath right at the pop, then ease back.
+    // Slow-motion curve: a long held breath right at the pop, then time
+    // rushes back in with a second kick, so the debris really flies.
     if (this.phase === 'burst' && this.timeScale < 1) {
       this.slowmo += realDt;
-      const hold = 0.2;
-      const back = 0.55;
-      this.timeScale = this.slowmo < hold ? 0.12 : lerp(0.12, 1, ease.inCubic(clamp((this.slowmo - hold) / back, 0, 1)));
+      const { scale, hold, back } = SLOWMO;
+      this.timeScale = this.slowmo < hold ? scale : lerp(scale, 1, ease.inCubic(clamp((this.slowmo - hold) / back, 0, 1)));
+      if (!this.released && this.slowmo > hold + back * 0.55) {
+        this.released = true;
+        this.shake.kick(6);
+        haptics.play('thud');
+      }
     }
+    this.wave = Math.min(1, this.wave + realDt / 0.9);
     const dt = realDt * this.timeScale;
     this.phaseT += realDt;
-    this.flash = Math.max(0, this.flash - realDt * 3.5);
+    this.flash = Math.max(0, this.flash - realDt * 1.8);
     this.shake.update(realDt);
     this.particles.update(dt);
     if (this.pending && this.pending.a < 1) {
@@ -366,14 +398,22 @@ export class MelonRoom implements Scene {
         break;
       }
       case 'critical': {
+        // The last breath: the waist crushes in, the lobes swell, it trembles.
+        const k = clamp(this.phaseT / CRITICAL, 0, 1);
+        m.crush = 0.12 * ease.inCubic(k);
+        m.swell.target = 0.05 + 0.06 * k;
         m.update(dt);
-        m.shiver = 1.4 + this.phaseT * 6;
-        if (this.phaseT > 0.12 && this.phaseT - realDt <= 0.12) haptics.play('tick');
-        if (this.phaseT > 0.28 && this.phaseT - realDt <= 0.28) {
+        m.shiver = 1.4 + this.phaseT * 7;
+        if (this.phaseT > 0.15 && this.phaseT - realDt <= 0.15) haptics.play('tick');
+        if (this.phaseT > 0.4 && this.phaseT - realDt <= 0.4) {
           material.creak(1, 0.1);
           haptics.play('tick');
+          m.throb.impulse(0.8);
         }
-        if (this.phaseT > 0.5) this.pop();
+        if (this.phaseT > 0.62 && this.phaseT - realDt <= 0.62) haptics.play('tick');
+        // A last gulp of pressure: it puffs up just before it goes.
+        if (this.phaseT > CRITICAL - 0.12) m.swell.target = 0.2;
+        if (this.phaseT > CRITICAL) this.pop();
         break;
       }
       case 'burst': {
@@ -438,11 +478,13 @@ export class MelonRoom implements Scene {
       this.particles.draw(ctx);
     }
 
+    if (this.wave < 1) this.drawShockwave(ctx);
     if (this.flash > 0) {
-      const c = m.center();
-      const r = m.R * (1.4 + (1 - this.flash) * 1.4);
+      const c = this.phase === 'burst' || this.phase === 'clear' ? this.waveAt : m.center();
+      const r = m.R * (1.6 + (1 - this.flash) * 2);
       const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
-      g.addColorStop(0, rgba('#ffffff', 0.55 * this.flash));
+      g.addColorStop(0, rgba('#ffffff', 0.8 * this.flash));
+      g.addColorStop(0.35, rgba('#ffffff', 0.45 * this.flash));
       g.addColorStop(1, rgba('#ffffff', 0));
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -451,6 +493,33 @@ export class MelonRoom implements Scene {
     }
     ctx.restore();
     paintGrain(ctx, w, h, t);
+  }
+
+  /** The bang: a soft ring of air racing out from the split, and its echo on the floor. */
+  private drawShockwave(ctx: CanvasRenderingContext2D) {
+    const k = ease.outCubic(this.wave);
+    const fade = Math.pow(1 - this.wave, 1.5);
+    const R = this.melon.R;
+    const { x, y } = this.waveAt;
+    const r = R * (0.7 + k * 3.4);
+    ctx.save();
+    ctx.lineWidth = R * 0.22 * (1 - k * 0.8);
+    ctx.strokeStyle = rgba('#ffffff', 0.55 * fade);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.stroke();
+    ctx.lineWidth = R * 0.07 * (1 - k * 0.7);
+    ctx.strokeStyle = rgba(MELON.fleshLight, 0.45 * fade);
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.86, 0, TAU);
+    ctx.stroke();
+    // The floor feels it too.
+    ctx.lineWidth = R * 0.06 * (1 - k * 0.6);
+    ctx.strokeStyle = rgba('#ffffff', 0.4 * fade);
+    ctx.beginPath();
+    ctx.ellipse(x, this.floorY + R * 0.12, r * 1.1, r * 0.16, 0, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** The band you're pulling: a stretched loop between anchor and finger. */

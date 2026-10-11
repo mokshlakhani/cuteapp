@@ -108,8 +108,9 @@ spring and relax back to the base expression after a hold time.
 - Room transition (`App`): the next room **blooms out of the spot you
   touched** as a growing circle with a soft tinted rim (640 ms); the old room
   drifts back ~3%. Same transition for every room, both directions.
-- Slow motion & screen shake are rare, short and gentle (burst only;
-  ≤ 7 px, ~0.4 s).
+- Slow motion & screen shake are rare (burst only): the melon's burst holds
+  its breath in slow motion for ~1.5 s, then time rushes back in; shake
+  ≤ 10 px, never continuous.
 
 ## 8. Sound (`src/core/audio.ts`, `src/core/sounds.ts`, `src/core/music.ts`)
 
