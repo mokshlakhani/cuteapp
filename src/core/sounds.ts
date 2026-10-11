@@ -220,6 +220,56 @@ export const material = {
     const f = scale(Math.round(lerp(7, 4, a)));
     audio.tone({ freq: f * 1.2, to: f * 0.85, glide: 0.14, decay: 0.16, gain: 0.05 + a * 0.05, pan });
   },
+  // ——— plastic family (bubble wrap) ———
+
+  /**
+   * A bubble popping: a crisp crack, a puff of air and a tiny pitched "pk".
+   * size 0..1 (small → jumbo). `run` counts pops in a quick run, so rolling
+   * a finger across a row climbs the scale like a little xylophone.
+   */
+  bubblePop(size: number, run = 0, pan = 0, delay = 0) {
+    if (!gate('bubblePop', 16)) return;
+    const z = clamp(size, 0, 1);
+    audio.noise({ dur: 0.016, attack: 0.0008, gain: 0.2 - z * 0.04, filter: 'highpass', freq: 3200 - z * 1400, q: 0.7, pan, delay });
+    audio.noise({
+      dur: 0.05 + z * 0.05,
+      attack: 0.002,
+      gain: 0.07 + z * 0.06,
+      filter: 'bandpass',
+      freq: 1700 - z * 900,
+      to: 500 - z * 200,
+      q: 1.6,
+      pan,
+      delay,
+    });
+    const climb = run > 0 ? (run % 8) + (run >= 8 ? 1 : 0) : rand(0, 2);
+    const f = scale(Math.round(lerp(13, 8, z) + climb));
+    audio.tone({ freq: f * 1.5, to: f, glide: 0.025, decay: 0.06 + z * 0.04, gain: 0.06, pan, reverb: 0.18, delay });
+    if (z > 0.7) audio.tone({ freq: 150, to: 70, glide: 0.06, decay: 0.08, gain: 0.08, pan, delay });
+  },
+  /** Plastic crinkling while it's being stretched. amount 0..1. */
+  crinkle(amount: number, pan = 0) {
+    if (!gate('crinkle', 60)) return;
+    const a = clamp(amount, 0, 1);
+    audio.creak({ dur: 0.08 + a * 0.1, rate: 90 + a * 90, rateEnd: 60, freq: 2600 + rand(-500, 500), gain: 0.03 + a * 0.05, pan });
+    audio.noise({ dur: 0.05, gain: 0.015 + a * 0.025, filter: 'highpass', freq: 3800, q: 0.5, pan });
+  },
+  /** A fresh sheet unrolling: a soft rustle that runs down the table. */
+  rustle(dur = 0.6, delay = 0) {
+    audio.noise({ dur, attack: 0.08, gain: 0.05, filter: 'bandpass', freq: 2400, to: 900, q: 0.8, reverb: 0.2, delay });
+    for (let i = 0; i < 6; i++) {
+      audio.creak({
+        dur: 0.07,
+        rate: 140,
+        rateEnd: 90,
+        freq: 2400 + rand(-500, 600),
+        gain: 0.025,
+        pan: rand(-0.3, 0.3),
+        delay: delay + (i / 6) * dur,
+      });
+    }
+  },
+
   /** A soft slice through jelly. */
   slice(pan = 0) {
     if (!gate('slice', 40)) return;

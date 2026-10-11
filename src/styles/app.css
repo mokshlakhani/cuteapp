@@ -764,3 +764,15 @@ svg {
 .jelly-settings .btn-text {
   margin-top: 4px;
 }
+
+/* ——— sheet extras (bubble wrap) ——— */
+
+.fruit-btn.is-on {
+  box-shadow: inset 0 0 0 2.5px var(--ink-faint);
+}
+
+.wrap-sizes {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 2px;
+}

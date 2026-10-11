@@ -110,6 +110,8 @@ export interface FaceStyle {
   blush: string;
   /** Overall opacity — used for subtle tinting into translucent jelly. */
   alpha?: number;
+  /** Cheek blush strength (0 = none, e.g. when it's painted in elsewhere). */
+  blushScale?: number;
 }
 
 /**
@@ -128,8 +130,8 @@ export function drawFace(ctx: CanvasRenderingContext2D, face: Face, s: number, s
   ctx.globalAlpha *= style.alpha ?? 1;
 
   // Blush — soft and round, below and outside the eyes.
-  const blushA = look.blush;
-  for (const side of [-1, 1]) {
+  const blushA = look.blush * (style.blushScale ?? 1);
+  for (const side of blushA > 0 ? [-1, 1] : []) {
     const bx = side * s * 0.4 + lx * 0.5;
     const by = s * 0.1 + ly * 0.5;
     const g = ctx.createRadialGradient(bx, by, 0, bx, by, s * 0.13);

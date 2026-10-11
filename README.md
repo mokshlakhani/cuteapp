@@ -4,14 +4,15 @@ A cozy, low-pressure pocket playground for iOS and Android: a small calm
 world with tactile toys you can open for two minutes and leave feeling
 better. No scores, no timers, no coins — the interaction _is_ the game.
 
-This prototype contains the first two of five planned rooms, built on a
+This prototype contains the first three of five planned rooms, built on a
 shared design system so every future toy looks, sounds and feels like it
 came from the same shelf.
 
-| room                                  | what you do                                                                                                                                                                                                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **pop** — watermelon & rubber bands   | Swipe across the melon to snap bands around its waist. It squeezes, bulges, gets nervous, creaks… and at some unknowable point it _pops_ — slow-motion, juice, flying bands, and a few dizzy little slices. Then a fresh melon drops in.                                                         |
-| **jelly** — soft 3D fruit jellies | Seen from above: a wobbly watermelon slice on a table. **Knife:** draw a line and a cleaver lines up over it and chops when you let go — cut pieces again, as small as you like; peel, flesh and seeds run all the way through. **Hand:** grab and slide, flick to toss, second finger to twist. **+** adds more fruits (three watermelons, orange, lemon, kiwi, strawberry, apple, peach, dragon fruit); the settings sheet has firmness, settle, slow motion, show mesh, pause and a nudge. Every piece keeps a little face. |
+| room                                | what you do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **pop** — watermelon & rubber bands | Swipe across the melon to snap bands around its waist. It squeezes, bulges, gets nervous, creaks… and at some unknowable point it _pops_ — slow-motion, juice, flying bands, and a few dizzy little slices. Then a fresh melon drops in.                                                                                                                                                                                                                                                                                       |
+| **jelly** — soft 3D fruit jellies   | Seen from above: a wobbly watermelon slice on a table. **Knife:** draw a line and a cleaver lines up over it and chops when you let go — cut pieces again, as small as you like; peel, flesh and seeds run all the way through. **Hand:** grab and slide, flick to toss, second finger to twist. **+** adds more fruits (three watermelons, orange, lemon, kiwi, strawberry, apple, peach, dragon fruit); the settings sheet has firmness, settle, slow motion, show mesh, pause and a nudge. Every piece keeps a little face. |
+| **bubbles** — bubble wrap           | A sheet of bubble wrap with a tiny face on every bubble. **Press:** push a bubble in until it pops, or roll a finger across a row to pop it like a little xylophone run. **Stretch:** grab the film and pull — bubbles stretch into ovals, look worried, and give way with a crackle if you pull too hard; let go and it snaps back. Pop them all and the sheet rolls away and a fresh one unrolls. **+** picks the film colour and bubble size.                                                                               |
 
 See **[DESIGN.md](DESIGN.md)** for the full design system: palette, type,
 lighting, faces, motion, the procedural sound palette, haptic vocabulary,
@@ -62,9 +63,10 @@ Config lives in `capacitor.config.ts` (app id `app.softspot.toys`).
     planes, so every piece can be cut again; colour is a solid texture in
     the original fruit's space, so cut faces show the right cross-section.
 - **Procedural audio** via Web Audio: Karplus–Strong plucks for rubber bands,
-  filtered noise and tuned tones for jelly, stick–slip creaks, generative
+  filtered noise and tuned tones for jelly, crisp pops and plastic crinkles
+  for bubble wrap, stick–slip creaks, generative
   ambient music. All tuned to one pentatonic scale.
-- Runs at 60 fps on phones: DPR capped at 2, no `shadowBlur`/filters,
+- Runs at 60 fps on phones: DPR capped at 2, no per-frame `shadowBlur`/filters,
   allocation-free physics inner loops.
 
 ```
@@ -78,5 +80,6 @@ src/
     home/     the shelf
     melon/    Melon, Burst, MelonRoom, preview
     jelly/    Piece (soft body), Lab (three.js scene), material, fruits, Knife, JellyRoom, preview
-tests/        jelly physics, cutting & geometry tests (vitest)
+    wrap/     Sheet (stretchy film + bubbles), draw, WrapRoom, preview
+tests/        jelly physics, cutting, bubble wrap & geometry tests (vitest)
 ```

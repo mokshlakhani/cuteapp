@@ -25,6 +25,14 @@ export const icons = {
   grid: wrap('<path d="M5 9h14M5 15h14M9 5v14M15 5v14"/><rect x="4.5" y="4.5" width="15" height="15" rx="3.5"/>'),
   pause: wrap('<path d="M9 7v10M15 7v10"/>'),
   wave: wrap('<path d="M3.5 13c2.2 0 2.2-3 4.25-3S10 13 12 13s2.2-3 4.25-3S18.5 13 20.5 13"/><path d="M6 17.5h12"/>'),
+  press: wrap(
+    '<path d="M9.6 3.5v5.6a2.4 2.4 0 0 0 4.8 0V3.5"/><path d="M5.5 17.5a6.5 3.6 0 0 0 13 0"/><path d="M8.2 13.4c1 .8 2.3 1.2 3.8 1.2s2.8-.4 3.8-1.2"/>',
+  ),
+  bubblesSmall: wrap(
+    '<circle cx="7" cy="8" r="2"/><circle cx="12" cy="8" r="2"/><circle cx="17" cy="8" r="2"/><circle cx="9.5" cy="12.4" r="2"/><circle cx="14.5" cy="12.4" r="2"/><circle cx="7" cy="16.8" r="2"/><circle cx="12" cy="16.8" r="2"/><circle cx="17" cy="16.8" r="2"/>',
+  ),
+  bubblesRegular: wrap('<circle cx="8.3" cy="8.3" r="3.3"/><circle cx="15.7" cy="8.3" r="3.3"/><circle cx="12" cy="15.7" r="3.3"/>'),
+  bubblesJumbo: wrap('<circle cx="12" cy="12" r="7"/><path d="M8.8 9.6a3.6 3.6 0 0 1 2.4-1.8"/>'),
   moon: wrap('<path d="M18.5 14.5A7 7 0 0 1 9.5 5.5a7 7 0 1 0 9 9z"/>'),
 };
 

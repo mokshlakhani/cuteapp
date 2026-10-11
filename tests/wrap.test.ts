@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+import { Sheet, type BubbleSize } from '../src/rooms/wrap/Sheet';
+
+function run(s: Sheet, seconds: number) {
+  const h = 1 / 240;
+  for (let t = 0; t < seconds; t += h) {
+    s.step(h);
+    s.frame();
+    s.update(h);
+  }
+}
+
+const SIZES: BubbleSize[] = ['small', 'regular', 'jumbo'];
+
+describe('bubble wrap sheet', () => {
+  it('lays every bubble fully on the film', () => {
+    for (const size of SIZES) {
+      const s = new Sheet(350, 560, size, 20, 100, false);
+      expect(s.H).toBeLessThanOrEqual(560);
+      expect(s.bubbles.length).toBeGreaterThan(10);
+      for (const b of s.bubbles) {
+        expect(b.u - b.r).toBeGreaterThan(0);
+        expect(b.u + b.r).toBeLessThan(s.W);
+        expect(b.v - b.r).toBeGreaterThan(0);
+        expect(b.v + b.r).toBeLessThan(s.H);
+        expect(s.bubbleAt(b.x, b.y)).toBe(b);
+      }
+    }
+  });
+
+  it('pops a bubble held down long enough, and only that one', () => {
+    const s = new Sheet(350, 560, 'regular', 0, 0, false);
+    const popped: number[] = [];
+    s.events.pop = (b) => popped.push(s.bubbles.indexOf(b));
+    const b = s.bubbles[8];
+    b.pressing = true;
+    run(s, b.toughness * 0.5);
+    expect(b.popped).toBe(false);
+    run(s, b.toughness * 0.6 + 0.02);
+    expect(popped).toEqual([8]);
+  });
+
+  it('finds every bubble a finger rolls across, in order', () => {
+    const s = new Sheet(350, 560, 'regular', 0, 0, false);
+    const row = s.bubbles.filter((b) => b.v === s.bubbles[0].v);
+    const first = row[0];
+    const last = row[row.length - 1];
+    const hit = s.bubblesAlong(first.x - first.r * 0.5, first.y, last.x + last.r * 0.5, last.y);
+    expect(hit).toEqual(row);
+  });
+
+  it('stretches when pulled and snaps back when let go', () => {
+    for (const size of SIZES) {
+      const s = new Sheet(350, 560, size, 20, 100, false);
+      const x = 20 + s.W - 8;
+      const y = 100 + s.H / 2;
+      expect(s.grab(1, x, y)).toBe(true);
+      s.drag(1, x + 90, y);
+      run(s, 0.6);
+      const most = Math.max(...s.bubbles.map((b) => b.stretch));
+      expect(most).toBeGreaterThan(1.12);
+      expect(s.bubbles.every((b) => !b.popped)).toBe(true);
+      s.release(1);
+      run(s, 2.5);
+      for (let k = 0; k < s.px.length; k++) {
+        expect(Math.hypot(s.px[k] - 20 - s.hx[k], s.py[k] - 100 - s.hy[k])).toBeLessThan(1.5);
+      }
+    }
+  });
+
+  it('pulled hard with two hands, bubbles give way on their own', () => {
+    const s = new Sheet(350, 560, 'regular', 20, 100, false);
+    const causes = new Set<string>();
+    s.events.pop = (_b, cause) => causes.add(cause);
+    const y = 100 + s.H / 2;
+    s.grab(1, 30, y);
+    s.grab(2, 20 + s.W - 10, y);
+    s.drag(1, 30 - 220, y);
+    s.drag(2, 20 + s.W - 10 + 220, y);
+    run(s, 1);
+    expect(s.remaining).toBeLessThan(s.bubbles.length);
+    expect([...causes]).toEqual(['strain']);
+    for (let k = 0; k < s.px.length; k++) expect(Number.isFinite(s.px[k])).toBe(true);
+  });
+});
