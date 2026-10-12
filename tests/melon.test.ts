@@ -1,34 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { BAND_COLORS, BREAK_RANGE, Melon, nextBandColor } from '../src/rooms/melon/Melon';
-import { Burst } from '../src/rooms/melon/Burst';
+import { Object3D, Quaternion, Vector3 } from 'three';
+import { BAND_COLORS, BREAK_RANGE, MELON_A, MELON_R, MelonShape, nextBandColor } from '../src/rooms/melon/shape';
+import { Debris } from '../src/rooms/melon/debris';
 
-function settle(m: Melon, seconds: number) {
+function settle(m: MelonShape, seconds: number) {
   const h = 1 / 120;
   for (let t = 0; t < seconds; t += h) m.update(h);
 }
 
-function wrap(m: Melon, n: number, v = 0.12) {
+function wrap(m: MelonShape, n: number, x = 0.05) {
   let color: string | undefined;
   for (let i = 0; i < n; i++) {
     color = nextBandColor(color);
-    m.addBand(v, v, color);
+    m.addBand(x, color);
     settle(m, 0.05);
   }
   settle(m, 2);
 }
 
-function place(): Melon {
-  const m = new Melon();
-  m.R = 100;
-  m.cx = 200;
-  m.floorY = 500;
-  return m;
-}
+describe('melon shape', () => {
+  it('starts as a plain melon resting on its belly', () => {
+    const m = new MelonShape();
+    settle(m, 1);
+    expect(m.surfaceAt(0)).toBeCloseTo(MELON_R, 2);
+    expect(m.supportHeight).toBeCloseTo(MELON_R, 2);
+    expect(m.lengthScale).toBeCloseTo(1, 2);
+  });
 
-describe('melon', () => {
   it('pops somewhere between 40 and 65 bands', () => {
     const seen = new Set<number>();
-    const m = new Melon();
+    const m = new MelonShape();
     for (let i = 0; i < 2000; i++) {
       m.reset();
       expect(m.breakAt).toBeGreaterThanOrEqual(BREAK_RANGE.min);
@@ -41,7 +42,7 @@ describe('melon', () => {
   });
 
   it('is only ready once it reaches its break point', () => {
-    const m = place();
+    const m = new MelonShape();
     m.breakAt = 52;
     wrap(m, 51);
     expect(m.ready).toBe(false);
@@ -61,77 +62,114 @@ describe('melon', () => {
   });
 
   it('compresses right where a band is placed', () => {
-    for (const v of [-0.5, 0.1, 0.55]) {
-      const m = place();
+    for (const x of [-0.5, 0.1, 0.55]) {
+      const m = new MelonShape();
       m.breakAt = 99;
       settle(m, 1);
-      const before = [-0.6, -0.3, 0, 0.3, 0.6, v].map((y) => m.halfWidth(y));
-      wrap(m, 6, v);
-      for (const b of m.bands) expect(Math.abs(b.y.value - v)).toBeLessThan(0.1);
+      const probes = [-0.6, -0.3, 0, 0.3, 0.6];
+      const before = probes.map((p) => m.surfaceAt(p));
+      const at = m.surfaceAt(x);
+      wrap(m, 6, x);
+      for (const b of m.bands) expect(Math.abs(b.x.value - x)).toBeLessThan(0.1);
       // Squeezed at the band…
-      expect(m.halfWidth(v)).toBeLessThan(before[5] * 0.9);
-      expect(Math.abs(m.grooveV - v)).toBeLessThan(0.06);
+      expect(m.surfaceAt(x)).toBeLessThan(at * 0.9);
+      expect(Math.abs(m.grooveX - x)).toBeLessThan(0.06);
       // …and the volume it pushed out bulges the rest of the melon.
-      [-0.6, -0.3, 0, 0.3, 0.6].forEach((y, i) => {
-        if (Math.abs(y - v) > 0.3) expect(m.halfWidth(y)).toBeGreaterThanOrEqual(before[i] * 0.999);
+      probes.forEach((p, i) => {
+        if (Math.abs(p - x) > 0.3) expect(m.surfaceAt(p)).toBeGreaterThanOrEqual(before[i] * 0.999);
       });
     }
   });
 
-  it('squeezes into an hourglass as the bands pile up', () => {
-    const m = place();
+  it('squeezes into a peanut that rests on its lobes', () => {
+    const m = new MelonShape();
     m.breakAt = 60;
     settle(m, 1);
-    const plainWaist = m.halfWidth(0.12);
-    const plainHeight = m.floorY - m.project(0, -1).y;
-
+    const plainWaist = m.surfaceAt(0.05);
     wrap(m, 55);
-    const waist = m.halfWidth(m.grooveV);
-    const upper = Math.max(...[-0.7, -0.6, -0.5, -0.4].map((v) => m.halfWidth(v)));
-    const lower = Math.max(...[0.5, 0.6, 0.7].map((v) => m.halfWidth(v)));
-
+    const waist = m.surfaceAt(m.grooveX);
+    const left = Math.max(...[-0.7, -0.6, -0.5, -0.4].map((x) => m.surfaceAt(x)));
+    const right = Math.max(...[0.5, 0.6, 0.7].map((x) => m.surfaceAt(x)));
     // A deep waist, with round lobes either side that are wider than it.
-    expect(Math.abs(m.grooveV - 0.12)).toBeLessThan(0.1);
+    expect(Math.abs(m.grooveX - 0.05)).toBeLessThan(0.1);
     expect(waist).toBeLessThan(plainWaist * 0.6);
-    expect(upper).toBeGreaterThan(waist * 1.5);
-    expect(lower).toBeGreaterThan(waist * 1.5);
-    // The squeezed-out volume makes it taller.
-    expect(m.floorY - m.project(0, -1).y).toBeGreaterThan(plainHeight * 1.05);
-    for (let i = 0; i < m.xs.length; i++) {
-      expect(Number.isFinite(m.xs[i])).toBe(true);
-      expect(Number.isFinite(m.ys[i])).toBe(true);
+    expect(left).toBeGreaterThan(waist * 1.5);
+    expect(right).toBeGreaterThan(waist * 1.5);
+    // It rests on its lobes, and the squeezed-out volume makes it longer.
+    expect(m.supportHeight).toBeGreaterThan(waist * 1.4);
+    expect(m.lengthScale).toBeGreaterThan(1.05);
+    for (let x = -1; x <= 1; x += 0.01) expect(Number.isFinite(m.surfaceAt(x))).toBe(true);
+  });
+});
+
+describe('debris', () => {
+  it('flies, lands, slides to a stop and lies flat', () => {
+    const d = new Debris();
+    const lands: string[] = [];
+    d.events.land = (b) => lands.push(b.kind);
+    for (let i = 0; i < 20; i++) {
+      d.add({
+        kind: i % 2 ? 'shard' : 'band',
+        pos: new Vector3(0, 2, 0),
+        vel: new Vector3(Math.random() * 10 - 5, Math.random() * 8 + 3, Math.random() * 10 - 5),
+        q: new Quaternion().setFromAxisAngle(new Vector3(1, 0.3, 0).normalize(), Math.random() * 6),
+        w: new Vector3(Math.random() * 10, Math.random() * 10, Math.random() * 10),
+        up: new Vector3(0, 0, 1),
+        rest: 0.1,
+      });
     }
+    for (let t = 0; t < 8; t += 1 / 120) d.step(1 / 120);
+    expect(d.still).toBe(true);
+    expect(lands.length).toBeGreaterThanOrEqual(20);
+    for (const b of d.bodies) {
+      expect(b.pos.y).toBeCloseTo(0.1, 5);
+      expect(Number.isFinite(b.pos.x) && Number.isFinite(b.pos.z)).toBe(true);
+      const up = b.up!.clone().applyQuaternion(b.q);
+      expect(Math.abs(up.y)).toBeGreaterThan(0.98);
+    }
+  });
+
+  it('juice drops vanish into the table when they land', () => {
+    const d = new Debris();
+    const drop = d.add({ kind: 'drop', pos: new Vector3(0, 1, 0), vel: new Vector3(2, 4, 0), rest: 0.03 });
+    for (let t = 0; t < 2; t += 1 / 120) d.step(1 / 120);
+    expect(drop.dead).toBe(true);
+    expect(d.still).toBe(true);
   });
 });
 
 describe('burst', () => {
-  it('turns every band into a strand or a ring and settles on the floor', () => {
-    const m = place();
+  it('turns every band into a strand or a loop, and everything settles on the table', async () => {
+    const { Explosion } = await import('../src/rooms/melon/explosion');
+    const { MeshBasicMaterial } = await import('three');
+    const m = new MelonShape();
     m.breakAt = 60;
     wrap(m, 60);
-    const b = new Burst();
-    b.floorY = m.floorY;
-    b.width = 400;
-    const bands = m.bands.map((band) => ({ color: band.color, y: m.project(0, band.y.value).y, th: 4, rx: m.halfWidth(band.y.value) }));
-    b.explode(m.outline(), m.center(), m.R, bands, m.project(0, m.grooveV).y);
+    const melon = new Object3D();
+    melon.position.set(0, m.supportHeight, 0);
+    const mat = new MeshBasicMaterial();
+    const e = new Explosion(mat, () => mat);
+    e.start(
+      m,
+      melon,
+      m.bands.map((b) => b.color),
+    );
+    expect(e.strands + e.rings).toBe(60);
+    expect(e.strands).toBeGreaterThan(e.rings);
+    const kinds = new Set(e.debris.bodies.map((b) => b.kind));
+    for (const k of ['shard', 'chunk', 'drop', 'seed', 'band']) expect(kinds.has(k as never)).toBe(true);
 
-    expect(b.strands.length + b.rings.length).toBe(60);
-    expect(b.strands.length).toBeGreaterThan(b.rings.length);
-    expect(new Set([...b.strands, ...b.rings].map((s) => s.color)).size).toBeGreaterThan(8);
-    expect(b.chunks.some((c) => c.shell)).toBe(true);
-    expect(b.chunks.some((c) => !c.shell)).toBe(true);
-
-    const h = 1 / 60;
-    for (let t = 0; t < 12 && !b.settled; t += h) b.update(h);
-    expect(b.settled).toBe(true);
-    for (const c of b.chunks) {
-      expect(c.y).toBeLessThanOrEqual(b.floorY + c.lane + 1);
-      expect(c.x).toBeGreaterThanOrEqual(-1);
-      expect(c.x).toBeLessThanOrEqual(401);
+    const cam = new Object3D();
+    cam.position.set(0, 10, 25);
+    for (let t = 0; t < 12 && !e.settled; t += 1 / 60) e.update(1 / 60, cam as never);
+    expect(e.settled).toBe(true);
+    for (const b of e.debris.bodies) {
+      if (b.dead) continue;
+      expect(b.pos.y).toBeGreaterThanOrEqual(b.rest - 1e-6);
+      expect(Math.hypot(b.pos.x, b.pos.z)).toBeLessThan(MELON_A * 12);
     }
-    for (const s of b.splats) expect(s.landed).toBe(true);
-
-    for (let t = 0; t < 4 && !b.shrink(h); t += h);
-    expect(b.active).toBe(false);
+    e.beginClear();
+    for (let t = 0; t < 4 && !e.clear(1 / 60); t += 1 / 60);
+    expect(e.clear(0)).toBe(true);
   });
 });
