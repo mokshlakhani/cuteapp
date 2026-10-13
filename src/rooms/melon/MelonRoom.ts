@@ -12,7 +12,7 @@ import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
 import { paintBackdrop, paintGrain } from '../../render/paint';
 import { el, Hint } from '../../ui/components';
-import { getMelonScene, MELON_COLORS, type MelonScene } from './MelonScene';
+import { getMelonScene, type MelonScene } from './MelonScene';
 import { nextBandColor } from './shape';
 
 type Phase = 'intro' | 'play' | 'critical' | 'burst' | 'clear';
@@ -56,9 +56,8 @@ export class MelonRoom implements Scene {
   private timeScale = 1;
   private slowmo = 0;
   private flash = 0;
-  /** Shockwave from the burst, 0 → 1 (real time), and where it starts. */
-  private wave = 1;
-  private waveAt = { x: 0, y: 0, floor: 0 };
+  /** Where on screen it burst (for the flash). */
+  private waveAt = { x: 0, y: 0 };
   private released = false;
   private vy = 0;
   private nextColor = nextBandColor();
@@ -217,13 +216,11 @@ export class MelonRoom implements Scene {
     this.slowmo = 0;
     this.timeScale = SLOWMO.scale;
     this.flash = 1;
-    this.wave = 0;
     this.released = false;
     // It gives way at its tightest groove: the bang starts there.
     const at = s.melonPoint(s.shape.grooveX, Math.PI / 2);
     const mid = s.toScreen(s.centre);
-    const floor = s.toScreen(s.centre.setY(0));
-    this.waveAt = { x: at.x, y: (at.y + mid.y) / 2, floor: floor.y };
+    this.waveAt = { x: at.x, y: (at.y + mid.y) / 2 };
     s.burst();
     s.swoop(1, 1.8);
     s.shake(0.5);
@@ -246,7 +243,6 @@ export class MelonRoom implements Scene {
         haptics.play('thud');
       }
     }
-    this.wave = Math.min(1, this.wave + realDt / 0.9);
     const dt = realDt * this.timeScale;
     this.phaseT += realDt;
     this.flash = Math.max(0, this.flash - realDt * 3.5);
@@ -274,6 +270,8 @@ export class MelonRoom implements Scene {
         const T = m.tension;
         m.face.base = T < 0.3 ? 'calm' : T < 0.62 ? 'wide' : T < 0.86 ? 'nervous' : 'strain';
         m.shiver = smoothstep(0.75, 1, m.fullness) * 0.8;
+        // Close to its limit, a hairline crack shows at the tightest groove.
+        s.crack = smoothstep(0.9, 1, m.fullness) * 0.22;
         if (m.fullness > this.nextCreak && m.bands.length > 2) {
           material.creak(m.fullness, rand(-0.2, 0.2));
           this.nextCreak = m.fullness + rand(0.04, 0.12);
@@ -285,6 +283,8 @@ export class MelonRoom implements Scene {
         // The last breath: the waist crushes in, the lobes swell, it trembles.
         const k = clamp(this.phaseT / CRITICAL, 0, 1);
         m.crush = 0.12 * ease.inCubic(k);
+        // The rind cracks open round the split.
+        s.crack = 0.25 + 0.75 * ease.outCubic(k);
         m.swell.target = 0.05 + 0.06 * k;
         m.shiver = 1.4 + this.phaseT * 7;
         if (this.phaseT > 0.15 && this.phaseT - realDt <= 0.15) haptics.play('tick');
@@ -328,13 +328,12 @@ export class MelonRoom implements Scene {
     const { w, h } = this;
     paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null });
     ctx.drawImage(this.s.render(), 0, 0, w, h);
-    if (this.wave < 1) this.drawShockwave(ctx);
     if (this.flash > 0) {
       const c = this.waveAt;
       const r = Math.min(w, h) * (0.35 + (1 - this.flash) * 0.6);
       const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, r);
-      g.addColorStop(0, rgba('#ffffff', 0.8 * this.flash));
-      g.addColorStop(0.35, rgba('#ffffff', 0.45 * this.flash));
+      g.addColorStop(0, rgba('#ffffff', 0.55 * this.flash));
+      g.addColorStop(0.4, rgba('#ffffff', 0.25 * this.flash));
       g.addColorStop(1, rgba('#ffffff', 0));
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -342,32 +341,5 @@ export class MelonRoom implements Scene {
       ctx.fill();
     }
     paintGrain(ctx, w, h, t);
-  }
-
-  /** The bang: a soft ring of air racing out from the split, and its echo on the table. */
-  private drawShockwave(ctx: CanvasRenderingContext2D) {
-    const k = ease.outCubic(this.wave);
-    const fade = Math.pow(1 - this.wave, 1.5);
-    const R = Math.min(this.w, this.h) * 0.16;
-    const { x, y, floor } = this.waveAt;
-    const r = R * (0.7 + k * 3.4);
-    ctx.save();
-    ctx.lineWidth = R * 0.22 * (1 - k * 0.8);
-    ctx.strokeStyle = rgba('#ffffff', 0.55 * fade);
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, TAU);
-    ctx.stroke();
-    ctx.lineWidth = R * 0.07 * (1 - k * 0.7);
-    ctx.strokeStyle = rgba(MELON_COLORS.fleshLight, 0.45 * fade);
-    ctx.beginPath();
-    ctx.arc(x, y, r * 0.86, 0, TAU);
-    ctx.stroke();
-    // The table feels it too.
-    ctx.lineWidth = R * 0.06 * (1 - k * 0.6);
-    ctx.strokeStyle = rgba('#ffffff', 0.4 * fade);
-    ctx.beginPath();
-    ctx.ellipse(x, floor, r * 1.1, r * 0.16, 0, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
   }
 }

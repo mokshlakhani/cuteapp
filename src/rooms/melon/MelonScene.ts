@@ -43,6 +43,8 @@ export class MelonScene {
   melonVisible = true;
   /** Is the pop room on screen (so the home card leaves it alone)? */
   active = false;
+  /** Cracks opening round the groove just before the pop (0..1). */
+  crack = 0;
 
   private body: THREE.Mesh;
   private geo = new THREE.BufferGeometry();
@@ -230,8 +232,10 @@ export class MelonScene {
 
   private placeCamera() {
     const k = this.camK;
-    const elev = THREE.MathUtils.degToRad(lerp(HOME.elev, LOW.elev, k));
-    const az = lerp(HOME.az, LOW.az, k);
+    // A slow, barely-there drift, so the table feels alive.
+    const drift = this.time;
+    const elev = THREE.MathUtils.degToRad(lerp(HOME.elev, LOW.elev, k) + Math.sin(drift * 0.23) * 0.8);
+    const az = lerp(HOME.az, LOW.az, k) + Math.sin(drift * 0.17) * 0.035 + (k > 0 ? Math.sin(drift * 0.4) * 0.03 * k : 0);
     const d = this.dist * lerp(HOME.distK, LOW.distK, k);
     const ty = lerp(HOME.ty, LOW.ty, k);
     const cam = this.camera;
@@ -289,6 +293,7 @@ export class MelonScene {
     this.bands = [];
     this.shape.reset();
     this.lift = lift;
+    this.crack = 0;
     this.melonVisible = true;
     this.root.visible = true;
     this.refresh();
@@ -358,6 +363,18 @@ export class MelonScene {
     this.root.scale.set(1 + q * 0.45, 1 - q, 1 + q * 0.45);
     this.root.rotation.x = s.sway.value * 0.035;
     this.stem.position.set(L * 0.985, 0, 0);
+    this.uniforms.uCrack.value = this.crack;
+    if (this.crack > 0) {
+      // Either side of the band pile, on the straining bulge.
+      let lo = s.grooveX;
+      let hi = s.grooveX;
+      for (const b of s.bands) {
+        if (Math.abs(b.x.value - s.grooveX) > 0.35) continue;
+        lo = Math.min(lo, b.x.value);
+        hi = Math.max(hi, b.x.value);
+      }
+      this.uniforms.uCrackX.value.set(Math.max(-0.9, lo - 0.1), Math.min(0.9, hi + 0.1));
+    }
   }
 
   update(dt: number) {

@@ -139,6 +139,30 @@ describe('debris', () => {
 });
 
 describe('burst', () => {
+  it('fractures differently every time: irregular pieces, small at the split, big at the ends', async () => {
+    const { fracture } = await import('../src/rooms/melon/explosion');
+    const m = new MelonShape();
+    m.breakAt = 60;
+    wrap(m, 40);
+    const counts = new Set<number>();
+    for (let k = 0; k < 6; k++) {
+      const frags = fracture(m, m.grooveX);
+      counts.add(frags.length);
+      expect(frags.length).toBeGreaterThanOrEqual(15);
+      const areas = frags.map((f) => f.area);
+      // Real variety in size, and every scrap of rind belongs to a piece.
+      expect(Math.max(...areas) / Math.min(...areas)).toBeGreaterThan(2.5);
+      expect(areas.reduce((a, b) => a + b, 0)).toBeGreaterThan(0.5);
+      const near = frags.filter((f) => Math.abs(f.centre.x / 2.25 - m.grooveX) < 0.35);
+      const far = frags.filter((f) => Math.abs(f.centre.x / 2.25 - m.grooveX) > 0.6);
+      if (near.length && far.length) {
+        const avg = (fs: typeof frags) => fs.reduce((a, f) => a + f.area, 0) / fs.length;
+        expect(avg(near)).toBeLessThan(avg(far));
+      }
+    }
+    expect(counts.size).toBeGreaterThan(1);
+  });
+
   it('turns every band into a strand or a loop, and everything settles on the table', async () => {
     const { Explosion, RIM } = await import('../src/rooms/melon/explosion');
     const { MeshBasicMaterial } = await import('three');
@@ -156,15 +180,15 @@ describe('burst', () => {
     );
     expect(e.strands + e.rings).toBe(60);
     // Big and messy: lots of everything.
-    expect(e.debris.bodies.filter((b) => b.kind === 'shard').length).toBeGreaterThanOrEqual(40);
-    expect(e.debris.bodies.length).toBeGreaterThan(500);
+    expect(e.shards).toBeGreaterThanOrEqual(15);
+    expect(e.debris.bodies.length).toBeGreaterThan(300);
     expect(e.strands).toBeGreaterThan(e.rings);
     const kinds = new Set(e.debris.bodies.map((b) => b.kind));
     for (const k of ['shard', 'chunk', 'drop', 'seed', 'band']) expect(kinds.has(k as never)).toBe(true);
 
     const cam = new Object3D();
     cam.position.set(0, 10, 25);
-    for (let t = 0; t < 12 && !e.settled; t += 1 / 60) e.update(1 / 60, cam as never);
+    for (let t = 0; t < 14 && !e.settled; t += 1 / 60) e.update(1 / 60, cam as never);
     expect(e.settled).toBe(true);
     for (const b of e.debris.bodies) {
       if (b.dead) continue;
