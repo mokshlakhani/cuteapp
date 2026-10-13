@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D, Quaternion, Vector3 } from 'three';
-import { BAND_COLORS, BREAK_RANGE, MELON_A, MELON_R, MelonShape, nextBandColor } from '../src/rooms/melon/shape';
+import { BAND_COLORS, BREAK_RANGE, MELON_R, MelonShape, nextBandColor } from '../src/rooms/melon/shape';
 import { Debris } from '../src/rooms/melon/debris';
 
 function settle(m: MelonShape, seconds: number) {
@@ -140,7 +140,7 @@ describe('debris', () => {
 
 describe('burst', () => {
   it('turns every band into a strand or a loop, and everything settles on the table', async () => {
-    const { Explosion } = await import('../src/rooms/melon/explosion');
+    const { Explosion, RIM } = await import('../src/rooms/melon/explosion');
     const { MeshBasicMaterial } = await import('three');
     const m = new MelonShape();
     m.breakAt = 60;
@@ -155,6 +155,9 @@ describe('burst', () => {
       m.bands.map((b) => b.color),
     );
     expect(e.strands + e.rings).toBe(60);
+    // Big and messy: lots of everything.
+    expect(e.debris.bodies.filter((b) => b.kind === 'shard').length).toBeGreaterThanOrEqual(40);
+    expect(e.debris.bodies.length).toBeGreaterThan(500);
     expect(e.strands).toBeGreaterThan(e.rings);
     const kinds = new Set(e.debris.bodies.map((b) => b.kind));
     for (const k of ['shard', 'chunk', 'drop', 'seed', 'band']) expect(kinds.has(k as never)).toBe(true);
@@ -166,7 +169,7 @@ describe('burst', () => {
     for (const b of e.debris.bodies) {
       if (b.dead) continue;
       expect(b.pos.y).toBeGreaterThanOrEqual(b.rest - 1e-6);
-      expect(Math.hypot(b.pos.x, b.pos.z)).toBeLessThan(MELON_A * 12);
+      expect(Math.hypot(b.pos.x, b.pos.z)).toBeLessThanOrEqual(RIM + 1e-6);
     }
     e.beginClear();
     for (let t = 0; t < 4 && !e.clear(1 / 60); t += 1 / 60);

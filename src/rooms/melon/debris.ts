@@ -28,6 +28,8 @@ export interface Body {
   dead: boolean;
   /** Size, for sounds and splats. */
   size: number;
+  /** Table friction: low slides far, high stops quickly. */
+  grip: number;
 }
 
 export interface DebrisEvents {
@@ -46,6 +48,8 @@ export class Debris {
   bodies: Body[] = [];
   gravity = 28;
   events: DebrisEvents = {};
+  /** A soft rim round the mess (centre and radius on the table), so nothing flies off for good. */
+  rim = { x: 0, z: 0, r: Infinity };
 
   add(b: Partial<Body> & { kind: BodyKind; pos: Vector3 }): Body {
     const body: Body = {
@@ -59,6 +63,7 @@ export class Debris {
       settled: false,
       dead: false,
       size: 0.2,
+      grip: 4.5,
       ...b,
     };
     this.bodies.push(body);
@@ -91,6 +96,21 @@ export class Debris {
       const drag = Math.exp(-0.25 * dt);
       b.vel.multiplyScalar(drag);
       b.pos.addScaledVector(b.vel, dt);
+      const ox = b.pos.x - this.rim.x;
+      const oz = b.pos.z - this.rim.z;
+      const d = Math.hypot(ox, oz);
+      if (d > this.rim.r) {
+        // Back inside, with the outward part of its speed turned round softly.
+        const nx = ox / d;
+        const nz = oz / d;
+        b.pos.x = this.rim.x + nx * this.rim.r;
+        b.pos.z = this.rim.z + nz * this.rim.r;
+        const vn = b.vel.x * nx + b.vel.z * nz;
+        if (vn > 0) {
+          b.vel.x -= 1.35 * vn * nx;
+          b.vel.z -= 1.35 * vn * nz;
+        }
+      }
       // Spin: q ← q + ½ ω q dt
       const wl = b.w.length();
       if (wl > 1e-5) {
@@ -115,7 +135,7 @@ export class Debris {
           b.w.multiplyScalar(0.6);
         }
         // Rolling and sliding friction while in contact.
-        const k = Math.exp(-4.5 * dt);
+        const k = Math.exp(-b.grip * dt);
         b.vel.x *= k;
         b.vel.z *= k;
         b.w.multiplyScalar(Math.exp(-5 * dt));

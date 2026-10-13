@@ -16,14 +16,23 @@ import { makeFleshMaterial } from './melonMaterial';
 
 const W = fruitPalette.watermelon;
 
-const SHARD_X = 4;
-const SHARD_PHI = 5;
-const CHUNKS = 16;
-const DROPS = 110;
-const MIST = 50;
-const SEEDS = 36;
+const SHARD_X = 6;
+const SHARD_PHI = 7;
+const CHUNKS = 34;
+const DROPS = 220;
+const MIST = 120;
+/** Juice that keeps spurting out of the split for a moment after the bang. */
+const SQUIRT = 110;
+const SQUIRT_FOR = 0.55;
+const SEEDS = 70;
+/** Tiny crumbs of flesh. */
+const PULP = 90;
+/** How far a sliding piece goes between juicy smears (scene units). */
+const SMEAR_EVERY = 0.32;
 const MAX_NOODLES = 65;
-const MAX_SPLATS = 180;
+const MAX_SPLATS = 520;
+/** How far the mess can spread from where it burst (scene units). */
+export const RIM = 15;
 const FACES = 3;
 const FACE_PX = 96;
 
@@ -64,10 +73,15 @@ export class Explosion {
   private faces: FaceSprite[] = [];
   private drops: Body[] = [];
   private seeds: Body[] = [];
+  private pulp: Body[] = [];
+  private pulpMesh: THREE.InstancedMesh;
+  /** Juice still to come out of the split: where from, and how. */
+  private squirt: { t: number; left: number; from: () => { pos: THREE.Vector3; vel: THREE.Vector3 } } | null = null;
+  private smear = new Map<Body, { x: number; z: number }>();
   private dropMesh: THREE.InstancedMesh;
   private seedMesh: THREE.InstancedMesh;
   private splatMesh: THREE.InstancedMesh;
-  private splats: { x: number; z: number; r: number; t: number; tint: number }[] = [];
+  private splats: { x: number; z: number; r: number; t: number; tint: number; ang: number; stretch: number }[] = [];
   private fleshMat = makeFleshMaterial();
   private chunkMats: THREE.MeshStandardMaterial[];
   private clearT = -1;
@@ -86,9 +100,16 @@ export class Explosion {
     this.dropMesh = new THREE.InstancedMesh(
       dropGeo,
       new THREE.MeshStandardMaterial({ color: W.fleshLight, roughness: 0.2, envMapIntensity: 0.8 }),
-      DROPS,
+      DROPS + MIST + SQUIRT,
     );
     this.dropMesh.castShadow = true;
+    const pulpGeo = new THREE.IcosahedronGeometry(1, 0);
+    this.pulpMesh = new THREE.InstancedMesh(
+      pulpGeo,
+      new THREE.MeshStandardMaterial({ color: W.flesh, roughness: 0.45, flatShading: true, envMapIntensity: 0.6 }),
+      PULP,
+    );
+    this.pulpMesh.castShadow = true;
     const seedGeo = new THREE.SphereGeometry(1, 12, 8);
     seedGeo.scale(1, 0.45, 0.62);
     this.seedMesh = new THREE.InstancedMesh(
@@ -97,8 +118,7 @@ export class Explosion {
       SEEDS,
     );
     this.seedMesh.castShadow = true;
-    const splatGeo = new THREE.CircleGeometry(1, 24);
-    splatGeo.rotateX(-Math.PI / 2);
+    const splatGeo = blobGeometry();
     this.splatMesh = new THREE.InstancedMesh(
       splatGeo,
       new THREE.MeshBasicMaterial({
@@ -112,7 +132,7 @@ export class Explosion {
       MAX_SPLATS,
     );
     this.splatMesh.renderOrder = -1;
-    for (const m of [this.dropMesh, this.seedMesh, this.splatMesh]) {
+    for (const m of [this.dropMesh, this.seedMesh, this.pulpMesh, this.splatMesh]) {
       m.count = 0;
       m.frustumCulled = false;
       this.group.add(m);
@@ -134,6 +154,7 @@ export class Explosion {
     const rot = new THREE.Quaternion();
     melon.getWorldQuaternion(rot);
     const centre = new THREE.Vector3().setFromMatrixPosition(M);
+    this.debris.rim = { x: centre.x, z: centre.z, r: RIM };
     const Ls = shape.lengthScale;
     const local = (xn: number, phi: number, inset = 0) => {
       const r = shape.surfaceAt(xn) * (1 - inset);
@@ -148,7 +169,13 @@ export class Explosion {
     // It gives way at its tightest groove: that's where the rind splits,
     // and where the juice squirts out from.
     const g = clamp(shape.grooveX, -0.7, 0.7);
-    const cuts = [-1, (g - 1) / 2, g, (g + 1) / 2, 1];
+    // Uneven cuts, so shards come in all sizes; one always lies on the groove.
+    const cuts = [-1];
+    const left = Math.floor(SHARD_X / 2);
+    for (let i = 1; i < left; i++) cuts.push(-1 + ((g + 1) * (i + rand(-0.3, 0.3))) / left);
+    cuts.push(g);
+    for (let i = 1; i < SHARD_X - left; i++) cuts.push(g + ((1 - g) * (i + rand(-0.3, 0.3))) / (SHARD_X - left));
+    cuts.push(1);
     const split = (xn: number) => clamp(g + (xn - g) * 0.35, -0.95, 0.95);
 
     // Rind shards: the melon's own surface, torn into curved pieces.
@@ -157,8 +184,9 @@ export class Explosion {
       for (let j = 0; j < SHARD_PHI; j++) {
         const x0 = cuts[i];
         const x1 = cuts[i + 1];
-        const p0 = phi0 + (TAU * j) / SHARD_PHI;
-        const p1 = phi0 + (TAU * (j + 1)) / SHARD_PHI;
+        const jit = (k: number) => (k % SHARD_PHI === 0 ? 0 : rand(-0.28, 0.28));
+        const p0 = phi0 + (TAU * (j + jit(j))) / SHARD_PHI;
+        const p1 = phi0 + (TAU * (j + 1 + jit(j + 1))) / SHARD_PHI;
         const { geo, centre: c, normal } = shardGeometry(shape, x0, x1, p0, p1);
         const mesh = new THREE.Mesh(geo, [this.shardMat, this.fleshMat]);
         mesh.castShadow = true;
@@ -166,13 +194,14 @@ export class Explosion {
         const body = this.debris.add({
           kind: 'shard',
           pos,
-          vel: outward(c, rand(7.5, 15), rand(6, 12)),
+          vel: outward(c, rand(9, 21), rand(7, 17)),
           q: rot.clone(),
-          w: new THREE.Vector3(rand(-6, 6), rand(-4, 4), rand(-6, 6)),
-          rest: 0.22,
+          w: new THREE.Vector3(rand(-11, 11), rand(-7, 7), rand(-11, 11)),
+          rest: 0.2,
           up: normal,
-          bounce: 0.25,
-          size: 0.9,
+          bounce: 0.3,
+          size: 0.75,
+          grip: rand(2.6, 4),
         });
         mesh.scale.copy(melon.getWorldScale(tmpS));
         this.addPiece(body, mesh);
@@ -181,7 +210,7 @@ export class Explosion {
 
     // Flesh: chunky, faceted bits from the inside.
     for (let i = 0; i < CHUNKS; i++) {
-      const r = rand(0.22, 0.55) * (i < FACES ? 1.25 : 1);
+      const r = (i < FACES ? 1.3 : 1) * (Math.random() < 0.35 ? rand(0.4, 0.62) : rand(0.16, 0.38));
       const geo = chunkGeometry(r);
       const mesh = new THREE.Mesh(geo, this.chunkMats[i % this.chunkMats.length]);
       mesh.castShadow = true;
@@ -189,12 +218,13 @@ export class Explosion {
       const body = this.debris.add({
         kind: 'chunk',
         pos: c.clone().applyMatrix4(M),
-        vel: outward(c, rand(5, 14), rand(6, 13)),
+        vel: outward(c, rand(7, 20), rand(7, 17)),
         q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), rand(0, TAU))),
-        w: new THREE.Vector3(rand(-9, 9), rand(-9, 9), rand(-9, 9)),
+        w: new THREE.Vector3(rand(-15, 15), rand(-15, 15), rand(-15, 15)),
         rest: r * 0.72,
-        bounce: 0.3,
+        bounce: 0.45,
         size: r,
+        grip: rand(2, 3.4),
       });
       const piece = this.addPiece(body, mesh);
       if (i < FACES && typeof document !== 'undefined') this.addFace(piece, r);
@@ -209,7 +239,7 @@ export class Explosion {
         this.debris.add({
           kind: 'drop',
           pos: c.clone().applyMatrix4(M),
-          vel: mist ? outward(c, rand(14, 22), rand(3, 10)) : outward(c, rand(6, 18), rand(3, 14)),
+          vel: mist ? outward(c, rand(16, 28), rand(3, 13)) : outward(c, rand(7, 24), rand(3, 18)),
           rest: 0.03,
           size: mist ? rand(0.025, 0.045) : rand(0.05, 0.12),
         }),
@@ -221,7 +251,7 @@ export class Explosion {
         this.debris.add({
           kind: 'seed',
           pos: c.clone().applyMatrix4(M),
-          vel: outward(c, rand(6, 16), rand(4, 12)),
+          vel: outward(c, rand(7, 20), rand(4, 15)),
           q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), 0)),
           w: new THREE.Vector3(rand(-14, 14), rand(-14, 14), rand(-14, 14)),
           rest: 0.045,
@@ -231,8 +261,34 @@ export class Explosion {
         }),
       );
     }
+    for (let i = 0; i < PULP; i++) {
+      const c = local(split(rand(-1, 1)), rand(0, TAU), rand(0.2, 0.7));
+      this.pulp.push(
+        this.debris.add({
+          kind: 'chunk',
+          pos: c.clone().applyMatrix4(M),
+          vel: outward(c, rand(6, 22), rand(4, 16)),
+          q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), rand(0, TAU))),
+          w: new THREE.Vector3(rand(-20, 20), rand(-20, 20), rand(-20, 20)),
+          rest: 0.04,
+          bounce: 0.4,
+          size: rand(0.05, 0.11),
+          grip: 3,
+        }),
+      );
+    }
+    // Juice keeps spurting out of the split for a moment.
+    this.squirt = {
+      t: 0,
+      left: SQUIRT,
+      from: () => {
+        const c = local(clamp(g + rand(-0.12, 0.12), -0.95, 0.95), rand(0, TAU), 0.05);
+        return { pos: c.clone().applyMatrix4(M), vel: outward(c, rand(5, 16), rand(4, 14)) };
+      },
+    };
     this.dropMesh.count = this.drops.length;
     this.seedMesh.count = this.seeds.length;
+    this.pulpMesh.count = this.pulp.length;
 
     // The bands snap: most fly off as wriggly strands, a few stay loops.
     const colors = bandColors.slice(-MAX_NOODLES);
@@ -246,9 +302,9 @@ export class Explosion {
       const body = this.debris.add({
         kind: 'band',
         pos: c.clone().applyMatrix4(M),
-        vel: outward(c, rand(5, 13), rand(6, 12)),
+        vel: outward(c, rand(6, 17), rand(6, 15)),
         q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), 0)),
-        w: new THREE.Vector3(rand(-10, 10), rand(-10, 10), rand(-10, 10)),
+        w: new THREE.Vector3(rand(-14, 14), rand(-14, 14), rand(-14, 14)),
         rest: 0.035,
         up: new THREE.Vector3(0, 0, 1),
         bounce: 0.2,
@@ -260,10 +316,10 @@ export class Explosion {
     });
 
     // A big splash right where it burst.
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 22; i++) {
       const a = rand(0, TAU);
-      const d = rand(0, 1.6);
-      this.addSplat(centre.x + Math.cos(a) * d, centre.z + Math.sin(a) * d, rand(0.35, 0.8), 0.15 + i * 0.03);
+      const d = rand(0, 2.6);
+      this.addSplat(centre.x + Math.cos(a) * d, centre.z + Math.sin(a) * d, rand(0.35, 1.1), 0.12 + i * 0.02, a, rand(1, 2.2));
     }
   }
 
@@ -288,15 +344,19 @@ export class Explosion {
     this.group.add(sprite);
   }
 
-  private addSplat(x: number, z: number, r: number, delay = 0) {
+  private addSplat(x: number, z: number, r: number, delay = 0, ang = rand(0, TAU), stretch = 1) {
     if (this.splats.length >= MAX_SPLATS) return;
-    this.splats.push({ x, z, r, t: -delay, tint: Math.random() });
+    this.splats.push({ x, z, r, t: -delay, tint: Math.random(), ang, stretch });
   }
 
   private onLand(b: Body, speed: number) {
     const at = b.pos;
-    if (b.kind === 'drop') this.addSplat(at.x, at.z, b.size * rand(2.2, 4));
-    else if ((b.kind === 'chunk' || b.kind === 'shard') && speed > 4) this.addSplat(at.x, at.z, b.size * rand(0.5, 0.9));
+    // Fast drops streak along the way they were going.
+    const hs = Math.hypot(b.vel.x, b.vel.z);
+    const ang = Math.atan2(b.vel.z, b.vel.x);
+    if (b.kind === 'drop') this.addSplat(at.x, at.z, b.size * rand(2.2, 4.2), 0, ang, 1 + Math.min(2.6, hs / 5));
+    else if ((b.kind === 'chunk' || b.kind === 'shard') && speed > 4 && b.size > 0.12)
+      this.addSplat(at.x, at.z, b.size * rand(0.6, 1.1), 0, ang, 1 + Math.min(1.5, hs / 8));
     this.events.land?.(b, speed, at);
   }
 
@@ -312,6 +372,36 @@ export class Explosion {
     }
     this.syncInstances(this.drops, this.dropMesh, (b) => (b.dead ? 0 : b.size));
     this.syncInstances(this.seeds, this.seedMesh, (b) => b.size * 1.3);
+    this.syncInstances(this.pulp, this.pulpMesh, (b) => b.size);
+    // Juice still spurting out of the split.
+    const sq = this.squirt;
+    if (sq && sq.left > 0) {
+      sq.t += dt;
+      const due = Math.min(sq.left, Math.round(SQUIRT * Math.min(1, sq.t / SQUIRT_FOR)) - (SQUIRT - sq.left));
+      for (let i = 0; i < due; i++) {
+        const { pos, vel } = sq.from();
+        this.drops.push(this.debris.add({ kind: 'drop', pos, vel, rest: 0.03, size: rand(0.04, 0.1) }));
+        sq.left--;
+      }
+      this.dropMesh.count = this.drops.length;
+    }
+    // Pieces skidding across the table leave juicy smears behind them.
+    for (const p of this.pieces) {
+      const b = p.body;
+      if (b.kind === 'band' || b.settled || b.pos.y > b.rest + 0.02) continue;
+      const hs = Math.hypot(b.vel.x, b.vel.z);
+      if (hs < 1.2) continue;
+      const last = this.smear.get(b);
+      if (!last) {
+        this.smear.set(b, { x: b.pos.x, z: b.pos.z });
+        continue;
+      }
+      if (Math.hypot(b.pos.x - last.x, b.pos.z - last.z) > SMEAR_EVERY) {
+        this.addSplat(b.pos.x, b.pos.z, b.size * rand(0.35, 0.6), 0, Math.atan2(b.vel.z, b.vel.x), 2.2);
+        last.x = b.pos.x;
+        last.z = b.pos.z;
+      }
+    }
     for (const s of this.splats) s.t += dt;
     this.syncSplats();
     // Faces stay on the camera side of their chunk.
@@ -348,9 +438,9 @@ export class Explosion {
     this.splats.forEach((s, i) => {
       const grow = s.t <= 0 ? 0 : 1 - Math.pow(1 - clamp(s.t / 0.18, 0, 1), 3);
       const k = Math.max(0.0001, s.r * grow * fade);
-      tmpS.set(k, 1, k * 0.92);
-      tmpV.set(s.x, 0.004 + (i % 7) * 0.0006, s.z);
-      tmpQ.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, s.tint * TAU);
+      tmpS.set(k * s.stretch, 1, k / Math.sqrt(s.stretch));
+      tmpV.set(s.x, 0.004 + (i % 9) * 0.0005, s.z);
+      tmpQ.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, -s.ang);
       tmpM.compose(tmpV, tmpQ, tmpS);
       this.splatMesh.setMatrixAt(i, tmpM);
       this.splatMesh.setColorAt(i, color.set(s.tint < 0.5 ? W.fleshLight : W.flesh));
@@ -428,10 +518,14 @@ export class Explosion {
     this.faces = [];
     this.drops = [];
     this.seeds = [];
+    this.pulp = [];
+    this.squirt = null;
+    this.smear.clear();
     this.splats = [];
     this.debris.clear();
     this.dropMesh.count = 0;
     this.seedMesh.count = 0;
+    this.pulpMesh.count = 0;
     this.splatMesh.count = 0;
     this.clearT = -1;
     this.strands = 0;
@@ -568,6 +662,33 @@ export function chunkGeometry(r: number) {
     p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.85, p.getZ(i) * k);
   }
   geo.computeVertexNormals();
+  return geo;
+}
+
+/** A juice splat: a soft, lumpy blob lying on the table (radius ≈ 1). */
+export function blobGeometry() {
+  const shapes: THREE.Shape[] = [];
+  const shape = new THREE.Shape();
+  const n = 40;
+  const lobes = [rand(0, TAU), rand(0, TAU), rand(0, TAU)];
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * TAU;
+    const r = 1 + 0.16 * Math.sin(a * 3 + lobes[0]) + 0.1 * Math.sin(a * 5 + lobes[1]) + 0.06 * Math.sin(a * 9 + lobes[2]);
+    if (i === 0) shape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else shape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  // Little satellite droplets round the edge.
+  for (let k = 0; k < 5; k++) {
+    const a = rand(0, TAU);
+    const d = rand(1.25, 1.6);
+    const r = rand(0.08, 0.16);
+    const dot = new THREE.Shape();
+    dot.absarc(Math.cos(a) * d, Math.sin(a) * d, r, 0, TAU, false);
+    shapes.push(dot);
+  }
+  shapes.push(shape);
+  const geo = new THREE.ShapeGeometry(shapes, 6);
+  geo.rotateX(-Math.PI / 2);
   return geo;
 }
 
