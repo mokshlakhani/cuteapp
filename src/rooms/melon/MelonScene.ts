@@ -157,17 +157,19 @@ export class MelonScene {
     this.explosion.events = e;
   }
 
-  /** The face sits on the front of the left lobe, looking at you. */
+  /** The face sits in the middle of the melon's front, the right way up, looking at you. */
   private placeFace() {
     const u = this.uniforms;
-    const c = new THREE.Vector3(-0.4, 0.26, 0.88).normalize();
+    // Middle of the front, tipped up toward the camera.
+    const c = new THREE.Vector3(0, 0.34, 0.94).normalize();
     u.uFaceC.value.copy(c);
     u.uShape.value.set(MELON_A, MELON_R);
     const q = new THREE.Vector3(c.x * MELON_A, c.y * MELON_R, c.z * MELON_R);
     const n = new THREE.Vector3(q.x / MELON_A ** 2, q.y / MELON_R ** 2, q.z / MELON_R ** 2).normalize();
     const U = new THREE.Vector3(1, 0, 0).addScaledVector(n, -n.x).normalize();
     u.uFaceU.value.copy(U);
-    u.uFaceV.value.copy(new THREE.Vector3().crossVectors(U, n));
+    // The face canvas is flipped on upload (flipY), so its "down" points up the melon.
+    u.uFaceV.value.copy(new THREE.Vector3().crossVectors(n, U));
     u.uFaceSize.value = 1.9;
   }
 

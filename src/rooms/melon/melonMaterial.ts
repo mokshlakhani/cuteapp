@@ -7,7 +7,7 @@ import { fruitPalette } from '../../design/fruitPalette';
  * unit melon (so stripes stay put however much the bands squeeze it, and the
  * rind shards that fly off after the pop keep their stripes).
  *
- * The face is a small canvas projected onto the front of the left lobe, so it
+ * The face is a small canvas projected onto the middle of its front, so it
  * squashes and bulges with the melon, like every face in soft spot.
  */
 
@@ -92,7 +92,7 @@ export function makeMelonMaterial(withFace: boolean) {
   const uniforms: MelonUniforms = {
     uFace: { value: null },
     uFaceOn: { value: withFace ? 1 : 0 },
-    uFaceC: { value: new THREE.Vector3(-0.4, 0.26, 0.88).normalize() },
+    uFaceC: { value: new THREE.Vector3(0, 0.34, 0.94).normalize() },
     uFaceU: { value: new THREE.Vector3(1, 0, 0) },
     uFaceV: { value: new THREE.Vector3(0, -1, 0) },
     uFaceSize: { value: 1.25 },
