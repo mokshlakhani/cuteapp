@@ -1,6 +1,6 @@
 import { noise1 } from '../core/math';
 
-const reducedMotion = (() => {
+export const reducedMotion = (() => {
   try {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   } catch {

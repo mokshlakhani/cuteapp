@@ -29,6 +29,9 @@ const K_GRAB = 2600;
 /** How quickly a held point catches up with the finger (1/s). */
 const GRAB_FOLLOW = 22;
 
+/** The longest a held bubble lasts before it gives (s); each one differs a little below it. */
+export const HOLD_MAX = 4;
+
 const STRAIN_STEPS: [number, number][] = [
   [1, 0.35],
   [2, 0.62],
@@ -205,7 +208,7 @@ export class Sheet {
           r: this.radius * rand(0.95, 1.04),
           popped: false,
           press: 0,
-          toughness: rand(0.26, 0.44),
+          toughness: rand(HOLD_MAX * 0.8, HOLD_MAX),
           pressing: false,
           limit: rand(1.46, 1.7),
           strainT: 0,

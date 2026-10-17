@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Sheet, type BubbleSize } from '../src/rooms/wrap/Sheet';
+import { HOLD_MAX, Sheet, type BubbleSize } from '../src/rooms/wrap/Sheet';
 import { POPPED_LOOKS } from '../src/rooms/wrap/popped';
 
 function run(s: Sheet, seconds: number) {
@@ -41,6 +41,17 @@ describe('bubble wrap sheet', () => {
     expect(popped).toEqual([8]);
   });
 
+  it('holds out up to four seconds, never longer', () => {
+    const s = new Sheet(350, 560, 'regular', 0, 0, false);
+    for (const b of s.bubbles) expect(b.toughness).toBeLessThanOrEqual(HOLD_MAX);
+    const b = s.bubbles[5];
+    b.pressing = true;
+    run(s, HOLD_MAX * 0.75);
+    expect(b.popped).toBe(false);
+    run(s, HOLD_MAX * 0.25 + 0.05);
+    expect(b.popped).toBe(true);
+  });
+
   it('feels three steps of resistance, and a full squeeze pops hardest', () => {
     const s = new Sheet(350, 560, 'regular', 0, 0, false);
     const steps: number[] = [];
@@ -48,7 +59,7 @@ describe('bubble wrap sheet', () => {
     s.events.strain = (_b, step) => steps.push(step);
     s.events.pop = (b) => power.set(s.bubbles.indexOf(b), b.power);
     s.bubbles[3].pressing = true;
-    run(s, 0.6);
+    run(s, HOLD_MAX + 0.1);
     expect(steps).toEqual([1, 2, 3]);
     expect(power.get(3)).toBe(1);
     // A quick tap: pressed for a moment, then let go.

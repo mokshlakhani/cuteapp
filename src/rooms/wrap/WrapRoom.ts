@@ -13,7 +13,7 @@ import { haptics, type HapticWord } from '../../core/haptics';
 import { settings } from '../../core/settings';
 import { paintBackdrop, paintGrain } from '../../render/paint';
 import { Particles } from '../../render/particles';
-import { Shake } from '../../render/camera';
+import { Shake, reducedMotion } from '../../render/camera';
 import { el, iconButton, Hint, Segmented, tactile } from '../../ui/components';
 import { Sheet, type Bubble, type BubbleSize, type PopCause } from './Sheet';
 import { FILMS, drawRoll, drawSheet, drawSwatch, film, warmPopped, type Film } from './draw';
@@ -49,6 +49,8 @@ const ROLL_END = 8;
 /** How big a pop sounds and feels, by bubble size. */
 const POP_SIZE: Record<BubbleSize, number> = { small: 0.15, regular: 0.5, jumbo: 0.9 };
 const POP_HAPTIC: Record<BubbleSize, HapticWord> = { small: 'tap', regular: 'snap', jumbo: 'thud' };
+/** How far the view leans in on a bubble held right to the end (1 = none). */
+const ZOOM_MAX = 1.2;
 
 const PREFS = 'softspot.wrap.v1';
 
@@ -97,6 +99,13 @@ export class WrapRoom implements Scene {
   private dozing = false;
   /** All popped looks painted for this sheet yet? */
   private warm = false;
+  /** Holding a bubble down: how tense it is (0..1), the mews, the lean-in. */
+  private tension = 0;
+  private meowT = 0;
+  private pulse = 0;
+  private zoom = 1;
+  private zx = 0;
+  private zy = 0;
 
   private segmented: Segmented<Tool>;
   private plus: HTMLButtonElement;
@@ -334,7 +343,22 @@ export class WrapRoom implements Scene {
     const power = strain ? 0.45 : b.power;
     material.bubblePop(z, power, order, panFor(b.x, this.w), b.voice);
     haptics.play(strain ? 'tap' : power > 0.8 ? POP_HAPTIC[s.size] : s.size === 'jumbo' ? 'snap' : 'tap');
-    if (s.size === 'jumbo' && power > 0.8) this.shake.kick(2.2);
+    if (cause === 'press' && power >= 1) {
+      // Held right to the end: the big release.
+      material.meowRelief(panFor(b.x, this.w), b.voice);
+      haptics.play('thud');
+      this.shake.kick(s.size === 'jumbo' ? 3.2 : 2);
+      this.particles.emit({
+        kind: 'sparkle',
+        x: b.x,
+        y: b.y,
+        count: 4,
+        speed: [70, 150],
+        size: [3.5, 6],
+        life: [0.5, 0.8],
+        color: '#ffffff',
+      });
+    } else if (s.size === 'jumbo' && power > 0.8) this.shake.kick(2.2);
     else if (s.size === 'regular' && power > 0.95) this.shake.kick(0.8);
     b.wobble.impulse(9);
     if (b.face) {
@@ -423,7 +447,15 @@ export class WrapRoom implements Scene {
 
   // ——— input ———
 
-  pointerDown(p: Pointer) {
+  /** The view leans in on a held bubble; turn a finger into a spot on the table. */
+  private toWorld(p: Pointer): Pointer {
+    if (this.zoom === 1) return p;
+    const z = this.zoom;
+    return { ...p, x: this.zx + (p.x - this.zx) / z, y: this.zy + (p.y - this.zy) / z, vx: p.vx / z, vy: p.vy / z };
+  }
+
+  pointerDown(screen: Pointer) {
+    const p = this.toWorld(screen);
     if (this.open) {
       this.toggle(false);
       return;
@@ -458,7 +490,8 @@ export class WrapRoom implements Scene {
     haptics.play('tick');
   }
 
-  pointerMove(p: Pointer) {
+  pointerMove(screen: Pointer) {
+    const p = this.toWorld(screen);
     const t = this.touches.get(p.id);
     const s = this.sheet;
     if (!t || !s || this.phase !== 'play') return;
@@ -587,6 +620,7 @@ export class WrapRoom implements Scene {
       s.frame();
     }
     s.update(dt);
+    this.tense(dt);
 
     // Ripples: wake-ups and the finale travel out across the sheet.
     for (const b of s.bubbles) {
@@ -631,6 +665,44 @@ export class WrapRoom implements Scene {
     }
   }
 
+  /** The bubble being held down hardest right now, if any. */
+  private held() {
+    let best: Bubble | null = null;
+    for (const t of this.touches.values()) {
+      const b = t.bubble;
+      if (b && b.pressing && !b.popped && (!best || b.press > best.press)) best = b;
+    }
+    return best;
+  }
+
+  /**
+   * A held bubble builds up over its few seconds: mews that come quicker,
+   * higher and shakier, a face that goes from squished to sweating, a glow
+   * that pulses faster, and the view slowly leaning in on it.
+   */
+  private tense(dt: number) {
+    const b = this.phase === 'play' ? this.held() : null;
+    const k = b ? b.press : 0;
+    this.tension += (k - this.tension) * Math.min(1, dt * (k > this.tension ? 12 : 5));
+    this.pulse += dt * lerp(1.2, 7, this.tension);
+    if (b) {
+      this.zx = b.x;
+      this.zy = b.y;
+      this.meowT -= dt;
+      if (k > 0.06 && this.meowT <= 0) {
+        this.meowT = lerp(0.95, 0.24, k ** 1.3) * rand(0.85, 1.15);
+        material.meow(k, panFor(b.x, this.w), b.voice);
+        haptics.play(k > 0.7 ? 'tap' : 'tick');
+        b.wobble.impulse(-1.5 - k * 2.5);
+        if (k > 0.75) this.shake.kick(0.3 + (k - 0.75) * 2);
+      }
+      if (k > 0.6) b.face?.set('strain', 0.3);
+    } else this.meowT = 0;
+    const target = b && !reducedMotion ? lerp(1, ZOOM_MAX, smoothstep(0.05, 1, k)) : 1;
+    this.zoom += (target - this.zoom) * Math.min(1, dt * (target > this.zoom ? 4 : 3));
+    if (Math.abs(this.zoom - 1) < 0.0005) this.zoom = 1;
+  }
+
   /** How much of a fresh sheet has unrolled (0..1). */
   private get unrolled() {
     return ease.inOutCubic(clamp(this.phaseT / UNROLL, 0, 1));
@@ -644,6 +716,11 @@ export class WrapRoom implements Scene {
     paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null });
     ctx.save();
     this.shake.apply(ctx, w / 2, h / 2);
+    if (this.zoom !== 1) {
+      ctx.translate(this.zx, this.zy);
+      ctx.scale(this.zoom, this.zoom);
+      ctx.translate(-this.zx, -this.zy);
+    }
     const s = this.sheet;
     if (s) {
       if (this.phase === 'unroll') {
@@ -684,8 +761,38 @@ export class WrapRoom implements Scene {
         ctx.fill();
       }
     }
+    const held = this.held();
+    if (held && this.tension > 0.05) this.drawTension(ctx, held);
     this.particles.draw(ctx);
     ctx.restore();
+    if (this.tension > 0.02) {
+      // Everything else dims a touch, so all eyes are on that one bubble.
+      const [cx, cy] = [this.zx, this.zy];
+      const g = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.12, cx, cy, Math.max(w, h) * 0.8);
+      g.addColorStop(0, `rgba(${t.shadowRgb},0)`);
+      g.addColorStop(1, `rgba(${t.shadowRgb},${0.3 * this.tension * t.shadowStrength})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
     paintGrain(ctx, w, h, t);
+  }
+
+  /** A soft glow round the held bubble that throbs quicker as it nears popping. */
+  private drawTension(ctx: CanvasRenderingContext2D, b: Bubble) {
+    const k = this.tension;
+    const beat = 0.5 + 0.5 * Math.sin(this.pulse * Math.PI * 2);
+    const r = b.r * (1.25 + k * 0.35 + beat * 0.12 * k);
+    const g = ctx.createRadialGradient(b.x, b.y, b.r * 0.9, b.x, b.y, r);
+    g.addColorStop(0, rgba('#ffffff', (0.18 + beat * 0.22) * k));
+    g.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = rgba('#ffffff', (0.15 + beat * 0.35) * k);
+    ctx.lineWidth = 1.2 + k * 1.3;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r * (1.08 + beat * 0.06 * k), 0, Math.PI * 2);
+    ctx.stroke();
   }
 }

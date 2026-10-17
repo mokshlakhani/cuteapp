@@ -286,6 +286,68 @@ export const material = {
       lowpass: 2600,
     });
   },
+  /**
+   * A tiny worried "mew" from a bubble being held down. tension 0..1: early
+   * ones are soft and curious, late ones higher, shorter and shakier.
+   * `voice` keeps each bubble sounding like itself.
+   */
+  meow(tension: number, pan = 0, voice = 0) {
+    if (!gate('meow', 90)) return;
+    const k = clamp(tension, 0, 1);
+    const f = scale(Math.round(lerp(10, 15, k) + (voice % 3)));
+    const dur = lerp(0.3, 0.17, k);
+    const shaky = { rate: lerp(6, 16, k), depth: f * lerp(0.015, 0.05, k) };
+    const lowpass = lerp(1800, 2800, k);
+    // "mi-": a quick rise…
+    audio.tone({
+      freq: f * 0.82,
+      to: f * 1.08,
+      glide: dur * 0.35,
+      attack: 0.02,
+      decay: dur * 0.45,
+      gain: 0.045 + k * 0.035,
+      type: 'sawtooth',
+      lowpass,
+      pan,
+      vibrato: shaky,
+      reverb: 0.15,
+    });
+    // "…ow": and a droop.
+    audio.tone({
+      freq: f * 1.08,
+      to: f * 0.72,
+      glide: dur * 0.6,
+      attack: 0.015,
+      decay: dur * 0.7,
+      gain: 0.04 + k * 0.03,
+      type: 'sawtooth',
+      lowpass: lowpass * 0.8,
+      pan,
+      vibrato: shaky,
+      reverb: 0.15,
+      delay: dur * 0.3,
+    });
+    // A breathy edge so it reads as a voice, not a beep.
+    audio.noise({ dur: dur * 0.8, attack: 0.02, gain: 0.008 + k * 0.01, filter: 'bandpass', freq: 2600, q: 2, pan });
+  },
+  /** The held bubble finally giving: a happy little "mrrp!" after the pop. */
+  meowRelief(pan = 0, voice = 0) {
+    const f = scale(12 + (voice % 3));
+    audio.tone({
+      freq: f * 0.9,
+      to: f * 1.35,
+      glide: 0.09,
+      attack: 0.01,
+      decay: 0.16,
+      gain: 0.07,
+      type: 'sawtooth',
+      lowpass: 2600,
+      pan,
+      reverb: 0.3,
+      delay: 0.09,
+      vibrato: { rate: 28, depth: f * 0.04 },
+    });
+  },
   /** A whole row popped in one go: a bright little chime along it. */
   bubbleRow(pan = 0) {
     [0, 2, 4, 7].forEach((step, i) =>
