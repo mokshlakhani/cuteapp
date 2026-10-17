@@ -3,17 +3,17 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Face, drawFace } from '../../render/face';
 import { clamp, rand } from '../../core/math';
 import { polyCentroid } from '../../core/geometry';
-import { Piece, WEDGE, collidePieces, wedgeFootprint, type Bounds, type PhysicsParams } from './Piece';
+import { Piece, WEDGE, collidePieces, mergePieces, wedgeFootprint, type Bounds, type PhysicsParams } from './Piece';
 import { createShared, makeJellyMaterial, type LocalUniforms, type SharedUniforms } from './material';
-import { Knife } from './Knife';
-import { strokeHits, strokePlane } from './cutting';
+import { KNIFE_EDGE_HALF, Knife, type CutResult } from './Knife';
+import { bladeSpan, bladeTouches, cutPiece, strokePlane } from './cutting';
 import { jellyFruit } from './fruits';
 
 /**
  * The jelly table: a small three.js world seen from above, lit like the
  * rest of soft spot — one soft key light from the upper left, a gentle fill,
  * and warm cocoa-tinted shadows (never grey) — with the soft fruit jellies
- * and the cleaver.
+ * and the knife.
  */
 
 interface Entry {
@@ -31,7 +31,23 @@ export interface LabEvents {
   impact?(p: Piece, speed: number): void;
   bump?(a: Piece, b: Piece, speed: number): void;
   cut?(count: number, tooSmall: number): void;
+  /** The knife bounced off pieces too small to cut. */
+  bounce?(pieces: Piece[], tableFull: boolean): void;
+  /** Two pieces are being pressed together (0..1 of the way to melting). */
+  pressing?(a: Piece, b: Piece, amount: number): void;
+  /** Two pieces melted into one. */
+  merge?(merged: Piece, from: [Piece, Piece]): void;
   land?(): void;
+}
+
+interface CutLine {
+  nx: number;
+  nz: number;
+  d: number;
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
 }
 
 export interface Stats {
@@ -41,13 +57,15 @@ export interface Stats {
   pieces: number;
 }
 
-const MAX_PIECES = 48;
+const MAX_PIECES = 64;
 /** Camera elevation: 90° would be straight down. */
 const TOP_VIEW_DEG = 74;
 /** How far a held jelly lifts off the table (cm). */
 const LIFT = 1.6;
 const MIN_VOLUME = 0.35;
 const FACE_PX = 128;
+/** How long two same-fruit pieces must be pressed together to melt (s). */
+const MERGE_TIME = 0.4;
 
 export class Lab {
   readonly canvas: HTMLCanvasElement;
@@ -68,11 +86,16 @@ export class Lab {
   private w = 1;
   private h = 1;
   private ray = new THREE.Raycaster();
-  private grabPlanes = new Map<number, { piece: Piece; plane: THREE.Plane }>();
+  private grabPlanes = new Map<number, { piece: Piece; plane: THREE.Plane; finger: THREE.Vector3 }>();
+  /** Same-fruit pairs being pressed together, and for how long (s). */
+  private pressT = new Map<string, number>();
   private bumpCool = new Map<string, number>();
   private smoothVolume = 100;
   private idleT = 3;
-  private pendingCut: { nx: number; nz: number; d: number; ax: number; az: number; bx: number; bz: number } | null = null;
+  /** The line the knife is hovering over (not yet committed). */
+  private pendingCut: CutLine | null = null;
+  /** A chop on its way down: committed, so nothing can cancel it any more. */
+  private chopCut: CutLine | null = null;
   events: LabEvents = {};
 
   constructor() {
@@ -122,6 +145,7 @@ export class Lab {
 
     this.scene.add(this.knife.group);
     this.knife.onCut = () => this.applyCut();
+    this.knife.viewCot = 1 / Math.tan(THREE.MathUtils.degToRad(TOP_VIEW_DEG));
     this.knife.onLand = () => this.events.land?.();
 
     this.shared = createShared();
@@ -185,6 +209,8 @@ export class Lab {
     for (const e of this.entries) this.disposeEntry(e);
     this.entries = [];
     this.grabPlanes.clear();
+    this.pressT.clear();
+    this.pendingCut = this.chopCut = null;
     const w = new Piece(wedgeFootprint(), 0, WEDGE.height);
     // Apex points back-right, rind faces the viewer-left, like the reference.
     w.placeRest(-0.75, 0, WEDGE.height / 2 + 0.02, 0);
@@ -318,7 +344,7 @@ export class Lab {
     hit.piece.moveGrab(id, hit.point.x, hit.point.y + LIFT, hit.point.z);
     // Seen from above, you slide jellies around the table, lifted a touch.
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -hit.point.y);
-    this.grabPlanes.set(id, { piece: hit.piece, plane });
+    this.grabPlanes.set(id, { piece: hit.piece, plane, finger: hit.point.clone() });
     return hit.piece;
   }
 
@@ -330,6 +356,7 @@ export class Lab {
     if (!this.ray.ray.intersectPlane(g.plane, p)) return;
     p.x = clamp(p.x, this.bounds.minX, this.bounds.maxX);
     p.z = clamp(p.z, this.bounds.minZ, this.bounds.maxZ);
+    g.finger.copy(p);
     g.piece.moveGrab(id, p.x, p.y + LIFT, p.z);
   }
 
@@ -398,34 +425,40 @@ export class Lab {
       this.knife.cancel();
       return;
     }
+    // A chop still on its way down lands first.
+    if (this.chopCut) this.applyCut();
+    this.chopCut = this.pendingCut;
+    this.pendingCut = null;
     // If the knife couldn't start a chop, never swallow the cut.
     if (!this.knife.chop()) this.applyCut();
   }
 
+  /** Drop the line being aimed. A chop already coming down still lands. */
   cancelKnife() {
     this.pendingCut = null;
     this.knife.cancel();
   }
 
-  private applyCut() {
-    const c = this.pendingCut;
-    this.pendingCut = null;
-    if (!c) return;
+  private applyCut(): CutResult {
+    const c = this.chopCut;
+    this.chopCut = null;
+    if (!c) return 'none';
     const stroke = { ax: c.ax, az: c.az, bx: c.bx, bz: c.bz };
     const plane = strokePlane(stroke);
+    // Whatever the blade comes down on is cut — the whole edge, not just
+    // the line you drew.
+    const blade = bladeSpan(stroke, KNIFE_EDGE_HALF);
     let cuts = 0;
-    let missed = 0;
+    const tooSmall: Piece[] = [];
+    let full = false;
     for (const e of [...this.entries]) {
-      if (this.entries.length >= MAX_PIECES) break;
       const p = e.piece;
-      // Cut exactly what the blade passes through, seen from above.
-      if (!strokeHits(p, stroke)) continue;
-      const parts = p.split(plane.nx, 0, plane.nz, plane.d, MIN_VOLUME);
+      if (!bladeTouches(p, blade)) continue;
+      // The table holds so many pieces; past that the blade bounces off.
+      const parts = this.entries.length < MAX_PIECES ? cutPiece(p, plane, MIN_VOLUME) : null;
+      if (!parts && this.entries.length >= MAX_PIECES) full = true;
       if (!parts) {
-        // Too tiny to split further: it still flinches under the blade.
-        missed++;
-        for (let i = 0; i < p.n; i++) p.vy[i] -= 30;
-        p.face?.set('squeeze', 0.5);
+        tooSmall.push(p);
         continue;
       }
       cuts++;
@@ -446,7 +479,83 @@ export class Lab {
         }
       }
     }
-    this.events.cut?.(cuts, missed);
+    if (cuts === 0 && tooSmall.length) {
+      // Too tiny to split: the blade boings off and they jiggle, unbothered.
+      for (const p of tooSmall) {
+        for (let i = 0; i < p.n; i++) {
+          if (p.y[i] > p.cy) p.vy[i] -= 55;
+          p.vy[i] += 18;
+        }
+        p.face?.set('happy', 1.2);
+      }
+      this.events.bounce?.(tooSmall, full);
+    } else {
+      // Mixed cut: the crumbs it couldn't split still flinch under the blade.
+      for (const p of tooSmall) {
+        for (let i = 0; i < p.n; i++) p.vy[i] -= 30;
+        p.face?.set('squeeze', 0.5);
+      }
+    }
+    this.events.cut?.(cuts, tooSmall.length);
+    return cuts > 0 ? 'cut' : tooSmall.length ? 'bounce' : 'none';
+  }
+
+  // ——— merging ———
+
+  /**
+   * Press a held piece against another piece of the same fruit for a moment
+   * and the two melt into one. Different fruits just bump.
+   */
+  private updateMerging(dt: number) {
+    const seen = new Set<string>();
+    for (const g of this.grabPlanes.values()) {
+      const h = g.piece;
+      for (const o of h.touching) {
+        if (o === h || o.fruit !== h.fruit) continue;
+        const key = h.id < o.id ? `${h.id}:${o.id}` : `${o.id}:${h.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const t = (this.pressT.get(key) ?? 0) + dt;
+        if (t >= MERGE_TIME) {
+          this.pressT.delete(key);
+          this.merge(h, o);
+          return; // entries changed; carry on next frame
+        }
+        this.pressT.set(key, t);
+        this.events.pressing?.(h, o, t / MERGE_TIME);
+      }
+    }
+    for (const k of [...this.pressT.keys()]) if (!seen.has(k)) this.pressT.delete(k);
+  }
+
+  private merge(a: Piece, b: Piece) {
+    if (!this.entries.some((e) => e.piece === a) || !this.entries.some((e) => e.piece === b)) return;
+    const m = mergePieces(a, b);
+    const face = (a.restVolume >= b.restVolume ? a.face : b.face) ?? (a.face || b.face);
+    for (const p of [a, b]) {
+      const e = this.entries.find((x) => x.piece === p);
+      if (!e) continue;
+      this.disposeEntry(e);
+      this.entries.splice(this.entries.indexOf(e), 1);
+    }
+    this.add(m);
+    if (face || m.inradius > 0.7) this.giveFace(m, face ?? new Face());
+    m.face?.set('happy', 1.4);
+    // A soft "plop" as they settle into one.
+    for (let i = 0; i < m.n; i++) {
+      if (m.y[i] > m.cy) m.vy[i] -= 40;
+      m.vy[i] += 30;
+    }
+    // Whoever was holding a melted piece keeps holding the new one.
+    for (const [id, g] of this.grabPlanes) {
+      if (g.piece !== a && g.piece !== b) continue;
+      const f = g.finger;
+      const [hx, hy, hz] = m.toRest(f.x, Math.min(f.y, m.y1), f.z);
+      m.grab(id, hx, hy, hz);
+      m.moveGrab(id, f.x, f.y + LIFT, f.z);
+      g.piece = m;
+    }
+    this.events.merge?.(m, [a, b]);
   }
 
   // ——— simulation ———
@@ -459,7 +568,10 @@ export class Lab {
     const h = dt / steps;
     const P = this.params();
     const ps = this.entries.map((e) => e.piece);
-    for (const p of ps) p.impact = 0;
+    for (const p of ps) {
+      p.impact = 0;
+      p.touching.clear();
+    }
     for (let s = 0; s < steps; s++) {
       for (const p of ps) {
         p.step(h, P);
@@ -493,6 +605,7 @@ export class Lab {
       this.expressions(p);
       p.face?.update(realDt);
     }
+    this.updateMerging(dt);
   }
 
   private maybeBump(a: Piece, b: Piece, v: number) {
@@ -605,6 +718,10 @@ const tmpSize = new THREE.Vector2();
 let shared: Lab | null = null;
 /** One WebGL context for the whole app (room + home preview). */
 export function getLab() {
-  if (!shared) shared = new Lab();
+  if (!shared) {
+    shared = new Lab();
+    // Dev builds only: a handle for poking at the table from the console.
+    if (import.meta.env.DEV) (window as unknown as { __jellyLab: Lab }).__jellyLab = shared;
+  }
   return shared;
 }
