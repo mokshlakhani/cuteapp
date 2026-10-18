@@ -145,6 +145,8 @@ describe('burst', () => {
     m.breakAt = 60;
     wrap(m, 40);
     const counts = new Set<number>();
+    const near: number[] = [];
+    const far: number[] = [];
     for (let k = 0; k < 6; k++) {
       const frags = fracture(m, m.grooveX);
       counts.add(frags.length);
@@ -153,14 +155,17 @@ describe('burst', () => {
       // Real variety in size, and every scrap of rind belongs to a piece.
       expect(Math.max(...areas) / Math.min(...areas)).toBeGreaterThan(2.5);
       expect(areas.reduce((a, b) => a + b, 0)).toBeGreaterThan(0.5);
-      const near = frags.filter((f) => Math.abs(f.centre.x / 2.25 - m.grooveX) < 0.35);
-      const far = frags.filter((f) => Math.abs(f.centre.x / 2.25 - m.grooveX) > 0.6);
-      if (near.length && far.length) {
-        const avg = (fs: typeof frags) => fs.reduce((a, f) => a + f.area, 0) / fs.length;
-        expect(avg(near)).toBeLessThan(avg(far));
+      for (const f of frags) {
+        const d = Math.abs(f.centre.x / 2.25 - m.grooveX);
+        if (d < 0.35) near.push(f.area);
+        else if (d > 0.6) far.push(f.area);
       }
     }
     expect(counts.size).toBeGreaterThan(1);
+    // Pooled over the bursts: a single burst flips about 1 time in 25, but
+    // across six the split pieces average well under the end pieces (~0.58x).
+    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    expect(avg(near)).toBeLessThan(avg(far));
   });
 
   it('turns every band into a strand or a loop, and everything settles on the table', async () => {
