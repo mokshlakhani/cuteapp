@@ -1,19 +1,22 @@
 import type { Preview } from '../../app/scene';
 import { theme } from '../../design/theme';
-import { clamp, rand, TAU } from '../../core/math';
+import { clamp, lerp, rand, TAU } from '../../core/math';
 import { rgba } from '../../core/color';
 import { material } from '../../core/sounds';
 import { Face } from '../../render/face';
 import { Glass } from './Glass';
 import { DRINKS } from './drinks';
-import { drawGlass, glassShape, halfAt, yAt } from './draw';
+import { drawGlass, drawJug, glassShape, halfAt, jugShape, spout, yAt } from './draw';
 
 const SODA = DRINKS[1];
+/** The small jug's tilt while it pours, and where its stream lands (× glass width). */
+const TILT = 0.92;
+const AIM = -0.12;
 
 /**
- * A little glass of peach soda for the home card. It slowly fills from a
- * thin stream, fizzes, and quietly empties again. Poke it and it sloshes,
- * giggles and glugs.
+ * A little glass of peach soda for the home card. A small jug tips and fills
+ * it to its line, it fizzes a while, and quietly empties again. Poke it and
+ * it sloshes, giggles and glugs.
  */
 export function pourPreview(): Preview {
   const glass = new Glass(SODA.foamy, 0.62);
@@ -23,19 +26,24 @@ export function pourPreview(): Preview {
   let phase: 'fill' | 'rest' | 'drain' = 'fill';
   let phaseT = 0;
   let poured = 0;
+  let tilt = 0;
 
   return {
     update(dt) {
       time += dt;
       phaseT += dt;
       face.update(dt);
+      const pouring = phase === 'fill' && glass.level < glass.line;
+      tilt += ((pouring ? TILT : 0) - tilt) * Math.min(1, dt * 6);
       if (phase === 'fill') {
-        if (glass.level < glass.line) {
-          glass.add(0.12 * dt, 0.5, 500);
-          poured += dt;
-          if (poured > 0.22) {
-            poured = 0;
-            material.glug(glass.level, 0.2);
+        if (pouring) {
+          if (tilt > 0.6) {
+            glass.add(0.12 * dt, 0.4, 500);
+            poured += dt;
+            if (poured > 0.22) {
+              poured = 0;
+              material.glug(glass.level, 0.2);
+            }
           }
         } else if (phaseT > 1) {
           phase = 'rest';
@@ -59,33 +67,43 @@ export function pourPreview(): Preview {
     },
     draw(ctx, x, y, w, h) {
       const t = theme.current;
-      const gW = Math.min(w * 0.36, h * 0.5);
-      const g = glassShape(x + w / 2, y + h * 0.78, gW);
-      // The thin stream, while it's filling.
-      if (phase === 'fill' && glass.level < glass.line) {
-        ctx.strokeStyle = SODA.color;
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(g.cx, y + h * 0.04);
-        ctx.lineTo(g.cx, yAt(g, glass.top));
-        ctx.stroke();
-      }
+      // Above the card's label band, like the other toys.
+      const gW = Math.min(w * 0.3, h * 0.36);
+      const g = glassShape(x + w / 2, y + h * 0.7, gW);
+      const j = jugShape(gW);
+      const jx = g.cx + gW * AIM - spout(j, 0, 0, TILT).x;
+      const jy = yAt(g, 1) - gW * 0.68 - 6;
       drawGlass(ctx, t, g, glass, SODA, {
         face,
-        glow: 0,
-        nudge: 0,
         time,
+        lineIn: 1,
+        pointer: false,
+        glint: 0,
+        lit: 0,
+        nudge: 0,
         inside: (c) => {
           c.fillStyle = rgba('#ffffff', 0.55);
           for (const b of bubbles) {
             const half = halfAt(g, b.f);
             c.beginPath();
-            c.arc(g.cx - half + b.u * half * 2, yAt(g, b.f), 1.3, 0, TAU);
+            c.arc(g.cx - half + b.u * half * 2, yAt(g, b.f), 1.1, 0, TAU);
             c.fill();
           }
         },
       });
+      // The stream, from the spout down to the drink.
+      if (tilt > 0.6 && phase === 'fill') {
+        const lip = spout(j, jx, jy, tilt);
+        const sy = yAt(g, glass.top);
+        ctx.strokeStyle = SODA.color;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = lerp(1.5, 3, clamp((tilt - 0.6) / 0.3, 0, 1));
+        ctx.beginPath();
+        ctx.moveTo(lip.x, lip.y);
+        ctx.quadraticCurveTo(lip.x - 2, (lip.y + sy) / 2, lip.x - 3, sy);
+        ctx.stroke();
+      }
+      drawJug(ctx, t, j, jx, jy + Math.sin(time * 2.1) * 0.8 * (1 - tilt), tilt, SODA);
     },
     poke() {
       glass.slosh(clamp(1.5 + Math.random(), 0, 3));

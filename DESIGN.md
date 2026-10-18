@@ -19,6 +19,9 @@ rest is a short list of rules.
 3. **No pressure.** No scores, timers, coins, lives, streaks, badges or
    progress bars. Nothing can be failed. Every "ending" (a burst, a pile of
    jelly pieces) resets itself gently or with one tap.
+   _The one exception is **pour**, which keeps a streak of perfect pours and
+   your best — quietly, in the top bar's centre, with no penalty for a miss
+   beyond the streak starting over._
 4. **Feel over features.** When in doubt, make an existing interaction 20%
    more satisfying instead of adding something.
 5. **Everything is alive.** Toys breathe, blink, wobble and look at your
@@ -28,9 +31,9 @@ rest is a short list of rules.
 
 | token                          | day                    | dusk                  | use                             |
 | ------------------------------ | ---------------------- | --------------------- | ------------------------------- |
-| `bg` / `bgDeep`                | `#FCF8F1` / `#F5ECDF`  | `#3A3346` / `#2C2737` | vertical background wash        |
+| `bg` / `bgDeep`                | `#EFE5D7` / `#E4D6C3`  | `#3A3346` / `#2C2737` | vertical background wash        |
 | `surface`                      | `#FFFDF9`              | `#4A4258`             | buttons, cards, sheets          |
-| `surfaceSunk`                  | `#F1E8DA`              | `#3A3347`             | tracks, wells                   |
+| `surfaceSunk`                  | `#EAE0D2`              | `#3A3347`             | tracks, wells                   |
 | `ink` / `inkSoft` / `inkFaint` | warm cocoa `#5E4B42` … | warm cream …          | text & icons — never pure black |
 | `shadowRgb`                    | `128,92,66`            | `16,10,26`            | every shadow is warm-tinted     |
 

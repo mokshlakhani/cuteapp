@@ -44,15 +44,15 @@ export function feedback(v: Verdict, level: number, line: number, streak: number
   const pct = Math.round(Math.abs(level - line) * 100);
   switch (v) {
     case 'perfect': {
-      const titles = ['perfect!', 'spot on!', 'right on the line!'];
+      const titles = ['perfect', 'spot on', 'right on the line'];
       const title = titles[Math.floor(rnd() * titles.length)];
       return [title, streak >= 2 ? `${streak} in a row` : 'nice and steady'];
     }
     case 'under':
-      return [pct <= 8 ? 'so close!' : 'a bit short', `${pct}% under the line`];
+      return [pct <= 8 ? 'so close' : 'a bit short', `${pct}% under the line`];
     case 'over':
       return ['a little too much', `${pct}% over the line`];
     case 'spilled':
-      return ['whoops, it spilled', 'stop a little sooner'];
+      return ['it spilled over', 'let go a little sooner'];
   }
 }

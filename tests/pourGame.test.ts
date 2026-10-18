@@ -53,9 +53,9 @@ describe('the pour game', () => {
   });
 
   it('says how far off a miss was', () => {
-    expect(feedback('under', 0.6, 0.65, 0)).toEqual(['so close!', '5% under the line']);
+    expect(feedback('under', 0.6, 0.65, 0)).toEqual(['so close', '5% under the line']);
     expect(feedback('under', 0.4, 0.65, 0)[0]).toBe('a bit short');
     expect(feedback('over', 0.75, 0.65, 0)).toEqual(['a little too much', '10% over the line']);
-    expect(feedback('perfect', 0.65, 0.65, 4, () => 0)).toEqual(['perfect!', '4 in a row']);
+    expect(feedback('perfect', 0.65, 0.65, 4, () => 0)).toEqual(['perfect', '4 in a row']);
   });
 });

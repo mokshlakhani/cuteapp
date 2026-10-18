@@ -50,12 +50,14 @@ export type PastelName = keyof typeof pastel;
 export const themes: Record<Theme['name'], Theme> = {
   day: {
     name: 'day',
-    bg: '#FCF8F1',
-    bgDeep: '#F5ECDF',
+    // A warm oat ground, a step deeper than paper, so white glass, cards
+    // and highlights stand out against it.
+    bg: '#EFE5D7',
+    bgDeep: '#E4D6C3',
     surface: '#FFFDF9',
-    surfaceSunk: '#F1E8DA',
+    surfaceSunk: '#EAE0D2',
     ink: '#5E4B42',
-    inkSoft: '#9C8A7E',
+    inkSoft: '#8D7A6E',
     inkFaint: '#CDBFB2',
     shadowRgb: '128, 92, 66',
     shadowStrength: 1,

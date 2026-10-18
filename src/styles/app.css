@@ -6,12 +6,12 @@
  */
 
 :root {
-  --bg: #fcf8f1;
-  --bg-deep: #f5ecdf;
+  --bg: #efe5d7;
+  --bg-deep: #e4d6c3;
   --surface: #fffdf9;
-  --surface-sunk: #f1e8da;
+  --surface-sunk: #eae0d2;
   --ink: #5e4b42;
-  --ink-soft: #9c8a7e;
+  --ink-soft: #8d7a6e;
   --ink-faint: #cdbfb2;
   --shadow-rgb: 128, 92, 66;
   --accent: #a9d39a;
@@ -781,134 +781,121 @@ svg {
 
 .pour-hud {
   position: absolute;
-  top: calc(var(--safe-top) + 10px);
+  top: calc(var(--safe-top) + 14px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
   pointer-events: none;
 }
 
 .pour-streak {
+  height: 58px;
+  overflow: hidden;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1;
+  align-items: flex-end;
 }
 
 .pour-streak-num {
+  display: block;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 46px;
+  font-size: 56px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
   color: var(--ink);
-  letter-spacing: -0.01em;
 }
 
-.pour-streak-cap,
-.pour-best-cap {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.pour-streak-cap {
-  margin-top: 2px;
-}
-
+/* A hit rolls the new number up into place; a miss drops the zero in gently. */
 .pour-streak.is-up .pour-streak-num {
-  animation: pour-bump 520ms var(--ease-overshoot);
+  animation: pour-roll 560ms var(--ease-overshoot) both;
 }
 
 .pour-streak.is-reset .pour-streak-num {
-  animation: pour-drop 420ms var(--ease-out);
+  animation: pour-settle 520ms var(--ease-out) both;
 }
 
-@keyframes pour-bump {
-  0% {
-    transform: scale(1);
-  }
-  35% {
-    transform: scale(1.32);
-    color: var(--accent);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes pour-drop {
-  0% {
-    transform: translateY(-8px);
+@keyframes pour-roll {
+  from {
+    transform: translateY(70%);
     opacity: 0;
   }
-  100% {
+  to {
     transform: none;
     opacity: 1;
   }
 }
 
-.pour-best {
+@keyframes pour-settle {
+  from {
+    transform: translateY(-40%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.pour-meta {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
-  box-shadow: var(--shadow-soft);
-  transition: box-shadow var(--d-base) var(--ease-out);
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
 
-.pour-best-num {
+.pour-dot {
+  color: var(--ink-faint);
+}
+
+.pour-best b {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 15px;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 
-.pour-best.is-new {
-  box-shadow:
-    var(--shadow-soft),
-    0 0 0 2px var(--accent) inset;
+/* A new best: the number is underlined by a short stroke of the line's gold. */
+.pour-best.is-new b {
+  background: linear-gradient(var(--pour-gold), var(--pour-gold)) no-repeat 50% 100% / 100% 2px;
+  padding-bottom: 1px;
 }
 
 .pour-toast {
   position: absolute;
-  top: calc(var(--safe-top) + 124px);
+  top: calc(var(--safe-top) + 112px);
   left: 50%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   text-align: center;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transform: translate(-50%, 8px) scale(0.96);
+  transform: translate(-50%, 6px);
   transition:
-    transform 520ms var(--ease-overshoot),
+    transform 420ms var(--ease-out),
     opacity var(--d-base) var(--ease-out);
 }
 
 .pour-toast.is-shown {
   opacity: 1;
-  transform: translate(-50%, 0) scale(1);
+  transform: translate(-50%, 0);
 }
 
 .pour-toast-title {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 24px;
+  font-size: 26px;
+  letter-spacing: -0.01em;
   color: var(--ink);
-}
-
-.pour-toast.is-good .pour-toast-title {
-  color: color-mix(in srgb, var(--accent) 55%, var(--ink));
 }
 
 .pour-toast-sub {
@@ -917,28 +904,45 @@ svg {
   color: var(--ink-soft);
 }
 
-.pour-caption {
+/* The drink's name, standing on the counter in front of the glass. */
+.pour-tag {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 34px);
   transform: translateX(-50%);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: 0.01em;
   color: var(--ink-soft);
   white-space: nowrap;
   pointer-events: none;
+  transition:
+    opacity var(--d-base) var(--ease-out),
+    transform 420ms var(--ease-out);
 }
 
-/* No dock here: the hint sits between the table and the drink's name. */
+.pour-tag.is-leaving {
+  opacity: 0;
+  transform: translate(-50%, 4px);
+}
+
+.room-pour {
+  --pour-gold: #e8c766;
+}
+
+/* No dock here: the hint sits low, under the drink's name. */
 .room-pour .hint {
-  bottom: calc(var(--safe-bottom) + 70px);
+  bottom: calc(var(--safe-bottom) + 22px);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pour-streak.is-up .pour-streak-num,
   .pour-streak.is-reset .pour-streak-num {
-    animation: none;
+    animation: pour-fade 240ms linear both;
+  }
+  @keyframes pour-fade {
+    from {
+      opacity: 0;
+    }
   }
 }

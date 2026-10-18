@@ -75,7 +75,7 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
 
   // A soft pool of light from the upper left, like a window nearby.
   const pool = ctx.createRadialGradient(w * 0.25, h * 0.12, 0, w * 0.25, h * 0.12, Math.max(w, h) * 0.75);
-  pool.addColorStop(0, rgba('#ffffff', t.name === 'day' ? 0.5 : 0.06));
+  pool.addColorStop(0, rgba('#ffffff', t.name === 'day' ? 0.3 : 0.06));
   pool.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = pool;
   ctx.fillRect(0, 0, w, h);

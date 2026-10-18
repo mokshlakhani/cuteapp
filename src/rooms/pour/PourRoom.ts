@@ -12,7 +12,7 @@ import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
 import { paintBackdrop, paintGrain } from '../../render/paint';
 import { Particles } from '../../render/particles';
-import { Shake } from '../../render/camera';
+import { reducedMotion, Shake } from '../../render/camera';
 import { Face } from '../../render/face';
 import { el, Hint } from '../../ui/components';
 import { Glass, type Verdict } from './Glass';
@@ -21,6 +21,7 @@ import { GlassExtras } from './extras';
 import { feedback, nextDrink, PourGame } from './game';
 import {
   drawGlass,
+  drawImpact,
   drawJug,
   drawStream,
   glassShape,
@@ -29,13 +30,14 @@ import {
   spout,
   yAt,
   type Drop,
+  type GlassLook,
   type GlassShape,
   type JugShape,
 } from './draw';
 
 /**
- * One glass, start to finish: it slides in, waits for a tap, pours until the
- * next tap, settles and is judged, shows how it went, and slides away.
+ * One glass, start to finish: it slides in along the counter, waits, pours
+ * while held, settles and is judged, shows how it went, and slides away.
  */
 type Phase = 'arrive' | 'ready' | 'pouring' | 'settling' | 'result' | 'away';
 
@@ -44,15 +46,21 @@ const MAX_FLOW = 0.24;
 /** How far the jug tips when it pours by itself (0..1). */
 const POUR_TILT = 0.92;
 /** Seconds for a glass to slide off, and for the next one to slide in. */
-const AWAY = 0.45;
-const ARRIVE = 0.55;
+const AWAY = 0.5;
+const ARRIVE = 0.6;
+/** The etched line drawing itself onto a new glass (s). */
+const LINE_IN = 0.45;
+/** The glint running along the line on a perfect pour (s). */
+const GLINT = 0.34;
 /** How long the result is shown before the next glass. */
-const SHOW_HIT = 1.5;
+const SHOW_HIT = 1.6;
 const SHOW_MISS = 2;
 /** Brimming over this long while pouring, and the jug stops by itself. */
 const OVERFLOW_STOP = 0.9;
-/** Shown the "tap to pour / stop" hints for this many glasses. */
+/** Shown the "hold / let go" hints for this many glasses. */
 const TEACH = 2;
+/** The stream lands this far left of the glass's middle (× glass width), so the tipped jug stays on screen. */
+const AIM = -0.12;
 
 const PREFS = 'softspot.pour.v2';
 
@@ -65,9 +73,9 @@ interface Bubble {
 
 /**
  * Room: pour. A random drink each time — milk, peach soda, bubble tea or
- * lemonade — and a line on the glass. Press and hold to pour; let go to
- * stop. Land it on the line to keep your streak going; the jug pours a little
- * faster with every one in a row. Your best streak is kept.
+ * lemonade — and a line etched on the glass. Press and hold to pour; let go
+ * to stop. Land it on the line to keep your streak going; the jug pours a
+ * little faster with every one in a row. Your best streak is kept.
  */
 export class PourRoom implements Scene {
   readonly id = 'pour';
@@ -98,25 +106,36 @@ export class PourRoom implements Scene {
   private phase: Phase = 'arrive';
   private phaseT = 0;
   private brimT = 0;
-  private glow = 0;
   private nudge = 0;
   private glugT = 0;
   private landing = 0;
+  private impactX = 0;
   private time = 0;
   private poured = 0;
   private active = false;
   /** The finger (or key) holding the pour down. */
   private holder: number | 'key' | null = null;
 
+  // ——— the glass's little performances ———
+  private lineIn = 0;
+  /** Seconds since the glint started, or −1. */
+  private glintT = -1;
+  private lit = 0;
+  private squash = new Spring(1, { stiffness: 420, damping: 13 });
+  private lean = new Spring(0, { stiffness: 260, damping: 12 });
+  private hopIn = -1;
+  /** The reflection's own layer. */
+  private mirror: HTMLCanvasElement | null = null;
+
   // ——— chrome ———
   private streakEl: HTMLSpanElement;
   private streakBox: HTMLDivElement;
-  private bestEl: HTMLSpanElement;
-  private bestBox: HTMLDivElement;
+  private bestEl: HTMLElement;
+  private bestBox: HTMLSpanElement;
   private toast: HTMLDivElement;
   private toastTitle: HTMLSpanElement;
   private toastSub: HTMLSpanElement;
-  private caption: HTMLDivElement;
+  private tag: HTMLDivElement;
   private hints = { pour: new Hint('press and hold to pour', 'press'), stop: new Hint('let go at the line', 'press') };
 
   constructor(_nav: RoomNav) {
@@ -127,18 +146,20 @@ export class PourRoom implements Scene {
     this.ui = el('div', 'room room-pour');
 
     this.streakEl = el('span', 'pour-streak-num', {}, ['0']);
-    this.streakBox = el('div', 'pour-streak', { role: 'status', 'aria-live': 'polite' }, [
-      this.streakEl,
-      el('span', 'pour-streak-cap', {}, ['streak']),
+    this.streakBox = el('div', 'pour-streak', {}, [this.streakEl]);
+    this.bestEl = el('b', '', {}, [String(this.game.best)]);
+    this.bestBox = el('span', 'pour-best', {}, ['best ', this.bestEl]);
+    const meta = el('div', 'pour-meta', {}, [
+      el('span', '', {}, ['in a row']),
+      el('span', 'pour-dot', { 'aria-hidden': 'true' }, ['·']),
+      this.bestBox,
     ]);
-    this.bestEl = el('span', 'pour-best-num', {}, [String(this.game.best)]);
-    this.bestBox = el('div', 'pour-best', {}, [el('span', 'pour-best-cap', {}, ['best']), this.bestEl]);
-    const hud = el('div', 'pour-hud', {}, [this.streakBox, this.bestBox]);
+    const hud = el('div', 'pour-hud', { role: 'status', 'aria-live': 'polite' }, [this.streakBox, meta]);
     this.toastTitle = el('span', 'pour-toast-title');
     this.toastSub = el('span', 'pour-toast-sub');
     this.toast = el('div', 'pour-toast', { 'aria-live': 'polite' }, [this.toastTitle, this.toastSub]);
-    this.caption = el('div', 'pour-caption', {}, [this.drink.name]);
-    this.ui.append(hud, this.toast, this.caption, this.hints.pour.root, this.hints.stop.root);
+    this.tag = el('div', 'pour-tag', {}, [this.drink.name]);
+    this.ui.append(hud, this.toast, this.tag, this.hints.pour.root, this.hints.stop.root);
   }
 
   private newGlass() {
@@ -155,17 +176,22 @@ export class PourRoom implements Scene {
   layout(w: number, h: number, safe: Insets) {
     this.w = w;
     this.h = h;
-    this.floorY = h - safe.bottom - 136;
-    const gW = clamp(Math.min(w * 0.4, (this.floorY - safe.top) * 0.27), 110, 170);
-    this.g = glassShape(w * 0.42, this.floorY, gW);
+    // The counter sits about four fifths of the way down, leaving the
+    // bottom for the drink's name and a hint.
+    this.floorY = h - safe.bottom - Math.max(118, h * 0.16);
+    const usable = this.floorY - safe.top;
+    // As big as the screen allows, while the tipped jug still fits to the right.
+    const gW = clamp(Math.min(w * 0.44, (w / 2 - 12) / 1.07, usable * 0.3), 100, 200);
+    this.g = glassShape(w / 2, this.floorY, gW);
     this.j = jugShape(gW);
-    // High enough that even fully tipped, the spout clears the rim.
-    this.jy = yAt(this.g, 1) - gW * 0.9 - 30;
-    // Placed so the stream lands near the middle of the glass.
-    this.jx = this.g.cx + gW * 0.1 - spout(this.j, 0, 0, POUR_TILT).x;
+    // High enough that even tipped, the spout clears the rim.
+    this.jy = yAt(this.g, 1) - gW * 0.68 - 24;
+    // Placed so a steady pour lands just left of the middle of the glass.
+    this.jx = this.g.cx + gW * AIM - spout(this.j, 0, 0, POUR_TILT).x;
     this.particles.width = w;
     this.particles.floorY = this.floorY;
     this.puddle.x = this.g.cx;
+    this.tag.style.top = `${Math.round(this.floorY + 16)}px`;
   }
 
   enter() {
@@ -244,10 +270,10 @@ export class PourRoom implements Scene {
     this.phaseT = 0;
   }
 
-  /** Teach the two taps on the first glasses, then get out of the way. */
+  /** Teach hold and let-go on the first glasses, then get out of the way. */
   private syncHints() {
     const teach = this.active && this.poured < TEACH && !settings.value.seenHints.includes('pour-hold');
-    if (teach && this.phase === 'ready') this.hints.pour.show(300);
+    if (teach && this.phase === 'ready') this.hints.pour.show(450);
     else this.hints.pour.hide();
     if (teach && this.phase === 'pouring') this.hints.stop.show(150);
     else this.hints.stop.hide();
@@ -285,32 +311,22 @@ export class PourRoom implements Scene {
 
   /** The pour has settled: score it, and show how it went. */
   private judge(v: Verdict) {
-    const g = this.shape;
-    const pan = panFor(g.cx, this.w);
+    const pan = panFor(this.g.cx, this.w);
     const newBest = this.game.record(v);
     const [title, sub] = feedback(v, this.glass.level, this.glass.line, this.game.streak);
-    this.showToast(title, newBest && this.game.best > 1 ? 'new best!' : sub, v === 'perfect');
+    this.showToast(title, newBest && this.game.best > 1 ? 'new best' : sub);
     this.syncScore(v === 'perfect', newBest);
     this.setPhase('result');
     if (v === 'perfect') {
+      // The ting: a glint runs along the line and leaves it lit, the glass
+      // hops, and the streak rolls up.
       material.pourPerfect(pan);
       if (newBest && this.game.best > 1) material.sparkle(pan);
       if (this.game.streak > 0 && this.game.streak % 5 === 0) material.tada();
       haptics.play('soft');
+      this.glintT = 0;
+      this.hopIn = 0.08;
       this.face.set('happy', SHOW_HIT + 0.5);
-      const y = yAt(g, this.glass.line);
-      for (const s of [-1, 1]) {
-        this.particles.emit({
-          kind: 'sparkle',
-          x: g.cx + s * halfAt(g, this.glass.line),
-          y,
-          count: 3,
-          speed: [40, 110],
-          size: [3.5, 6],
-          life: [0.5, 0.9],
-          color: '#ffffff',
-        });
-      }
     } else {
       material.pourMiss(pan);
       haptics.play('tap');
@@ -319,17 +335,16 @@ export class PourRoom implements Scene {
     }
   }
 
-  private showToast(title: string, sub: string, good: boolean) {
+  private showToast(title: string, sub: string) {
     this.toastTitle.textContent = title;
     this.toastSub.textContent = sub;
-    this.toast.classList.toggle('is-good', good);
     this.toast.classList.add('is-shown');
   }
 
   private syncScore(hit: boolean, newBest: boolean) {
     this.streakEl.textContent = String(this.game.streak);
     this.bestEl.textContent = String(this.game.best);
-    // Restart the little bump / drop animation.
+    // Restart the roll (or the gentle drop back to zero).
     for (const c of ['is-up', 'is-reset']) this.streakBox.classList.remove(c);
     void this.streakBox.offsetWidth;
     this.streakBox.classList.add(hit ? 'is-up' : 'is-reset');
@@ -349,11 +364,12 @@ export class PourRoom implements Scene {
     this.puddle.amount *= Math.exp(-0.12 * dt);
 
     this.advance(dt);
+    this.animate(dt);
     this.pour(dt);
     this.glass.step(dt);
     this.extras.update(dt, this.landing);
     this.updateBubbles(dt);
-    this.react(dt);
+    this.react();
   }
 
   private advance(dt: number) {
@@ -363,6 +379,7 @@ export class PourRoom implements Scene {
           this.setPhase('ready');
           material.clink(panFor(this.g.cx, this.w));
           haptics.play('tick');
+          this.glass.slosh(0.8);
           this.face.set('happy', 0.8);
           this.syncHints();
         }
@@ -379,8 +396,9 @@ export class PourRoom implements Scene {
       case 'result':
         if (this.phaseT >= (this.glass.verdict === 'perfect' ? SHOW_HIT : SHOW_MISS)) {
           this.toast.classList.remove('is-shown');
+          this.tag.classList.add('is-leaving');
           this.setPhase('away');
-          this.glass.slosh(-1.2);
+          this.glass.slosh(-1.4);
           uiSound.whoosh(true);
         }
         break;
@@ -391,16 +409,47 @@ export class PourRoom implements Scene {
           this.extras = new GlassExtras(this.drink.extra);
           this.bubbles.length = 0;
           this.drops.length = 0;
-          this.glow = 0;
           this.nudge = 0;
+          this.lit = 0;
+          this.lineIn = 0;
+          this.glintT = -1;
           this.face.set('calm', 0.1);
-          this.caption.textContent = this.drink.name;
+          this.tag.textContent = this.drink.name;
+          this.tag.classList.remove('is-leaving');
           this.setPhase('arrive');
         }
         break;
       default:
         break;
     }
+  }
+
+  /** The glass's performances: the line drawing in, the glint, the hop and the lean. */
+  private animate(dt: number) {
+    if (this.phase !== 'arrive' && this.phase !== 'away') this.lineIn = Math.min(1, this.lineIn + dt / LINE_IN);
+    if (this.glintT >= 0) {
+      this.glintT += dt;
+      this.lit = Math.min(1, this.lit + dt * 6);
+    }
+    if (this.hopIn >= 0) {
+      this.hopIn -= dt;
+      if (this.hopIn < 0 && !reducedMotion) {
+        this.squash.value = 0.93;
+        this.squash.velocity = 0;
+        this.glass.slosh(1.2);
+      }
+    }
+    this.squash.update(dt);
+    // Slid along the counter, a glass leans: its top lags as it sets off, and
+    // runs on as it stops.
+    let lean = 0;
+    if (!reducedMotion) {
+      if (this.phase === 'away') lean = -0.075 * smoothstep(0, 0.4, this.phaseT / AWAY);
+      else if (this.phase === 'arrive') lean = 0.07 * (1 - clamp(this.phaseT / ARRIVE, 0, 1));
+    }
+    this.lean.target = lean;
+    this.lean.update(dt);
+    this.nudge = Math.max(0, this.nudge - dt * 0.6);
   }
 
   /** The glass as it stands right now, slid along if it's coming or going. */
@@ -411,12 +460,28 @@ export class PourRoom implements Scene {
     return off ? { ...this.g, cx: this.g.cx + off } : this.g;
   }
 
+  /** Where the jug is held: it lifts away to refill between glasses, and breathes while it waits. */
+  private get jug() {
+    let lift = 0;
+    if (this.phase === 'away') lift = ease.inOutCubic(clamp(this.phaseT / AWAY, 0, 1));
+    else if (this.phase === 'arrive') lift = 1 - ease.outBack(clamp(this.phaseT / ARRIVE, 0, 1), 1.2);
+    const rest = 1 - clamp(this.tilt.value / 0.3, 0, 1);
+    const bob = reducedMotion ? 0 : Math.sin(this.time * 2.1) * 1.6 * rest;
+    return {
+      x: this.jx,
+      y: this.jy - lift * this.j.H * 0.75 + bob,
+      alpha: 1 - clamp(lift, 0, 1),
+      tilt: clamp(this.tilt.value, 0, 1) + (reducedMotion ? 0 : Math.sin(this.time * 1.6) * 0.008 * rest),
+    };
+  }
+
   /** The jug tips and the drink leaves it; follow every drop to where it lands. */
   private pour(dt: number) {
     const tilt = clamp(this.tilt.value, 0, 1);
     const flow = smoothstep(0.32, 1, tilt);
     if (flow > 0.01) {
-      const lip = spout(this.j, this.jx, this.jy, tilt);
+      const jug = this.jug;
+      const lip = spout(this.j, jug.x, jug.y, tilt);
       const n = Math.max(1, Math.ceil(dt * 150));
       const speed = lerp(50, 150, flow);
       for (let i = 0; i < n; i++) {
@@ -427,7 +492,7 @@ export class PourRoom implements Scene {
           vx: lip.dx * speed,
           vy: lip.dy * speed,
           vol: (MAX_FLOW * this.game.speed * flow * dt) / n,
-          w: lerp(3, 10, flow),
+          w: lerp(3, 10, flow) * clamp(this.g.wt / 70, 0.8, 1.3),
           alive: true,
         });
       }
@@ -454,6 +519,7 @@ export class PourRoom implements Scene {
         this.glass.add(d.vol, (dx + half) / (half * 2), speed);
         d.alive = false;
         landed += d.vol;
+        this.impactX = d.x;
         continue;
       }
       // Off the rim: a little splash outward.
@@ -515,10 +581,11 @@ export class PourRoom implements Scene {
   }
 
   /** The glass watches the spout, and gets more excited the nearer the line. */
-  private react(dt: number) {
+  private react() {
     const g = this.shape;
     const glass = this.glass;
-    const lip = spout(this.j, this.jx, this.jy, clamp(this.tilt.value, 0, 1));
+    const jug = this.jug;
+    const lip = spout(this.j, jug.x, jug.y, jug.tilt);
     const fy = yAt(g, 0.3);
     this.face.look((lip.x - g.cx) / (g.wt * 4), (lip.y - fy) / (g.wt * 4));
     if (this.phase === 'pouring' && this.landing > 0.2) {
@@ -528,9 +595,6 @@ export class PourRoom implements Scene {
       else if (d > -0.12) this.face.set('wide', 0.25);
       else this.face.set('happy', 0.25);
     }
-    const lit = this.phase === 'result' && glass.verdict === 'perfect';
-    this.glow = lerp(this.glow, lit ? 1 : 0, Math.min(1, dt * (lit ? 8 : 4)));
-    this.nudge = Math.max(0, this.nudge - dt * 0.6);
   }
 
   // ——— drawing ———
@@ -539,33 +603,119 @@ export class PourRoom implements Scene {
     const t = theme.current;
     const { w, h } = this;
     paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: this.floorY });
+    this.paintLamp(ctx);
     ctx.save();
     this.shake.apply(ctx, w / 2, h / 2);
 
-    // Whatever missed, pooled on the table.
+    const g = this.shape;
+    const look: GlassLook = {
+      face: this.face,
+      time: this.time,
+      lineIn: ease.outCubic(this.lineIn),
+      glint: this.glintT < 0 ? 0 : ease.inOutSine(clamp(this.glintT / GLINT, 0, 1)),
+      lit: this.lit,
+      nudge: this.nudge,
+      squash: this.squash.value,
+      lean: this.lean.value,
+      faceAt: this.drink.extra ? 0.46 : 0.3,
+      inside: this.bubbles.length ? (c) => this.drawBubbles(c, g) : undefined,
+      extras: this.extras.kind ? (c) => this.extras.draw(c, g, this.glass, this.time) : undefined,
+    };
+
+    this.drawReflection(ctx, g, look);
+
+    // Whatever missed, pooled on the counter.
     if (this.puddle.amount > 0.003) {
       const rx = Math.min(this.g.wt * 2.2, Math.sqrt(this.puddle.amount) * this.g.wt * 2.6);
       ctx.fillStyle = rgba(this.puddle.color, clamp(this.puddle.amount * 6, 0, 0.55));
       ctx.beginPath();
       ctx.ellipse(this.puddle.x, this.floorY + 4, rx, Math.max(2, rx * 0.16), 0, 0, TAU);
       ctx.fill();
+      ctx.fillStyle = rgba('#ffffff', clamp(this.puddle.amount * 4, 0, 0.35));
+      ctx.beginPath();
+      ctx.ellipse(this.puddle.x - rx * 0.3, this.floorY + 3, rx * 0.35, Math.max(1, rx * 0.04), 0, 0, TAU);
+      ctx.fill();
     }
 
-    const g = this.shape;
-    drawGlass(ctx, t, g, this.glass, this.drink, {
-      face: this.face,
-      glow: this.glow,
-      nudge: this.nudge,
-      time: this.time,
-      inside: this.bubbles.length ? (c) => this.drawBubbles(c, g) : undefined,
-      extras: this.extras.kind ? (c) => this.extras.draw(c, g, this.glass, this.time) : undefined,
-    });
+    drawGlass(ctx, t, g, this.glass, this.drink, look);
     this.extras.drawRim(ctx, g);
+    drawImpact(ctx, g, this.glass, this.impactX, this.landing, this.time, this.drink);
     drawStream(ctx, this.drops, this.drink);
-    drawJug(ctx, t, this.j, this.jx, this.jy, clamp(this.tilt.value, 0, 1), this.drink);
+    const jug = this.jug;
+    drawJug(ctx, t, this.j, jug.x, jug.y, jug.tilt, this.drink, jug.alpha);
     this.particles.draw(ctx);
     ctx.restore();
     paintGrain(ctx, w, h, t);
+  }
+
+  /**
+   * The lamp over the counter: a soft pool of light behind the glass and on
+   * the counter under it, and the room falling away into shade at the edges,
+   * so the eye lands on the glass first.
+   */
+  private paintLamp(ctx: CanvasRenderingContext2D) {
+    const t = theme.current;
+    const day = t.name === 'day';
+    const { w, h } = this;
+    const g = this.g;
+    const cy = this.floorY - g.H * 0.75;
+    const r = g.H * 2;
+    const wall = ctx.createRadialGradient(g.cx, cy, 0, g.cx, cy, r);
+    wall.addColorStop(0, rgba('#ffffff', day ? 0.2 : 0.075));
+    wall.addColorStop(0.55, rgba('#ffffff', day ? 0.06 : 0.025));
+    wall.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, w, this.floorY);
+    ctx.save();
+    ctx.translate(g.cx, this.floorY + g.wt * 0.35);
+    ctx.scale(1, 0.2);
+    const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, g.wt * 3.4);
+    pool.addColorStop(0, rgba('#ffffff', day ? 0.22 : 0.07));
+    pool.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = pool;
+    ctx.beginPath();
+    ctx.arc(0, 0, g.wt * 3.4, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+    const vg = ctx.createRadialGradient(w / 2, h * 0.5, Math.min(w, h) * 0.42, w / 2, h * 0.5, Math.hypot(w, h) * 0.62);
+    vg.addColorStop(0, `rgba(${t.shadowRgb},0)`);
+    vg.addColorStop(1, `rgba(${t.shadowRgb},${(day ? 0.14 : 0.22) * t.shadowStrength})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  /** A soft reflection of the glass in the counter, fading away from it. */
+  private drawReflection(ctx: CanvasRenderingContext2D, g: GlassShape, look: GlassLook) {
+    const t = theme.current;
+    const fy = this.floorY;
+    const depth = Math.min(this.h - fy, g.H * 0.5);
+    if (depth < 4) return;
+    // Drawn on its own layer, so it can fade out with a real alpha mask.
+    const dpr = Math.max(1, Math.min(3, ctx.getTransform().a));
+    const cw = Math.ceil(this.w * dpr);
+    const ch = Math.ceil(depth * dpr);
+    const layer = (this.mirror ??= document.createElement('canvas'));
+    if (layer.width !== cw || layer.height !== ch) {
+      layer.width = cw;
+      layer.height = ch;
+    }
+    const m = layer.getContext('2d')!;
+    m.setTransform(1, 0, 0, 1, 0, 0);
+    m.clearRect(0, 0, cw, ch);
+    m.setTransform(dpr, 0, 0, -dpr, 0, fy * dpr);
+    drawGlass(m, t, g, this.glass, this.drink, { ...look, reflection: true, inside: undefined });
+    m.setTransform(1, 0, 0, 1, 0, 0);
+    m.globalCompositeOperation = 'destination-in';
+    const fade = m.createLinearGradient(0, 0, 0, ch);
+    fade.addColorStop(0, 'rgba(0,0,0,1)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
+    m.fillStyle = fade;
+    m.fillRect(0, 0, cw, ch);
+    m.globalCompositeOperation = 'source-over';
+    ctx.save();
+    ctx.globalAlpha = t.name === 'day' ? 0.12 : 0.15;
+    ctx.drawImage(layer, 0, fy, this.w, depth);
+    ctx.restore();
   }
 
   private drawBubbles(ctx: CanvasRenderingContext2D, g: GlassShape) {
