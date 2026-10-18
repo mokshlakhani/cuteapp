@@ -43,7 +43,7 @@ function applyCss(t: Theme) {
   s.setProperty('--d-quick', `${duration.quick}ms`);
   s.setProperty('--d-base', `${duration.base}ms`);
   s.setProperty('--d-calm', `${duration.calm}ms`);
-  document.documentElement.dataset.mood = t.name;
+  document.documentElement.dataset.mood = t.light ? 'day' : 'dusk';
   const meta = document.querySelector('meta[name="theme-color"]');
   meta?.setAttribute('content', t.bg);
   document.body.style.background = t.bg;

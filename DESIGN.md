@@ -31,11 +31,12 @@ rest is a short list of rules.
 
 | token                          | day                    | dusk                  | use                             |
 | ------------------------------ | ---------------------- | --------------------- | ------------------------------- |
-| `bg` / `bgDeep`                | `#EECDB4` / `#E2B99B`  | `#3A3346` / `#2C2737` | vertical background wash        |
-| `surface`                      | `#FFFAF5`              | `#4A4258`             | buttons, cards, sheets          |
-| `surfaceSunk`                  | `#F2DCCB`              | `#3A3347`             | tracks, wells                   |
-| `ink` / `inkSoft` / `inkFaint` | warm cocoa `#5E4B42` … | warm cream …          | text & icons — never pure black |
-| `shadowRgb`                    | `128,92,66`            | `16,10,26`            | every shadow is warm-tinted     |
+| `bg` / `bgDeep`                | `#8A5799` / `#6A3F7C`  | `#4F3159` / `#33203D` | vertical background wash        |
+| `surface`                      | `#966AA4`              | `#5E406A`             | buttons, cards, sheets          |
+| `surfaceSunk`                  | `#76498A`              | `#462C50`             | tracks, wells                   |
+| `ink` / `inkSoft` / `inkFaint` | cream `#FFF4F7` …      | warm cream …          | text & icons — never pure black |
+| `glowWarm` / `glowCool`        | `#E7A4C4` / `#6C5BB0`  | `#B9709A` / `#3E3A86` | two slow-drifting colour glows  |
+| `shadowRgb`                    | `48,18,58`             | `18,6,24`             | every shadow is warm-tinted     |
 
 Pastel accents (`pastel.*`): sage, mint, pink, peach, butter, sky, lilac,
 berry (a desaturated red). They tint rooms, colour rubber bands, and fill

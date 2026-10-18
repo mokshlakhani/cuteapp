@@ -26,6 +26,7 @@ import {
   drawStream,
   glassShape,
   halfAt,
+  hover,
   jugShape,
   spout,
   yAt,
@@ -72,7 +73,7 @@ interface Bubble {
 }
 
 /**
- * Room: pour. A random drink each time — milk, peach soda, bubble tea or
+ * Room: pour. A random drink each time — milk, cola, bubble tea or
  * lemonade — and a line etched on the glass. Press and hold to pour; let go
  * to stop. Land it on the line to keep your streak going; the jug pours a
  * little faster with every one in a row. Your best streak is kept.
@@ -141,8 +142,8 @@ export class PourRoom implements Scene {
   constructor(_nav: RoomNav) {
     this.game = new PourGame(loadBest());
     this.drink = nextDrink(DRINKS, null);
+    this.extras = new GlassExtras(this.drink.extra, this.game.serve(this.drink.id));
     this.glass = this.newGlass();
-    this.extras = new GlassExtras(this.drink.extra);
     this.ui = el('div', 'room room-pour');
 
     this.streakEl = el('span', 'pour-streak-num', {}, ['0']);
@@ -168,6 +169,8 @@ export class PourRoom implements Scene {
       spill: (amount, foam) => this.onSpill(amount, foam),
       verdict: (v) => this.phase === 'settling' && this.judge(v),
     };
+    const extras = this.extras;
+    g.solidAt = (f) => extras.solidAt(f);
     return g;
   }
 
@@ -183,15 +186,37 @@ export class PourRoom implements Scene {
     // As big as the screen allows, while the tipped jug still fits to the right.
     const gW = clamp(Math.min(w * 0.44, (w / 2 - 12) / 1.07, usable * 0.3), 100, 200);
     this.g = glassShape(w / 2, this.floorY, gW);
-    this.j = jugShape(gW);
-    // High enough that even tipped, the spout clears the rim.
-    this.jy = yAt(this.g, 1) - gW * 0.68 - 24;
-    // Placed so a steady pour lands just left of the middle of the glass.
-    this.jx = this.g.cx + gW * AIM - spout(this.j, 0, 0, POUR_TILT).x;
+    this.fitPourer();
     this.particles.width = w;
     this.particles.floorY = this.floorY;
     this.puddle.x = this.g.cx;
     this.tag.style.top = `${Math.round(this.floorY + 16)}px`;
+  }
+
+  /** The jug, bottle or carton for this drink, held where a steady pour lands just left of the glass's middle. */
+  private fitPourer() {
+    const gW = this.g.wb / 0.4;
+    this.j = jugShape(gW, this.drink.from);
+    // High enough that upright or tipped, it clears the rim.
+    this.jy = yAt(this.g, 1) - hover(this.j);
+    // Each throws its stream a different way: line them up so they all land where the jug's does.
+    const drift = (j: JugShape, jy: number) => {
+      const lip = spout(j, 0, jy, POUR_TILT);
+      const speed = lerp(50, 150, smoothstep(0.32, 1, POUR_TILT));
+      let { x, y } = lip;
+      let vx = lip.dx * speed;
+      let vy = lip.dy * speed;
+      const surface = yAt(this.g, 0.55);
+      for (let i = 0; i < 600 && y < surface; i++) {
+        vy += world.gravity / 120;
+        x += vx / 120;
+        y += vy / 120;
+      }
+      return x;
+    };
+    const jug = jugShape(gW);
+    const offset = drift(this.j, this.jy) - drift(jug, yAt(this.g, 1) - hover(jug));
+    this.jx = this.g.cx + gW * AIM - spout(jug, 0, 0, POUR_TILT).x - offset;
   }
 
   enter() {
@@ -405,8 +430,9 @@ export class PourRoom implements Scene {
       case 'away':
         if (this.phaseT >= AWAY) {
           this.drink = nextDrink(DRINKS, this.drink);
+          this.fitPourer();
+          this.extras = new GlassExtras(this.drink.extra, this.game.serve(this.drink.id));
           this.glass = this.newGlass();
-          this.extras = new GlassExtras(this.drink.extra);
           this.bubbles.length = 0;
           this.drops.length = 0;
           this.nudge = 0;
@@ -617,7 +643,7 @@ export class PourRoom implements Scene {
       nudge: this.nudge,
       squash: this.squash.value,
       lean: this.lean.value,
-      faceAt: this.drink.extra ? 0.46 : 0.3,
+      faceAt: this.drink.extra ? Math.max(0.46, this.extras.top + 0.08) : 0.3,
       inside: this.bubbles.length ? (c) => this.drawBubbles(c, g) : undefined,
       extras: this.extras.kind ? (c) => this.extras.draw(c, g, this.glass, this.time) : undefined,
     };
@@ -654,7 +680,7 @@ export class PourRoom implements Scene {
    */
   private paintLamp(ctx: CanvasRenderingContext2D) {
     const t = theme.current;
-    const day = t.name === 'day';
+    const day = t.light;
     const { w } = this;
     const g = this.g;
     const cy = this.floorY - g.H * 0.75;
@@ -707,7 +733,7 @@ export class PourRoom implements Scene {
     m.fillRect(0, 0, cw, ch);
     m.globalCompositeOperation = 'source-over';
     ctx.save();
-    ctx.globalAlpha = t.name === 'day' ? 0.12 : 0.15;
+    ctx.globalAlpha = t.light ? 0.12 : 0.15;
     ctx.drawImage(layer, 0, fy, this.w, depth);
     ctx.restore();
   }

@@ -1,6 +1,6 @@
 /** What can be poured. Colours are tuned to sit inside the pastel palette. */
 export interface Drink {
-  id: 'milk' | 'soda' | 'boba' | 'lemonade';
+  id: 'milk' | 'cola' | 'boba' | 'lemonade';
   name: string;
   /** The liquid near the top, and deeper down the glass. */
   color: string;
@@ -13,13 +13,40 @@ export interface Drink {
   fizz: boolean;
   /** Already waiting in the glass: tapioca pearls, or ice and a lemon wheel. */
   extra?: 'pearls' | 'ice';
-  /** Where its fill line can be drawn; soda's stays low enough that its foam fits. */
+  /** Where its fill line can be drawn; cola's stays low enough that its foam fits. */
   lines: [number, number];
+  /** What it's poured from: the glass jug, a lemonade pitcher, a glass bottle, or a milk carton. */
+  from: Pourer;
+  /** Dark enough that the glass's face is drawn light over it. */
+  dark?: boolean;
 }
 
+export type Pourer = 'jug' | 'pitcher' | 'bottle' | 'carton';
+
 export const DRINKS: Drink[] = [
-  { id: 'milk', name: 'milk', color: '#FBF5EA', deep: '#EADBC4', foam: '#FFFFFF', foamy: 0.05, fizz: false, lines: [0.45, 0.85] },
-  { id: 'soda', name: 'peach soda', color: '#F8BC8A', deep: '#EC8F5C', foam: '#FFF4E8', foamy: 0.45, fizz: true, lines: [0.42, 0.68] },
+  {
+    id: 'milk',
+    name: 'milk',
+    color: '#FBF5EA',
+    deep: '#EADBC4',
+    foam: '#FFFFFF',
+    foamy: 0.05,
+    fizz: false,
+    lines: [0.45, 0.85],
+    from: 'carton',
+  },
+  {
+    id: 'cola',
+    name: 'cola',
+    color: '#6A2E18',
+    deep: '#2E120A',
+    foam: '#EBD3B8',
+    foamy: 0.45,
+    fizz: true,
+    lines: [0.42, 0.68],
+    from: 'bottle',
+    dark: true,
+  },
   {
     id: 'boba',
     name: 'bubble tea',
@@ -30,6 +57,7 @@ export const DRINKS: Drink[] = [
     fizz: false,
     extra: 'pearls',
     lines: [0.45, 0.85],
+    from: 'jug',
   },
   {
     id: 'lemonade',
@@ -41,6 +69,7 @@ export const DRINKS: Drink[] = [
     fizz: false,
     extra: 'ice',
     lines: [0.45, 0.85],
+    from: 'pitcher',
   },
 ];
 

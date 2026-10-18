@@ -308,7 +308,7 @@ export function drawSheet(ctx: CanvasRenderingContext2D, t: Theme, f: Film, shee
   );
 
   const path = filmPath(sheet);
-  ctx.fillStyle = rgba(mix(f.tint, '#ffffff', t.name === 'day' ? 0.45 : 0.15), t.name === 'day' ? 0.62 : 0.4);
+  ctx.fillStyle = rgba(mix(f.tint, '#ffffff', t.light ? 0.45 : 0.15), t.light ? 0.62 : 0.4);
   ctx.fill(path);
 
   ctx.save();
@@ -324,7 +324,7 @@ export function drawSheet(ctx: CanvasRenderingContext2D, t: Theme, f: Film, shee
   ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
   ctx.restore();
 
-  ctx.strokeStyle = rgba('#ffffff', t.name === 'day' ? 0.75 : 0.25);
+  ctx.strokeStyle = rgba('#ffffff', t.light ? 0.75 : 0.25);
   ctx.lineWidth = 1.5;
   ctx.stroke(path);
 

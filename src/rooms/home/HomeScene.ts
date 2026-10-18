@@ -187,7 +187,7 @@ export class HomeScene implements Scene {
       ctx.fillStyle = `rgba(${t.shadowRgb},${0.035 * t.shadowStrength})`;
       ctx.fill();
     }
-    const tintAmt = t.name === 'day' ? 0.32 : 0.16;
+    const tintAmt = t.light ? 0.32 : 0.16;
     roundRect(ctx, x, y, w, h, r);
     const g = ctx.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, mix(t.surface, c.info.tint, tintAmt * 0.6));
@@ -206,7 +206,7 @@ export class HomeScene implements Scene {
     ctx.restore();
     // Top edge highlight: the card feels soft and raised.
     roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r);
-    ctx.strokeStyle = rgba('#ffffff', t.name === 'day' ? 0.7 : 0.08);
+    ctx.strokeStyle = rgba('#ffffff', t.light ? 0.7 : 0.08);
     ctx.lineWidth = 1;
     ctx.stroke();
   }
@@ -226,7 +226,7 @@ export class HomeScene implements Scene {
     ctx.translate(cx, base);
     ctx.rotate(wig);
     ctx.scale(1 + breathe * 0.6, 1 - breathe);
-    const col = mix(c.info.tint, t.surface, t.name === 'day' ? 0.15 : 0.35);
+    const col = mix(c.info.tint, t.surface, t.light ? 0.15 : 0.35);
     ctx.beginPath();
     ctx.ellipse(0, -R * 0.8, R * 1.05, R * 0.85, 0, 0, TAU);
     ctx.fillStyle = col;

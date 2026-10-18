@@ -9,6 +9,8 @@
 
 export interface Theme {
   name: 'day' | 'dusk';
+  /** A pale ground (dark outlines, white highlights) or a deep one (glowing edges, light ink). */
+  light: boolean;
   /** Page background, top of the vertical wash. */
   bg: string;
   /** Page background, bottom of the vertical wash (and floor base). */
@@ -31,6 +33,9 @@ export interface Theme {
   floorEdge: string;
   /** Paper grain opacity. */
   grain: number;
+  /** Two soft colour glows over the wash: a rosy one up top, a cool one low down. */
+  glowWarm: string;
+  glowCool: string;
 }
 
 /** Soft pastel accents shared by UI tints, rubber bands and particles. */
@@ -48,38 +53,44 @@ export const pastel = {
 export type PastelName = keyof typeof pastel;
 
 export const themes: Record<Theme['name'], Theme> = {
+  // An orchid evening: a muted plum-violet that deepens down the screen, with
+  // a rosy glow up top and a cool one below. Cream ink holds 5:1 or better.
   day: {
     name: 'day',
-    // A deep, soft peach ground — like late-afternoon light on a wall — so
-    // white glass, cards and highlights stand out, while staying calm.
-    bg: '#EECDB4',
-    bgDeep: '#E2B99B',
-    surface: '#FFFAF5',
-    surfaceSunk: '#F2DCCB',
-    ink: '#5E4B42',
-    inkSoft: '#7D685B',
-    inkFaint: '#BC9F8B',
-    shadowRgb: '128, 92, 66',
-    shadowStrength: 1,
-    faceInk: '#4A362F',
-    floorEdge: 'rgba(255,255,255,0.75)',
-    grain: 0.035,
+    light: false,
+    bg: '#8A5799',
+    bgDeep: '#6A3F7C',
+    surface: '#966AA4',
+    surfaceSunk: '#76498A',
+    ink: '#FFF4F7',
+    inkSoft: '#F0DDF2',
+    inkFaint: '#C9A5D1',
+    shadowRgb: '48, 18, 58',
+    shadowStrength: 1.2,
+    faceInk: '#3A2340',
+    floorEdge: 'rgba(255,236,250,0.22)',
+    grain: 0.045,
+    glowWarm: '#E7A4C4',
+    glowCool: '#6C5BB0',
   },
-  // A soft "before sleep" palette: warm plum dusk, never pure dark.
+  // The same orchid after dark: deeper and quieter.
   dusk: {
     name: 'dusk',
-    bg: '#3A3346',
-    bgDeep: '#2C2737',
-    surface: '#4A4258',
-    surfaceSunk: '#3A3347',
-    ink: '#F6EBDD',
-    inkSoft: '#C2B4C2',
-    inkFaint: '#7D7088',
-    shadowRgb: '16, 10, 26',
+    light: false,
+    bg: '#4F3159',
+    bgDeep: '#33203D',
+    surface: '#5E406A',
+    surfaceSunk: '#462C50',
+    ink: '#F8ECF2',
+    inkSoft: '#CDB6D3',
+    inkFaint: '#8F7499',
+    shadowRgb: '18, 6, 24',
     shadowStrength: 1.35,
-    faceInk: '#3A2A2A',
-    floorEdge: 'rgba(255,240,230,0.12)',
+    faceInk: '#3A2340',
+    floorEdge: 'rgba(255,236,250,0.12)',
     grain: 0.05,
+    glowWarm: '#B9709A',
+    glowCool: '#3E3A86',
   },
 };
 

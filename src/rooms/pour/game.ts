@@ -12,6 +12,8 @@ const SPEED_STEPS = 12;
  */
 export class PourGame {
   streak = 0;
+  /** Glasses of each drink poured so far this visit. */
+  private served = new Map<string, number>();
 
   constructor(public best = 0) {}
 
@@ -25,6 +27,13 @@ export class PourGame {
     if (this.streak <= this.best) return false;
     this.best = this.streak;
     return true;
+  }
+
+  /** A glass of `id` is coming: how many came before it this visit. */
+  serve(id: string) {
+    const n = this.served.get(id) ?? 0;
+    this.served.set(id, n + 1);
+    return n;
   }
 
   /** How fast the jug pours, relative to the first glass. */

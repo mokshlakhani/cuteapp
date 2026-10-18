@@ -40,6 +40,11 @@ export class Glass {
   quiet = 0;
   verdict: Verdict | null = null;
   events: GlassEvents = {};
+  /**
+   * How much of the glass's width is taken up by solids (pearls, ice) at a
+   * fill height. The drink fills the room around them, so it rises faster there.
+   */
+  solidAt: (f: number) => number = () => 0;
   private spilledThisPour = false;
 
   constructor(
@@ -60,7 +65,7 @@ export class Glass {
    * moving at `speed` px/s. Faster pours make more foam and bigger ripples.
    */
   add(vol: number, u: number, speed: number) {
-    this.level += vol;
+    this.level += vol / (1 - clamp(this.solidAt(this.level), 0, 0.9));
     this.foam += vol * this.foamy * clamp(speed / 600, 0.4, 1.6);
     const i = Math.round(clamp(u, 0, 1) * (WAVE_N - 1));
     const kick = vol * speed * 0.3;

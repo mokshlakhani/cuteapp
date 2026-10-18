@@ -5,21 +5,21 @@ import { rgba } from '../../core/color';
 import { material } from '../../core/sounds';
 import { Face } from '../../render/face';
 import { Glass } from './Glass';
-import { DRINKS } from './drinks';
-import { drawGlass, drawJug, glassShape, halfAt, jugShape, spout, yAt } from './draw';
+import { drink } from './drinks';
+import { drawGlass, drawJug, glassShape, halfAt, hover, jugShape, spout, yAt } from './draw';
 
-const SODA = DRINKS[1];
-/** The small jug's tilt while it pours, and where its stream lands (× glass width). */
+const COLA = drink('cola');
+/** The small bottle's tilt while it pours, and where its stream lands (× glass width). */
 const TILT = 0.92;
 const AIM = -0.12;
 
 /**
- * A little glass of peach soda for the home card. A small jug tips and fills
+ * A little glass of cola for the home card. A small bottle tips and fills
  * it to its line, it fizzes a while, and quietly empties again. Poke it and
  * it sloshes, giggles and glugs.
  */
 export function pourPreview(): Preview {
-  const glass = new Glass(SODA.foamy, 0.62);
+  const glass = new Glass(COLA.foamy, 0.62);
   const face = new Face();
   const bubbles: { u: number; f: number; sp: number }[] = [];
   let time = 0;
@@ -70,10 +70,10 @@ export function pourPreview(): Preview {
       // Above the card's label band, like the other toys.
       const gW = Math.min(w * 0.3, h * 0.36);
       const g = glassShape(x + w / 2, y + h * 0.7, gW);
-      const j = jugShape(gW);
+      const j = jugShape(gW, COLA.from);
       const jx = g.cx + gW * AIM - spout(j, 0, 0, TILT).x;
-      const jy = yAt(g, 1) - gW * 0.68 - 6;
-      drawGlass(ctx, t, g, glass, SODA, {
+      const jy = yAt(g, 1) - hover(j) + 8;
+      drawGlass(ctx, t, g, glass, COLA, {
         face,
         time,
         lineIn: 1,
@@ -95,7 +95,7 @@ export function pourPreview(): Preview {
       if (tilt > 0.6 && phase === 'fill') {
         const lip = spout(j, jx, jy, tilt);
         const sy = yAt(g, glass.top);
-        ctx.strokeStyle = SODA.color;
+        ctx.strokeStyle = COLA.color;
         ctx.lineCap = 'round';
         ctx.lineWidth = lerp(1.5, 3, clamp((tilt - 0.6) / 0.3, 0, 1));
         ctx.beginPath();
@@ -103,7 +103,7 @@ export function pourPreview(): Preview {
         ctx.quadraticCurveTo(lip.x - 2, (lip.y + sy) / 2, lip.x - 3, sy);
         ctx.stroke();
       }
-      drawJug(ctx, t, j, jx, jy + Math.sin(time * 2.1) * 0.8 * (1 - tilt), tilt, SODA);
+      drawJug(ctx, t, j, jx, jy + Math.sin(time * 2.1) * 0.8 * (1 - tilt), tilt, COLA);
     },
     poke() {
       glass.slosh(clamp(1.5 + Math.random(), 0, 3));

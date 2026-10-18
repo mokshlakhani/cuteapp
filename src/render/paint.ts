@@ -1,6 +1,7 @@
 import { mix, rgba } from '../core/color';
 import { light } from '../design/tokens';
 import type { Theme } from '../design/tokens';
+import { reducedMotion } from './camera';
 
 /**
  * Shared material & lighting helpers. Every toy uses these, which is how a
@@ -66,8 +67,8 @@ export interface RoomBackdrop {
 
 /** The one background treatment used by home and every room. */
 export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme, b: RoomBackdrop) {
-  // On the peach ground a full room tint would turn muddy; a hint is enough.
-  const tintAmt = t.name === 'day' ? 0.5 : 0.35;
+  // A room's tint is only a hint over the shared ground; more would turn it muddy.
+  const tintAmt = t.light ? 0.5 : 0.35;
   const top = mix(t.bg, b.tint, 0.1 * tintAmt);
   const bottom = mix(t.bgDeep, b.tint, 0.22 * tintAmt);
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -76,9 +77,24 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
+  // Two wide, soft glows of colour, rosy up top and cool down low, drifting
+  // so slowly (about half a minute a sway) that the ground seems to breathe.
+  const s = reducedMotion ? 0 : performance.now() / 1000;
+  const glow = (color: string, x: number, y: number, r: number, a: number) => {
+    const gl = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gl.addColorStop(0, rgba(color, a));
+    gl.addColorStop(0.5, rgba(color, a * 0.4));
+    gl.addColorStop(1, rgba(color, 0));
+    ctx.fillStyle = gl;
+    ctx.fillRect(0, 0, w, h);
+  };
+  const big = Math.max(w, h);
+  glow(t.glowWarm, w * (0.8 + Math.sin(s * 0.21) * 0.08), h * (0.1 + Math.cos(s * 0.17) * 0.04), big * 0.7, 0.32);
+  glow(t.glowCool, w * (0.15 + Math.cos(s * 0.19) * 0.08), h * (0.88 + Math.sin(s * 0.23) * 0.04), big * 0.75, 0.38);
+
   // A soft pool of light from the upper left, like a window nearby.
   const pool = ctx.createRadialGradient(w * 0.25, h * 0.12, 0, w * 0.25, h * 0.12, Math.max(w, h) * 0.75);
-  pool.addColorStop(0, rgba('#ffffff', t.name === 'day' ? 0.3 : 0.06));
+  pool.addColorStop(0, rgba('#ffffff', t.light ? 0.3 : 0.07));
   pool.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = pool;
   ctx.fillRect(0, 0, w, h);
@@ -86,8 +102,8 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
   if (b.spot) {
     const { x, y, r } = b.spot;
     const lamp = ctx.createRadialGradient(x, y, 0, x, y, r);
-    lamp.addColorStop(0, rgba('#fff6ec', t.name === 'day' ? 0.3 : 0.07));
-    lamp.addColorStop(0.55, rgba('#fff6ec', t.name === 'day' ? 0.1 : 0.025));
+    lamp.addColorStop(0, rgba('#fff6ec', t.light ? 0.3 : 0.07));
+    lamp.addColorStop(0.55, rgba('#fff6ec', t.light ? 0.1 : 0.025));
     lamp.addColorStop(1, rgba('#fff6ec', 0));
     ctx.fillStyle = lamp;
     ctx.fillRect(0, 0, w, h);
@@ -114,7 +130,7 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
   // the toy in the middle.
   const vg = ctx.createRadialGradient(w / 2, h * 0.48, Math.min(w, h) * 0.42, w / 2, h * 0.48, Math.hypot(w, h) * 0.62);
   vg.addColorStop(0, `rgba(${t.shadowRgb},0)`);
-  vg.addColorStop(1, `rgba(${t.shadowRgb},${(t.name === 'day' ? 0.14 : 0.2) * t.shadowStrength})`);
+  vg.addColorStop(1, `rgba(${t.shadowRgb},${(t.light ? 0.14 : 0.2) * t.shadowStrength})`);
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, w, h);
 }

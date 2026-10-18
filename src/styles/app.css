@@ -6,14 +6,14 @@
  */
 
 :root {
-  --bg: #eecdb4;
-  --bg-deep: #e2b99b;
-  --surface: #fffaf5;
-  --surface-sunk: #f2dccb;
-  --ink: #5e4b42;
-  --ink-soft: #7d685b;
-  --ink-faint: #bc9f8b;
-  --shadow-rgb: 128, 92, 66;
+  --bg: #8a5799;
+  --bg-deep: #6a3f7c;
+  --surface: #966aa4;
+  --surface-sunk: #76498a;
+  --ink: #fff4f7;
+  --ink-soft: #f0ddf2;
+  --ink-faint: #c9a5d1;
+  --shadow-rgb: 48, 18, 58;
   --accent: #a9d39a;
   --font-display: 'Fredoka', 'Nunito', ui-rounded, system-ui, sans-serif;
   --font-text: 'Nunito', ui-rounded, system-ui, sans-serif;
@@ -49,27 +49,27 @@
    system / host theme before any script runs. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #3a3346;
-    --bg-deep: #2c2737;
-    --surface: #4a4258;
-    --surface-sunk: #3a3347;
-    --ink: #f6ebdd;
-    --ink-soft: #c2b4c2;
-    --ink-faint: #7d7088;
-    --shadow-rgb: 16, 10, 26;
+    --bg: #4f3159;
+    --bg-deep: #33203d;
+    --surface: #5e406a;
+    --surface-sunk: #462c50;
+    --ink: #f8ecf2;
+    --ink-soft: #cdb6d3;
+    --ink-faint: #8f7499;
+    --shadow-rgb: 18, 6, 24;
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --bg: #3a3346;
-  --bg-deep: #2c2737;
-  --surface: #4a4258;
-  --surface-sunk: #3a3347;
-  --ink: #f6ebdd;
-  --ink-soft: #c2b4c2;
-  --ink-faint: #7d7088;
-  --shadow-rgb: 16, 10, 26;
+  --bg: #4f3159;
+  --bg-deep: #33203d;
+  --surface: #5e406a;
+  --surface-sunk: #462c50;
+  --ink: #f8ecf2;
+  --ink-soft: #cdb6d3;
+  --ink-faint: #8f7499;
+  --shadow-rgb: 18, 6, 24;
   color-scheme: dark;
 }
 

@@ -8,8 +8,8 @@ export async function setupNative(onBack: () => void) {
   if (!Capacitor.isNativePlatform()) return;
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
-    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
+    // Both grounds are deep orchid, so the status bar is always light text.
+    await StatusBar.setStyle({ style: Style.Dark });
     if (Capacitor.getPlatform() === 'android') await StatusBar.setOverlaysWebView({ overlay: true });
   } catch {
     /* plugin missing */

@@ -49,7 +49,15 @@ describe('the pour game', () => {
       seen.add(d.id);
       prev = d;
     }
-    expect([...seen].sort()).toEqual(['boba', 'lemonade', 'milk', 'soda']);
+    expect([...seen].sort()).toEqual(['boba', 'cola', 'lemonade', 'milk']);
+  });
+
+  it('counts how many glasses of each drink came before', () => {
+    const g = new PourGame();
+    expect(g.serve('boba')).toBe(0);
+    expect(g.serve('milk')).toBe(0);
+    expect(g.serve('boba')).toBe(1);
+    expect(g.serve('boba')).toBe(2);
   });
 
   it('says how far off a miss was', () => {

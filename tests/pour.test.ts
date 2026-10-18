@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Glass, PERFECT, SETTLE, type Verdict } from '../src/rooms/pour/Glass';
 import { DRINKS } from '../src/rooms/pour/drinks';
 
-const [MILK, SODA] = DRINKS;
+const [MILK, COLA] = DRINKS;
 
 function run(g: Glass, seconds: number) {
   const h = 1 / 120;
@@ -27,8 +27,8 @@ describe('a glass being poured', () => {
     expect(g.foam).toBeLessThan(0.05);
   });
 
-  it('soda foams up past the drink, then settles back down', () => {
-    const g = new Glass(SODA.foamy, 0.7);
+  it('cola foams up past the drink, then settles back down', () => {
+    const g = new Glass(COLA.foamy, 0.7);
     pour(g, 0.3, 1);
     expect(g.foam).toBeGreaterThan(0.06);
     expect(g.top).toBeGreaterThan(g.level + 0.06);
@@ -68,8 +68,8 @@ describe('a glass being poured', () => {
     }
   });
 
-  it('waits for the foam before judging soda, and pouring more starts again', () => {
-    const g = new Glass(SODA.foamy, 0.6);
+  it('waits for the foam before judging cola, and pouring more starts again', () => {
+    const g = new Glass(COLA.foamy, 0.6);
     const got: Verdict[] = [];
     g.events.verdict = (v) => got.push(v);
     pour(g, 0.25, 0.3);
@@ -88,8 +88,8 @@ describe('a glass being poured', () => {
     expect(got).toEqual(['under', 'perfect']);
   });
 
-  it('foams over the rim if soda is poured all at once', () => {
-    const g = new Glass(SODA.foamy, 0.6);
+  it('foams over the rim if cola is poured all at once', () => {
+    const g = new Glass(COLA.foamy, 0.6);
     let spilled = 0;
     g.events.spill = (x) => (spilled += x);
     pour(g, 0.85, 0.8);

@@ -1,11 +1,11 @@
 import type { Theme } from '../../design/tokens';
-import { pastel } from '../../design/tokens';
+import { pastel, type } from '../../design/tokens';
 import { clamp, lerp, smoothstep, TAU } from '../../core/math';
 import { mix, rgba } from '../../core/color';
 import { contactShadow } from '../../render/paint';
 import { drawFace, type Face } from '../../render/face';
 import { WAVE_N, type Glass } from './Glass';
-import type { Drink } from './drinks';
+import type { Drink, Pourer } from './drinks';
 
 /**
  * Glassware for the pour room, drawn in the soft spot language (one lamp,
@@ -127,7 +127,7 @@ function drawCounter(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, gla
   const floor = g.bottom + g.base;
   // The lamp is up and to the left, so the shadow falls a little right.
   contactShadow(ctx, t, g.cx + W * 0.06, floor, g.wb * 1.55, g.base * 0.8, 0.24);
-  const k = smoothstep(0.02, 0.35, glass.level) * (t.name === 'day' ? 0.55 : 0.4);
+  const k = smoothstep(0.02, 0.35, glass.level) * (t.light ? 0.55 : 0.4);
   if (k < 0.01) return;
   // Light through the drink lands as a soft coloured pool, brightest at its heart.
   const cx = g.cx + W * 0.3;
@@ -148,7 +148,7 @@ function drawCounter(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, gla
 }
 
 export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass: Glass, d: Drink, look: GlassLook) {
-  const day = t.name === 'day';
+  const day = t.light;
   const W = g.wt * 2;
   const floor = g.bottom + g.base;
   const mirror = !!look.reflection;
@@ -264,7 +264,10 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
     ctx.save();
     ctx.translate(g.cx, yAt(g, look.faceAt ?? 0.3));
     // At dusk an empty glass is dark behind the face, so it's drawn light until the drink rises.
-    const faceInk = day || level > 0.42 ? t.faceInk : mix(t.ink, t.faceInk, smoothstep(0.2, 0.42, level));
+    let faceInk = day || level > 0.42 ? t.faceInk : mix(t.ink, t.faceInk, smoothstep(0.2, 0.42, level));
+    // Over a dark drink like cola, the face goes light as the drink reaches it.
+    const at = look.faceAt ?? 0.3;
+    if (d.dark) faceInk = mix(faceInk, '#FFF1E2', smoothstep(at - 0.12, at + 0.04, level));
     drawFace(ctx, look.face, W * 0.38, { ink: faceInk, blush: pastel.pink, alpha: 0.92 });
     ctx.restore();
   }
@@ -373,7 +376,7 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
  */
 function drawLine(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass: Glass, look: GlassLook) {
   if (look.lineIn <= 0) return;
-  const day = t.name === 'day';
+  const day = t.light;
   const ly = yAt(g, glass.line);
   const rx = halfAt(g, glass.line) - 1;
   const ry = ryAt(g, glass.line);
@@ -446,33 +449,85 @@ function drawLine(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass:
   ctx.restore();
 }
 
-/** The jug, measured from where it's held (the handle side, half way up). */
+/**
+ * What the drink is poured from, measured in its own frame: the glass jug is
+ * held by its handle (the origin) and pours from the lip at its top left; the
+ * bottle and the carton are held around the middle and tip over to the left.
+ */
 export interface JugShape {
+  kind: Pourer;
   W: number;
   H: number;
 }
 
-export const jugShape = (glassW: number): JugShape => ({ W: glassW * 0.8, H: glassW * 0.99 });
+export function jugShape(glassW: number, kind: Pourer = 'jug'): JugShape {
+  if (kind === 'bottle') return { kind, W: glassW * 1.12, H: glassW * 1.16 };
+  if (kind === 'carton') return { kind, W: glassW, H: glassW * 0.74 };
+  if (kind === 'pitcher') return { kind, W: glassW * 0.74, H: glassW * 1.06 };
+  return { kind, W: glassW * 0.8, H: glassW * 0.99 };
+}
 
-/** The spout's tip in the jug's own frame. */
-const SPOUT = (j: JugShape) => ({ x: -j.W * 1.1, y: -j.H * 0.5 - 2 });
+/** The carton's front face, and the roof above it (× glass width). */
+const CARTON = { w: 0.6, side: 0.17, roof: 0.2, fin: 0.07 };
 
-/** The jug tips over this far (radians) at full tilt. */
-export const JUG_TILT = 1.35;
+/** Where the drink leaves it, and which way it's heading, in its own frame. */
+function mouth(j: JugShape) {
+  switch (j.kind) {
+    case 'bottle':
+      // Angled a little back toward the base, so the stream falls rather than shoots out.
+      return { x: 0, y: -j.H / 2 - 1, dx: -0.67, dy: -0.74 };
+    case 'carton':
+      return { x: -j.W * (CARTON.w / 2 + 0.08), y: -j.H / 2 - j.W * CARTON.roof * 0.62, dx: -0.8, dy: -0.6 };
+    case 'pitcher':
+      return { x: -j.W * 1.06, y: -j.H * 0.5 - 4, dx: -1, dy: 0 };
+    default:
+      return { x: -j.W * 1.1, y: -j.H * 0.5 - 2, dx: -1, dy: 0 };
+  }
+}
 
-/** Where the spout is, and the way the drink leaves it, for a jug held at (x, y). */
+/** Each tips over this far (radians) at full tilt; a bottle goes past level. */
+const TIP: Record<Pourer, number> = { jug: 1.35, pitcher: 1.2, bottle: 2.1, carton: 1.75 };
+
+/** How high above the glass's rim it's held, so that it clears the rim upright and tipped. */
+export function hover(j: JugShape) {
+  if (j.kind === 'jug') return j.W * 0.85 + 24;
+  // The tall pitcher swings its heel down as it tips, so it's held higher.
+  if (j.kind === 'pitcher') return j.H / 2 + j.W * 0.42 + 12;
+  return j.H / 2 + 12;
+}
+
+/** Where the mouth is, and the way the drink leaves it, for one held at (x, y). */
 export function spout(j: JugShape, x: number, y: number, tilt: number) {
-  const a = -tilt * JUG_TILT;
+  const a = -tilt * TIP[j.kind];
   const c = Math.cos(a);
   const s = Math.sin(a);
-  const p = SPOUT(j);
-  return { x: x + p.x * c - p.y * s, y: y + p.x * s + p.y * c, dx: -c, dy: -s };
+  const p = mouth(j);
+  return { x: x + p.x * c - p.y * s, y: y + p.x * s + p.y * c, dx: p.dx * c - p.dy * s, dy: p.dx * s + p.dy * c };
+}
+
+/** Pours `d` from whatever it comes in. */
+export function drawJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha = 1) {
+  if (alpha <= 0.01) return;
+  if (j.kind === 'bottle') drawBottle(ctx, t, j, x, y, tilt, d, alpha);
+  else if (j.kind === 'carton') drawCarton(ctx, t, j, x, y, tilt, alpha);
+  else if (j.kind === 'pitcher') drawPitcher(ctx, t, j, x, y, tilt, d, alpha);
+  else drawGlassJug(ctx, t, j, x, y, tilt, d, alpha);
+}
+
+/**
+ * A level surface inside a tipped vessel: from where it rests, to `over` px
+ * above the mouth as it tips (a jug's lip is its top; a bottle tipped mouth
+ * down still has its neck and shoulder full).
+ */
+function surfaceY(j: JugShape, a: number, tilt: number, rest: { x: number; y: number }, over = -3) {
+  const tip = spout(j, 0, 0, tilt);
+  return lerp(rest.x * Math.sin(a) + rest.y * Math.cos(a), tip.y - over, smoothstep(0.05, 0.42, tilt));
 }
 
 function jugBody(j: JugShape) {
   const p = new Path2D();
   const { W, H } = j;
-  const sp = SPOUT(j);
+  const sp = mouth(j);
   p.moveTo(-W * 0.08, -H * 0.5);
   p.lineTo(-W * 0.84, -H * 0.5);
   // The spout: a little lip that pinches out at the top left.
@@ -486,10 +541,9 @@ function jugBody(j: JugShape) {
   return p;
 }
 
-export function drawJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha = 1) {
-  if (alpha <= 0.01) return;
-  const day = t.name === 'day';
-  const a = -tilt * JUG_TILT;
+function drawGlassJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number) {
+  const day = t.light;
+  const a = -tilt * TIP.jug;
   const body = jugBody(j);
   const { W, H } = j;
   ctx.save();
@@ -527,9 +581,7 @@ export function drawJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x:
   ctx.save();
   ctx.clip(body);
   ctx.rotate(-a);
-  const tip = spout(j, 0, 0, tilt);
-  const rest = -H * 0.02;
-  const level = lerp(rest * Math.cos(a) - W * 0.5 * Math.sin(a), tip.y + 3, smoothstep(0.05, 0.42, tilt));
+  const level = surfaceY(j, a, tilt, { x: -W * 0.5, y: -H * 0.02 });
   const span = W * 2.5;
   const grad = ctx.createLinearGradient(0, level, 0, level + H);
   grad.addColorStop(0, d.color);
@@ -589,6 +641,575 @@ export function drawJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x:
   ctx.beginPath();
   ctx.roundRect(-W * 0.86, -H * 0.3, W * 0.06, H * 0.6, W * 0.03);
   ctx.fill();
+  ctx.restore();
+}
+
+/** The pitcher's tall body: near-straight sides, a pinched lip at the top left, a thick round foot. */
+function pitcherBody(j: JugShape) {
+  const p = new Path2D();
+  const { W, H } = j;
+  const sp = mouth(j);
+  const top = -H * 0.5;
+  const bot = H * 0.5;
+  p.moveTo(-W * 0.14, top);
+  p.lineTo(-W * 0.8, top);
+  // The pinched lip: drawn out to a point, then tucked back into the wall.
+  p.quadraticCurveTo(-W * 0.95, top - 1, sp.x, sp.y);
+  p.quadraticCurveTo(-W * 0.98, top + H * 0.06, -W * 0.88, top + H * 0.13);
+  // Down the side, flaring very slightly to a rounded heel.
+  p.bezierCurveTo(-W * 0.93, top + H * 0.4, -W * 0.97, bot - H * 0.2, -W * 0.95, bot - H * 0.06);
+  p.quadraticCurveTo(-W * 0.94, bot, -W * 0.84, bot);
+  p.lineTo(-W * 0.06, bot);
+  p.quadraticCurveTo(W * 0.04, bot, W * 0.03, bot - H * 0.06);
+  p.bezierCurveTo(W * 0.05, bot - H * 0.2, -W * 0.01, top + H * 0.4, -W * 0.06, top + H * 0.13);
+  p.quadraticCurveTo(-W * 0.09, top + H * 0.05, -W * 0.14, top);
+  p.closePath();
+  return p;
+}
+
+/** Lemon wheels floating in the pitcher (centre × W/H in its own frame, size, turn). */
+const PITCHER_LEMONS = [
+  { x: -0.62, y: -0.02, r: 0.17, tilt: 0.55 },
+  { x: -0.34, y: 0.16, r: 0.15, tilt: 0.35 },
+  { x: -0.7, y: 0.3, r: 0.14, tilt: 0.7 },
+];
+/** Beads of condensation on the outside, where the cold lemonade is. */
+const BEADS = [
+  [-0.86, 0.05, 1.1],
+  [-0.78, 0.22, 0.8],
+  [-0.9, 0.34, 1],
+  [-0.24, 0.1, 0.9],
+  [-0.16, 0.3, 1.2],
+  [-0.42, 0.38, 0.7],
+  [-0.66, 0.42, 0.9],
+  [-0.52, 0.02, 0.6],
+  [-0.3, -0.06, 0.7],
+];
+
+/**
+ * A classic lemonade pitcher: tall ribbed glass with a pinched lip and a big
+ * looped handle, cloudy-bright lemonade inside with lemon wheels drifting in
+ * it, and cold beads of condensation on the outside.
+ */
+function drawPitcher(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number) {
+  const day = t.light;
+  const a = -tilt * TIP.pitcher;
+  const body = pitcherBody(j);
+  const { W, H } = j;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.rotate(a);
+
+  // The handle: a tall, thick loop of glass from the shoulder to low on the side.
+  ctx.lineCap = 'round';
+  const loop = () => {
+    ctx.beginPath();
+    ctx.moveTo(-W * 0.07, -H * 0.36);
+    ctx.bezierCurveTo(W * 0.48, -H * 0.38, W * 0.44, H * 0.26, -W * 0.02, H * 0.3);
+  };
+  ctx.strokeStyle = day ? rgba(t.ink, 0.22) : rgba('#ffffff', 0.22);
+  ctx.lineWidth = W * 0.13;
+  loop();
+  ctx.stroke();
+  ctx.strokeStyle = day ? rgba('#ffffff', 0.7) : rgba(t.ink, 0.14);
+  ctx.lineWidth = W * 0.045;
+  loop();
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(-W * 0.015, -W * 0.025);
+  ctx.strokeStyle = rgba('#ffffff', day ? 0.85 : 0.45);
+  ctx.lineWidth = 1.4;
+  loop();
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = rgba('#ffffff', day ? 0.18 : 0.06);
+  ctx.fill(body);
+
+  // The lemonade stays level as the pitcher tips, rising to the lip.
+  ctx.save();
+  ctx.clip(body);
+  ctx.rotate(-a);
+  const level = surfaceY(j, a, tilt, { x: -W * 0.5, y: -H * 0.22 });
+  const span = W * 3;
+  const grad = ctx.createLinearGradient(0, level, 0, level + H);
+  grad.addColorStop(0, d.color);
+  grad.addColorStop(1, d.deep);
+  ctx.fillStyle = grad;
+  ctx.fillRect(-span, level, span * 2, span);
+  ctx.beginPath();
+  ctx.rect(-span, level, span * 2, span);
+  ctx.clip();
+  ctx.rotate(a);
+  // Lemon wheels, seen through the drink at a slant; they bob a little as it moves.
+  for (const l of PITCHER_LEMONS) {
+    const r = l.r * W;
+    ctx.save();
+    ctx.translate(l.x * W, l.y * H);
+    ctx.rotate(l.tilt - a * 0.3);
+    ctx.scale(1, 0.62);
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.fillStyle = '#EDC23E';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#FFF3BE';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.84, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#F6D865';
+    for (let i = 0; i < 8; i++) {
+      const a0 = (i / 8) * TAU + 0.08;
+      const a1 = ((i + 1) / 8) * TAU - 0.08;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, r * 0.74, a0, a1);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+  // Surface: a lit band, then the bright line.
+  ctx.save();
+  ctx.clip(body);
+  ctx.rotate(-a);
+  ctx.fillStyle = rgba(mix(d.color, '#ffffff', 0.5), 0.85);
+  ctx.fillRect(-span, level, span * 2, Math.max(2, W * 0.04));
+  ctx.strokeStyle = rgba('#ffffff', day ? 0.85 : 0.6);
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-span, level);
+  ctx.lineTo(span, level);
+  ctx.stroke();
+  ctx.restore();
+
+  // Ribbed glass: soft vertical panels of light, shade away from the lamp, a thick foot.
+  ctx.save();
+  ctx.clip(body);
+  for (let i = 0; i < 6; i++) {
+    const rx = -W * (0.86 - i * 0.14);
+    ctx.strokeStyle = rgba('#ffffff', i < 3 ? 0.2 : 0.1);
+    ctx.lineWidth = Math.max(1, W * 0.018);
+    ctx.beginPath();
+    ctx.moveTo(rx, -H * 0.36);
+    ctx.lineTo(rx - W * 0.01, H * 0.42);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = day ? rgba(t.ink, 0.08) : rgba('#ffffff', 0.13);
+  ctx.lineWidth = W * 0.09;
+  ctx.stroke(body);
+  const sh = ctx.createLinearGradient(-W, 0, W * 0.05, 0);
+  sh.addColorStop(0, rgba(t.ink, 0));
+  sh.addColorStop(0.65, rgba(t.ink, 0));
+  sh.addColorStop(1, rgba(t.ink, day ? 0.1 : 0.18));
+  ctx.fillStyle = sh;
+  ctx.fill(body);
+  ctx.fillStyle = rgba('#ffffff', day ? 0.32 : 0.14);
+  ctx.fillRect(-W * 1.1, H * 0.42, W * 1.2, H * 0.09);
+  ctx.restore();
+
+  // Silhouette, inner edge, the rim seen from just above, the lamp's highlight.
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = day ? rgba(t.ink, 0.3) : rgba('#ffffff', 0.45);
+  ctx.lineWidth = 1.5;
+  ctx.stroke(body);
+  ctx.save();
+  ctx.clip(body);
+  ctx.strokeStyle = day ? rgba('#ffffff', 0.9) : rgba(t.ink, 0.16);
+  ctx.lineWidth = 2.4;
+  ctx.stroke(body);
+  ctx.restore();
+  ctx.strokeStyle = day ? rgba(t.ink, 0.22) : rgba('#ffffff', 0.4);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.ellipse(-W * 0.47, -H * 0.5, W * 0.34, W * 0.05, 0, 0, Math.PI);
+  ctx.stroke();
+  const hl = ctx.createLinearGradient(0, -H * 0.38, 0, H * 0.38);
+  hl.addColorStop(0, rgba('#ffffff', 0));
+  hl.addColorStop(0.25, rgba('#ffffff', day ? 0.65 : 0.38));
+  hl.addColorStop(1, rgba('#ffffff', 0));
+  ctx.fillStyle = hl;
+  ctx.beginPath();
+  ctx.roundRect(-W * 0.82, -H * 0.36, W * 0.06, H * 0.74, W * 0.03);
+  ctx.fill();
+
+  // Condensation: little beads, each with a bright cap and a soft shadow side.
+  for (const [bx, by, k] of BEADS) {
+    const r = Math.max(1.1, W * 0.022 * k);
+    const px = bx * W;
+    const py = by * H;
+    ctx.fillStyle = rgba('#ffffff', day ? 0.5 : 0.32);
+    ctx.beginPath();
+    ctx.ellipse(px, py, r, r * 1.25, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = rgba('#ffffff', 0.9);
+    ctx.beginPath();
+    ctx.arc(px - r * 0.3, py - r * 0.4, r * 0.35, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** A smooth line through `pts`, each corner rounded off at its neighbours' midpoints. */
+function through(p: Path2D, pts: [number, number][]) {
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x, y] = pts[i];
+    const [nx, ny] = pts[i + 1];
+    p.quadraticCurveTo(x, y, (x + nx) / 2, (y + ny) / 2);
+  }
+  const [lx, ly] = pts[pts.length - 1];
+  p.lineTo(lx, ly);
+}
+
+/** The contour bottle's half-width down its length: lip, neck, shoulder, waist, belly, base. */
+const CONTOUR: [number, number][] = [
+  [0, 0.068],
+  [0.04, 0.064],
+  [0.2, 0.068],
+  [0.37, 0.148],
+  [0.47, 0.16],
+  [0.59, 0.126],
+  [0.76, 0.166],
+  [0.94, 0.16],
+  [1, 0.146],
+];
+
+function bottleBody(j: JugShape) {
+  const { W, H } = j;
+  const side = (k: number) => CONTOUR.map(([t, hw]) => [k * hw * W, -H / 2 + t * H] as [number, number]);
+  const left = side(-1);
+  const right = side(1).reverse();
+  const p = new Path2D();
+  p.moveTo(left[0][0], left[0][1]);
+  through(p, left);
+  p.lineTo(right[0][0], right[0][1]);
+  through(p, right);
+  p.closePath();
+  return p;
+}
+
+/** A glass bottle of cola, green-tinted glass with fluting, the drink dark inside. */
+function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number) {
+  const day = t.light;
+  const a = -tilt * TIP.bottle;
+  const { W, H } = j;
+  const body = bottleBody(j);
+  const glassTint = '#9FCCB4';
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.rotate(a);
+
+  ctx.fillStyle = rgba(glassTint, day ? 0.42 : 0.2);
+  ctx.fill(body);
+
+  // The drink, level however the bottle leans; it comes up to the neck.
+  ctx.save();
+  ctx.clip(body);
+  ctx.rotate(-a);
+  const level = surfaceY(j, a, tilt, { x: 0, y: -H / 2 + H * 0.3 }, H * 0.3);
+  const span = H * 2;
+  const grad = ctx.createLinearGradient(0, level, 0, level + H * 0.8);
+  grad.addColorStop(0, d.color);
+  grad.addColorStop(1, d.deep);
+  ctx.fillStyle = grad;
+  ctx.fillRect(-span, level, span * 2, span);
+  // Seen through green glass, with a bright line at its surface and a few rising bubbles.
+  ctx.fillStyle = rgba(glassTint, 0.16);
+  ctx.fillRect(-span, level, span * 2, span);
+  ctx.strokeStyle = rgba(mix(d.color, '#ffffff', 0.55), 0.9);
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(-span, level);
+  ctx.lineTo(span, level);
+  ctx.stroke();
+  ctx.restore();
+
+  // Fluting on the shoulder and the belly: soft ribs of light down the glass.
+  ctx.save();
+  ctx.clip(body);
+  ctx.lineCap = 'round';
+  for (const [t0, t1] of [
+    [0.34, 0.52],
+    [0.64, 0.95],
+  ]) {
+    for (const k of [-0.1, -0.05, 0, 0.05, 0.1]) {
+      ctx.strokeStyle = rgba('#ffffff', k < 0 ? 0.22 : 0.1);
+      ctx.lineWidth = Math.max(1, W * 0.012);
+      ctx.beginPath();
+      ctx.moveTo(k * W, -H / 2 + t0 * H);
+      ctx.lineTo(k * W * 1.08, -H / 2 + t1 * H);
+      ctx.stroke();
+    }
+  }
+  // Round: the side away from the lamp in shade, and a thick heel of glass.
+  const sh = ctx.createLinearGradient(-W * 0.17, 0, W * 0.17, 0);
+  sh.addColorStop(0, rgba(t.ink, 0));
+  sh.addColorStop(0.6, rgba(t.ink, 0));
+  sh.addColorStop(1, rgba(t.ink, day ? 0.14 : 0.24));
+  ctx.fillStyle = sh;
+  ctx.fill(body);
+  ctx.fillStyle = rgba(mix(glassTint, '#ffffff', 0.4), day ? 0.55 : 0.25);
+  ctx.fillRect(-W * 0.2, H / 2 - H * 0.04, W * 0.4, H * 0.05);
+  ctx.restore();
+
+  // Silhouette, a bright inner edge, the lamp's long highlight, and the lip.
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = day ? rgba(mix(t.ink, glassTint, 0.3), 0.42) : rgba(mix(glassTint, '#ffffff', 0.5), 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.stroke(body);
+  ctx.save();
+  ctx.clip(body);
+  ctx.strokeStyle = rgba('#ffffff', day ? 0.75 : 0.22);
+  ctx.lineWidth = 2.4;
+  ctx.stroke(body);
+  ctx.restore();
+  const hl = (t0: number, t1: number, xk: number) => {
+    const g = ctx.createLinearGradient(0, -H / 2 + t0 * H, 0, -H / 2 + t1 * H);
+    g.addColorStop(0, rgba('#ffffff', 0));
+    g.addColorStop(0.35, rgba('#ffffff', day ? 0.75 : 0.4));
+    g.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.roundRect(xk * W, -H / 2 + t0 * H, W * 0.035, (t1 - t0) * H, W * 0.02);
+    ctx.fill();
+  };
+  hl(0.06, 0.24, -0.045);
+  hl(0.36, 0.54, -0.115);
+  hl(0.66, 0.92, -0.125);
+  const lipW = W * 0.16;
+  const lipH = H * 0.045;
+  ctx.fillStyle = rgba(mix(glassTint, '#ffffff', 0.5), day ? 0.85 : 0.4);
+  ctx.strokeStyle = day ? rgba(t.ink, 0.3) : rgba('#ffffff', 0.45);
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.roundRect(-lipW / 2, -H / 2 - lipH * 0.4, lipW, lipH, lipH * 0.45);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+const CARTON_BLUE = '#4F86C9';
+const CARTON_BLUE_DEEP = '#3B6DAE';
+const COW_PINK = '#F2B3AE';
+
+/**
+ * A milk carton, gable top opened at one corner into a spout. White card with
+ * a blue band, a blue roof and a cow on the front, seen a little from the right.
+ */
+function drawCarton(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, alpha: number) {
+  const day = t.light;
+  const a = -tilt * TIP.carton;
+  const u = j.W;
+  const cw = u * CARTON.w;
+  const sw = u * CARTON.side;
+  const bh = j.H;
+  const rh = u * CARTON.roof;
+  const fin = u * CARTON.fin;
+  const dy = sw * 0.38;
+  const L = -cw / 2;
+  const R = cw / 2;
+  const T = -bh / 2;
+  const B = bh / 2;
+  const ridgeY = T - rh;
+  const ridgeX = sw / 2;
+  // Card, lit from the upper left; a touch dimmer at dusk so it sits in the room.
+  const card = day ? '#FFFDF9' : '#EFE9E1';
+  const cardShade = day ? '#E5E2DE' : '#C9C1B7';
+  const line = day ? rgba(t.ink, 0.32) : rgba(t.ink, 0.5);
+  const blue = day ? CARTON_BLUE : mix(CARTON_BLUE, t.ink, 0.15);
+  const blueDeep = day ? CARTON_BLUE_DEEP : mix(CARTON_BLUE_DEEP, t.ink, 0.2);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = line;
+
+  const poly = (pts: [number, number][]) => {
+    const p = new Path2D();
+    p.moveTo(pts[0][0], pts[0][1]);
+    for (const [px, py] of pts.slice(1)) p.lineTo(px, py);
+    p.closePath();
+    return p;
+  };
+
+  // The side, in shade, with the band running round it.
+  const side = poly([
+    [R, T],
+    [R + sw, T - dy],
+    [R + sw, B - dy],
+    [R, B],
+  ]);
+  ctx.fillStyle = cardShade;
+  ctx.fill(side);
+  ctx.save();
+  ctx.clip(side);
+  ctx.fillStyle = blueDeep;
+  ctx.beginPath();
+  ctx.moveTo(R, B - bh * 0.36);
+  ctx.lineTo(R + sw, B - bh * 0.36 - dy);
+  ctx.lineTo(R + sw, B);
+  ctx.lineTo(R, B + dy);
+  ctx.fill();
+  ctx.restore();
+  ctx.stroke(side);
+
+  // The gable on the side, and the front slope of the roof up to the ridge.
+  const gable = poly([
+    [R, T],
+    [R + ridgeX, ridgeY - dy / 2],
+    [R + sw, T - dy],
+  ]);
+  ctx.fillStyle = cardShade;
+  ctx.fill(gable);
+  ctx.stroke(gable);
+  const roof = poly([
+    [L, T],
+    [R, T],
+    [R + ridgeX, ridgeY - dy / 2],
+    [L + ridgeX, ridgeY - dy / 2],
+  ]);
+  ctx.fillStyle = blue;
+  ctx.fill(roof);
+  ctx.save();
+  ctx.clip(roof);
+  ctx.fillStyle = rgba('#ffffff', 0.18);
+  ctx.fillRect(L, ridgeY - dy, cw + sw, rh * 0.35);
+  ctx.restore();
+  ctx.stroke(roof);
+  // The sealed fin along the top.
+  const top = poly([
+    [L + ridgeX, ridgeY - dy / 2],
+    [R + ridgeX, ridgeY - dy / 2],
+    [R + ridgeX, ridgeY - dy / 2 - fin],
+    [L + ridgeX, ridgeY - dy / 2 - fin],
+  ]);
+  ctx.fillStyle = card;
+  ctx.fill(top);
+  ctx.stroke(top);
+
+  // Opened at the left corner and pulled out into a spout.
+  const m = mouth(j);
+  const spoutPath = poly([
+    [L, T],
+    [m.x, m.y],
+    [L + ridgeX * 0.9, ridgeY - dy / 2 + 1],
+  ]);
+  ctx.fillStyle = cardShade;
+  ctx.fill(spoutPath);
+  ctx.stroke(spoutPath);
+  ctx.fillStyle = rgba('#F7F1E6', 1);
+  ctx.beginPath();
+  ctx.moveTo(m.x + u * 0.025, m.y + u * 0.005);
+  ctx.lineTo(L + u * 0.02, T - rh * 0.25);
+  ctx.lineTo(L + ridgeX * 0.55, ridgeY - dy / 2 + rh * 0.35);
+  ctx.closePath();
+  ctx.fill();
+
+  // The front: white card, lit from the left, and the blue band with a soft wave on top.
+  const front = new Path2D();
+  front.rect(L, T, cw, bh);
+  const lit = ctx.createLinearGradient(L, 0, R, 0);
+  lit.addColorStop(0, card);
+  lit.addColorStop(1, mix(card, cardShade, 0.45));
+  ctx.fillStyle = lit;
+  ctx.fill(front);
+  ctx.save();
+  ctx.clip(front);
+  const bandY = B - bh * 0.36;
+  ctx.fillStyle = blue;
+  ctx.beginPath();
+  ctx.moveTo(L, bandY);
+  const waves = 3;
+  for (let i = 0; i < waves; i++) {
+    const x0 = L + (cw / waves) * i;
+    ctx.quadraticCurveTo(x0 + cw / waves / 4, bandY - bh * 0.045, x0 + cw / waves / 2, bandY);
+    ctx.quadraticCurveTo(x0 + (cw / waves) * 0.75, bandY + bh * 0.045, x0 + cw / waves, bandY);
+  }
+  ctx.lineTo(R, B);
+  ctx.lineTo(L, B);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `600 ${Math.round(cw * 0.2)}px ${type.display}`;
+  ctx.fillText('milk', 0, B - bh * 0.15);
+  ctx.restore();
+  ctx.stroke(front);
+
+  drawCow(ctx, 0, T + bh * 0.32, cw * 0.2, line);
+  ctx.restore();
+}
+
+/** A small, friendly cow's face for the carton. */
+function drawCow(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, line: string) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.lineWidth = Math.max(1, s * 0.09);
+  ctx.strokeStyle = line;
+  // Horns, then ears behind the head.
+  ctx.fillStyle = '#F2E2C4';
+  for (const k of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(k * s * 0.5, -s * 0.92, s * 0.13, s * 0.24, k * 0.35, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
+  for (const k of [-1, 1]) {
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(k * s * 1.02, -s * 0.38, s * 0.4, s * 0.19, k * 0.4, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = COW_PINK;
+    ctx.beginPath();
+    ctx.ellipse(k * s * 1.08, -s * 0.37, s * 0.22, s * 0.09, k * 0.4, 0, TAU);
+    ctx.fill();
+  }
+  // Head, with a black patch over one eye.
+  const head = new Path2D();
+  head.ellipse(0, 0, s * 0.8, s * 0.9, 0, 0, TAU);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill(head);
+  ctx.save();
+  ctx.clip(head);
+  ctx.fillStyle = '#3A302B';
+  ctx.beginPath();
+  ctx.ellipse(s * 0.5, -s * 0.45, s * 0.42, s * 0.36, 0.5, 0, TAU);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.62, -s * 0.05, s * 0.2, s * 0.26, -0.3, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+  ctx.stroke(head);
+  // Eyes, with a glint, and a pink muzzle with nostrils.
+  for (const k of [-1, 1]) {
+    ctx.fillStyle = '#2C2420';
+    ctx.beginPath();
+    ctx.arc(k * s * 0.3, -s * 0.08, s * 0.1, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(k * s * 0.3 - s * 0.03, -s * 0.12, s * 0.035, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = COW_PINK;
+  ctx.beginPath();
+  ctx.ellipse(0, s * 0.5, s * 0.6, s * 0.36, 0, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = mix(COW_PINK, '#8A4A45', 0.5);
+  for (const k of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(k * s * 0.22, s * 0.5, s * 0.07, s * 0.1, 0, 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
