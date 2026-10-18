@@ -33,11 +33,6 @@ export const icons = {
   ),
   bubblesRegular: wrap('<circle cx="8.3" cy="8.3" r="3.3"/><circle cx="15.7" cy="8.3" r="3.3"/><circle cx="12" cy="15.7" r="3.3"/>'),
   bubblesJumbo: wrap('<circle cx="12" cy="12" r="7"/><path d="M8.8 9.6a3.6 3.6 0 0 1 2.4-1.8"/>'),
-  milk: wrap('<path d="M8 8.5 10 4.5h4l2 4v10.2a1.8 1.8 0 0 1-1.8 1.8H9.8A1.8 1.8 0 0 1 8 18.7z"/><path d="M8 11.5h8"/>'),
-  soda: wrap(
-    '<path d="M6.5 7.5h11l-1.4 11.2a1.8 1.8 0 0 1-1.8 1.6H9.7a1.8 1.8 0 0 1-1.8-1.6z"/><path d="M13.5 7.5 15 3.5"/><circle cx="10.6" cy="15.6" r=".6"/><circle cx="13.4" cy="12.6" r=".6"/>',
-  ),
-  glass: wrap('<path d="M7 5h10l-1.6 13.4a1.8 1.8 0 0 1-1.8 1.6h-3.2a1.8 1.8 0 0 1-1.8-1.6z"/><path d="M8.2 10.5h7.6"/>'),
   moon: wrap('<path d="M18.5 14.5A7 7 0 0 1 9.5 5.5a7 7 0 1 0 9 9z"/>'),
 };
 

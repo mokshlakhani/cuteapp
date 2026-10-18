@@ -776,3 +776,169 @@ svg {
   justify-content: center;
   margin: 12px 0 2px;
 }
+
+/* ——— pour: streak, best, how it went ——— */
+
+.pour-hud {
+  position: absolute;
+  top: calc(var(--safe-top) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.pour-streak {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.pour-streak-num {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 46px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.pour-streak-cap,
+.pour-best-cap {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.pour-streak-cap {
+  margin-top: 2px;
+}
+
+.pour-streak.is-up .pour-streak-num {
+  animation: pour-bump 520ms var(--ease-overshoot);
+}
+
+.pour-streak.is-reset .pour-streak-num {
+  animation: pour-drop 420ms var(--ease-out);
+}
+
+@keyframes pour-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.32);
+    color: var(--accent);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pour-drop {
+  0% {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.pour-best {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow var(--d-base) var(--ease-out);
+}
+
+.pour-best-num {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.pour-best.is-new {
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 2px var(--accent) inset;
+}
+
+.pour-toast {
+  position: absolute;
+  top: calc(var(--safe-top) + 124px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 8px) scale(0.96);
+  transition:
+    transform 520ms var(--ease-overshoot),
+    opacity var(--d-base) var(--ease-out);
+}
+
+.pour-toast.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.pour-toast-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 24px;
+  color: var(--ink);
+}
+
+.pour-toast.is-good .pour-toast-title {
+  color: color-mix(in srgb, var(--accent) 55%, var(--ink));
+}
+
+.pour-toast-sub {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.pour-caption {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 34px);
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* No dock here: the hint sits between the table and the drink's name. */
+.room-pour .hint {
+  bottom: calc(var(--safe-bottom) + 70px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pour-streak.is-up .pour-streak-num,
+  .pour-streak.is-reset .pour-streak-num {
+    animation: none;
+  }
+}

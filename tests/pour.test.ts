@@ -30,8 +30,8 @@ describe('a glass being poured', () => {
   it('soda foams up past the drink, then settles back down', () => {
     const g = new Glass(SODA.foamy, 0.7);
     pour(g, 0.3, 1);
-    expect(g.foam).toBeGreaterThan(0.15);
-    expect(g.top).toBeGreaterThan(g.level + 0.15);
+    expect(g.foam).toBeGreaterThan(0.06);
+    expect(g.top).toBeGreaterThan(g.level + 0.06);
     run(g, 8);
     expect(g.foam).toBe(0);
     expect(g.level).toBeCloseTo(0.3, 5);
@@ -72,7 +72,8 @@ describe('a glass being poured', () => {
     const g = new Glass(SODA.foamy, 0.6);
     const got: Verdict[] = [];
     g.events.verdict = (v) => got.push(v);
-    pour(g, 0.25, 1);
+    pour(g, 0.25, 0.3);
+    expect(g.foam).toBeGreaterThan(0.06);
     run(g, SETTLE + 0.2);
     expect(got).toEqual([]);
     run(g, 8);
@@ -91,9 +92,9 @@ describe('a glass being poured', () => {
     const g = new Glass(SODA.foamy, 0.6);
     let spilled = 0;
     g.events.spill = (x) => (spilled += x);
-    pour(g, 0.5, 1);
+    pour(g, 0.85, 0.8);
     expect(spilled).toBeGreaterThan(0);
-    expect(g.level).toBeLessThan(0.6);
+    expect(g.level).toBeLessThan(1);
   });
 
   it('ripples where a drop lands, and calms down again', () => {

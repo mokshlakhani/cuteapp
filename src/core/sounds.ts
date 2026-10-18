@@ -463,6 +463,11 @@ export const material = {
     );
   },
 
+  /** Missed the line: two soft notes stepping down, more "aw" than "wrong". */
+  pourMiss(pan = 0) {
+    audio.tone({ freq: scale(9), decay: 0.22, gain: 0.04, pan, reverb: 0.3, type: 'triangle' });
+    audio.tone({ freq: scale(7), decay: 0.4, gain: 0.04, pan, reverb: 0.3, type: 'triangle', delay: 0.14 });
+  },
   /** A soft slice through jelly. */
   slice(pan = 0) {
     if (!gate('slice', 40)) return;

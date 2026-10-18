@@ -78,7 +78,8 @@ export interface GlassLook {
   nudge: number;
   time: number;
   /** Drawn inside the drink, clipped to it (bubbles). */
-  inside?: (ctx: CanvasRenderingContext2D) => void;
+  inside?: (ctx: CanvasRenderingContext2D) => void; /** Drawn inside the glass, clipped to it, over the drink (pearls, ice). */
+  extras?: (ctx: CanvasRenderingContext2D) => void;
 }
 
 /** The surface of what's in the glass, as a path from left wall to right. */
@@ -156,6 +157,7 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
       ctx.fill();
     }
   }
+  look.extras?.(ctx);
   ctx.restore();
 
   // The fill line: a little notch on each wall, joined by a faint dashed line.
@@ -164,11 +166,18 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
   const pulse = look.nudge * (0.5 + 0.5 * Math.sin(look.time * 9));
   const ink = mix(t.ink, '#ffffff', day ? 0 : 0.2);
   if (look.glow > 0.01) {
-    const gl = ctx.createRadialGradient(g.cx, ly, 0, g.cx, ly, lh * 1.4);
+    // A soft, flat oval of light along the line.
+    ctx.save();
+    ctx.translate(g.cx, ly);
+    ctx.scale(1, 0.3);
+    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, lh * 1.4);
     gl.addColorStop(0, rgba(pastel.butter, 0.55 * look.glow));
     gl.addColorStop(1, rgba(pastel.butter, 0));
     ctx.fillStyle = gl;
-    ctx.fillRect(g.cx - lh * 1.5, ly - lh * 0.5, lh * 3, lh);
+    ctx.beginPath();
+    ctx.arc(0, 0, lh * 1.4, 0, TAU);
+    ctx.fill();
+    ctx.restore();
   }
   ctx.save();
   ctx.lineCap = 'round';

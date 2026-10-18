@@ -3,7 +3,7 @@ import { clamp, rand } from '../../core/math';
 /** Columns in the little wave simulation across the drink's surface. */
 export const WAVE_N = 24;
 /** How close to the line counts as spot on (fraction of the glass's height). */
-export const PERFECT = 0.035;
+export const PERFECT = 0.04;
 /** Quiet this long (s) after the last drop, with the foam gone, and it's judged. */
 export const SETTLE = 0.6;
 /** A trace of froth this thin doesn't hold up the verdict. */

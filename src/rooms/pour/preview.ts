@@ -16,7 +16,7 @@ const SODA = DRINKS[1];
  * giggles and glugs.
  */
 export function pourPreview(): Preview {
-  const glass = new Glass(SODA.foamy * 0.4, 0.7);
+  const glass = new Glass(SODA.foamy, 0.62);
   const face = new Face();
   const bubbles: { u: number; f: number; sp: number }[] = [];
   let time = 0;
