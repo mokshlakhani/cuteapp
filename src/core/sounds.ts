@@ -411,6 +411,58 @@ export const material = {
     audio.tone({ freq: f * 0.75, to: f * 1.25, glide: 0.2, decay: 0.26, gain: 0.08, pan, reverb: 0.2, attack: 0.02 });
     audio.tone({ freq: scale(14), decay: 0.3, gain: 0.025, pan, reverb: 0.5, delay: 0.16 });
   },
+  // ——— liquid family (pouring) ———
+
+  /**
+   * One glug of a drink landing in a glass. level 0..1 is how full it is:
+   * the note climbs as it fills, the way a glass does. flow 0..1 is how
+   * hard it's pouring.
+   */
+  glug(level: number, flow: number, pan = 0) {
+    if (!gate('glug', 55)) return;
+    const l = clamp(level, 0, 1);
+    const q = clamp(flow, 0, 1);
+    const f = scale(Math.round(lerp(4, 16, l) + rand(-0.6, 0.6)));
+    audio.tone({ freq: f * 0.8, to: f * 1.12, glide: 0.06, attack: 0.008, decay: 0.09, gain: 0.05 + q * 0.05, pan, lowpass: 2200 });
+    audio.noise({
+      dur: 0.07,
+      attack: 0.005,
+      gain: 0.02 + q * 0.035,
+      filter: 'bandpass',
+      freq: lerp(500, 1500, l),
+      to: lerp(800, 2000, l),
+      q: 1.4,
+      pan,
+    });
+  },
+  /** Fizz: a few bright little crackles. amount 0..1. */
+  fizz(amount: number, pan = 0) {
+    if (!gate('fizz', 45)) return;
+    const a = clamp(amount, 0, 1);
+    audio.noise({ dur: 0.05, gain: 0.006 + a * 0.02, filter: 'highpass', freq: rand(5200, 7600), q: 0.6, pan });
+    if (Math.random() < 0.3 + a * 0.5)
+      audio.noise({ dur: 0.008, gain: 0.02 + a * 0.02, filter: 'bandpass', freq: rand(3000, 6000), q: 3, pan, delay: rand(0, 0.03) });
+  },
+  /** Drink hitting the table: a wet little splat. amount 0..1. */
+  splat(amount: number, pan = 0) {
+    if (!gate('splat', 70)) return;
+    const a = clamp(amount, 0, 1);
+    audio.noise({ dur: 0.08 + a * 0.06, attack: 0.003, gain: 0.03 + a * 0.05, filter: 'lowpass', freq: 1100, to: 400, pan });
+    audio.tone({ freq: 200, to: 110, glide: 0.06, decay: 0.07, gain: 0.02 + a * 0.03, pan });
+  },
+  /** A glass set down on the table. */
+  clink(pan = 0) {
+    audio.tone({ freq: scale(18), decay: 0.4, gain: 0.03, pan, reverb: 0.4 });
+    audio.tone({ freq: scale(21) * 1.01, decay: 0.25, gain: 0.018, pan, reverb: 0.4 });
+    audio.noise({ dur: 0.03, gain: 0.02, filter: 'lowpass', freq: 900, pan });
+  },
+  /** Stopped right on the line: a warm little chord that rings out. */
+  pourPerfect(pan = 0) {
+    [0, 4, 7, 9].forEach((step, i) =>
+      audio.tone({ freq: scale(12 + step), decay: 0.7 + i * 0.1, gain: 0.04, pan: pan + (i - 1.5) * 0.1, reverb: 0.6, delay: i * 0.06 }),
+    );
+  },
+
   /** A soft slice through jelly. */
   slice(pan = 0) {
     if (!gate('slice', 40)) return;

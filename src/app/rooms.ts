@@ -6,6 +6,8 @@ import { JellyRoom } from '../rooms/jelly/JellyRoom';
 import { jellyPreview } from '../rooms/jelly/preview';
 import { WrapRoom } from '../rooms/wrap/WrapRoom';
 import { wrapPreview } from '../rooms/wrap/preview';
+import { PourRoom } from '../rooms/pour/PourRoom';
+import { pourPreview } from '../rooms/pour/preview';
 
 /** Placeholder previews for rooms that are still asleep. */
 const sleeping = (): Preview => ({ update() {}, draw() {}, poke() {} });
@@ -19,6 +21,6 @@ export const ROOMS: RoomInfo[] = [
   { id: 'melon', name: 'pop', tint: roomTint.melon, awake: true, create: (nav) => new MelonRoom(nav), preview: melonPreview },
   { id: 'jelly', name: 'jelly', tint: roomTint.jelly, awake: true, create: (nav) => new JellyRoom(nav), preview: jellyPreview },
   { id: 'wrap', name: 'bubbles', tint: roomTint.wrap, awake: true, create: (nav) => new WrapRoom(nav), preview: wrapPreview },
-  { id: 'soon2', name: 'soon', tint: roomTint.soon2, awake: false, preview: sleeping },
+  { id: 'pour', name: 'pour', tint: roomTint.pour, awake: true, create: (nav) => new PourRoom(nav), preview: pourPreview },
   { id: 'soon3', name: 'soon', tint: roomTint.soon3, awake: false, preview: sleeping },
 ];

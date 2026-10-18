@@ -87,7 +87,7 @@ export const roomTint = {
   melon: pastel.sage,
   jelly: pastel.peach,
   wrap: pastel.sky,
-  soon2: pastel.lilac,
+  pour: pastel.lilac,
   soon3: pastel.peach,
 } as const;
 
