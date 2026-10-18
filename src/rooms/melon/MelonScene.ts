@@ -26,8 +26,6 @@ const HOME = { elev: 23, az: 0, distK: 1, ty: 1.45 };
 const LOW = { elev: 14, az: 0.18, distK: 0.82, ty: 0.5 };
 
 const tmpV = new THREE.Vector3();
-const tmpSize = new THREE.Vector2();
-const previewCam = new THREE.PerspectiveCamera(30, 1, 1, 400);
 
 export class MelonScene {
   readonly canvas: HTMLCanvasElement;
@@ -391,14 +389,6 @@ export class MelonScene {
     this.placeCamera();
   }
 
-  /** Let the melon breathe and blink when only the home card is showing it. */
-  idle(dt: number) {
-    if (this.active) return;
-    this.time += dt;
-    this.shape.update(dt);
-    if (this.melonVisible) this.refresh();
-  }
-
   // ——— picking ———
 
   private rayFrom(sx: number, sy: number) {
@@ -468,35 +458,10 @@ export class MelonScene {
     this.renderer.render(this.scene, this.camera);
     return this.canvas;
   }
-
-  /** Photograph the melon (or the mess) into a 2D canvas, for the home card. */
-  snapshot(target: HTMLCanvasElement) {
-    if (!target.width || !target.height) return;
-    if (this.melonVisible) this.drawFace();
-    previewCam.aspect = target.width / target.height;
-    const tanV = Math.tan(THREE.MathUtils.degToRad(previewCam.fov / 2));
-    const reach = this.melonVisible ? MELON_A * 1.7 : 7;
-    const dist = Math.max(reach / (tanV * previewCam.aspect), (MELON_R * 1.6) / tanV);
-    const elev = THREE.MathUtils.degToRad(HOME.elev);
-    const ty = this.melonVisible ? this.root.position.y : 0.4;
-    previewCam.position.set(0, Math.sin(elev) * dist + ty * 0.3, Math.cos(elev) * dist);
-    previewCam.lookAt(0, ty, 0);
-    previewCam.updateProjectionMatrix();
-    this.renderer.getSize(tmpSize);
-    const ratio = this.renderer.getPixelRatio();
-    this.renderer.setPixelRatio(1);
-    this.renderer.setSize(target.width, target.height, false);
-    this.renderer.render(this.scene, previewCam);
-    const ctx = target.getContext('2d')!;
-    ctx.clearRect(0, 0, target.width, target.height);
-    ctx.drawImage(this.canvas, 0, 0, target.width, target.height);
-    this.renderer.setPixelRatio(ratio);
-    this.renderer.setSize(tmpSize.x, tmpSize.y, false);
-  }
 }
 
 let instance: MelonScene | null = null;
-/** One melon table for the whole app (the room and its home card share it). */
+/** The room's melon table (the home card runs a small one of its own). */
 export function getMelonScene() {
   return (instance ??= new MelonScene());
 }

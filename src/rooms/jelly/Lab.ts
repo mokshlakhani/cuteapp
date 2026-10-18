@@ -678,57 +678,10 @@ export class Lab {
     this.renderer.render(this.scene, this.camera);
     return this.canvas;
   }
-
-  /** Photograph the current specimen into a 2D canvas (for the home card). */
-  snapshot(target: HTMLCanvasElement) {
-    if (!target.width || !target.height) return;
-    // Frame all pieces from the same angle as the room camera.
-    let cx = 0;
-    let cz = 0;
-    for (const e of this.entries) {
-      cx += e.piece.cx / this.entries.length;
-      cz += e.piece.cz / this.entries.length;
-    }
-    let r = 4;
-    for (const e of this.entries) r = Math.max(r, Math.hypot(e.piece.cx - cx, e.piece.cz - cz) + e.piece.radius);
-    previewCam.aspect = target.width / target.height;
-    const tanH = Math.tan(THREE.MathUtils.degToRad(previewCam.fov / 2)) * Math.min(1, previewCam.aspect);
-    const dist = (r * 1.55) / tanH;
-    const elev = THREE.MathUtils.degToRad(TOP_VIEW_DEG - 4);
-    previewCam.position.set(cx, Math.sin(elev) * dist, cz + Math.cos(elev) * dist);
-    previewCam.lookAt(cx, 0.6, cz);
-    previewCam.updateProjectionMatrix();
-    this.renderer.getSize(tmpSize);
-    const ratio = this.renderer.getPixelRatio();
-    this.renderer.setPixelRatio(1);
-    this.renderer.setSize(target.width, target.height, false);
-    this.renderFor(previewCam);
-    const ctx = target.getContext('2d')!;
-    ctx.clearRect(0, 0, target.width, target.height);
-    ctx.drawImage(this.canvas, 0, 0, target.width, target.height);
-    this.renderer.setPixelRatio(ratio);
-    this.renderer.setSize(tmpSize.x, tmpSize.y, false);
-  }
-
-  /** Update meshes/faces and render from any camera. */
-  renderFor(cam: THREE.Camera) {
-    const knife = this.knife.group.visible;
-    this.knife.group.visible = false;
-    for (const e of this.entries) {
-      e.piece.updateMesh();
-      e.geo.attributes.position.needsUpdate = true;
-      e.geo.computeVertexNormals();
-    }
-    this.renderer.render(this.scene, cam);
-    this.knife.group.visible = knife;
-  }
 }
 
-const previewCam = new THREE.PerspectiveCamera(26, 1, 1, 400);
-const tmpSize = new THREE.Vector2();
-
 let shared: Lab | null = null;
-/** One WebGL context for the whole app (room + home preview). */
+/** The room's jelly table (the home card runs a small one of its own). */
 export function getLab() {
   if (!shared) {
     shared = new Lab();

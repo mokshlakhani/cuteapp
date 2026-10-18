@@ -65,8 +65,50 @@ export interface RoomBackdrop {
   spot?: { x: number; y: number; r: number };
 }
 
-/** The one background treatment used by home and every room. */
+/** Backdrops drawn recently (each room has its own), newest last. */
+const backdrops: { key: string; canvas: HTMLCanvasElement; at: number }[] = [];
+/** The glows drift so slowly that redrawing them a few times a second looks continuous. */
+const BACKDROP_REFRESH = 0.15;
+
+/**
+ * The one background treatment used by home and every room. It's a stack of
+ * full-screen gradients, which is a lot of fill for a phone to repaint every
+ * frame, so it's painted into its own canvas and only redrawn when the room,
+ * size or theme changes, or now and then as the glows drift.
+ */
 export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme, b: RoomBackdrop) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const r = (n: number) => Math.round(n);
+  const spot = b.spot ? `${r(b.spot.x)},${r(b.spot.y)},${r(b.spot.r)}` : '';
+  const key = `${r(w)}x${r(h)}@${dpr}|${t.name}|${t.bg}|${b.tint}|${b.floorY == null ? '' : r(b.floorY)}|${spot}`;
+  const now = performance.now() / 1000;
+  let entry = backdrops.find((e) => e.key === key);
+  if (!entry || (!reducedMotion && now - entry.at > BACKDROP_REFRESH)) {
+    if (!entry) {
+      // Reuse the oldest of a few canvases rather than making a new one each time.
+      const canvas = backdrops.length >= 3 ? backdrops.shift()!.canvas : document.createElement('canvas');
+      entry = { key, canvas, at: 0 };
+      backdrops.push(entry);
+    }
+    const c = entry.canvas;
+    const cw = Math.max(1, Math.round(w * dpr));
+    const ch = Math.max(1, Math.round(h * dpr));
+    if (c.width !== cw || c.height !== ch) {
+      c.width = cw;
+      c.height = ch;
+    }
+    const g = c.getContext('2d')!;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBackdrop(g, w, h, t, b);
+    entry.at = now;
+  }
+  // Most recently used last, so the least used is the one recycled.
+  backdrops.splice(backdrops.indexOf(entry), 1);
+  backdrops.push(entry);
+  ctx.drawImage(entry.canvas, 0, 0, w, h);
+}
+
+function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme, b: RoomBackdrop) {
   // A room's tint is only a hint over the shared ground; more would turn it muddy.
   const tintAmt = t.light ? 0.5 : 0.35;
   const top = mix(t.bg, b.tint, 0.1 * tintAmt);
