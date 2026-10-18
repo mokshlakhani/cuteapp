@@ -1,5 +1,5 @@
 import { audio } from './audio';
-import { clamp, lerp, rand } from './math';
+import { clamp, lerp, rand, smoothstep as smooth } from './math';
 
 /**
  * The sound vocabulary of soft spot.
@@ -101,37 +101,36 @@ export const material = {
   // ——— elastic family (rubber bands) ———
 
   /**
-   * A rubber band snapping on. tension 0..1 changes the character:
-   * low = soft high twang, mid = tighter, high = deeper and more resonant.
+   * A rubber band settling onto the fruit. `count` is how many are on now.
+   * Soft, low and warm, like a plucked bass string heard from the next room.
+   * The first couple of dozen walk gently up a pentatonic scale; from about
+   * 24 on the notes sink a little lower and ring a little longer, with a soft
+   * hum under them, and then just stay there, drifting, never building toward
+   * the burst: nothing in it says how close the fruit is to giving way.
    */
-  twang(tension: number, pan = 0) {
-    const t = clamp(tension, 0, 1);
-    // Climb the scale while tension builds, then sink lower as it gets heavy.
-    const climb = t < 0.6 ? lerp(5, 9, t / 0.6) : lerp(9, 3, (t - 0.6) / 0.4);
-    const f = scale(Math.round(climb + rand(-0.5, 0.5)));
-    audio.pluck({
-      freq: f,
-      sustain: 0.35 + t * 0.4,
-      brightness: 0.35 + t * 0.25,
-      bend: 1.12 - t * 0.04,
-      gain: 0.32,
-      pan,
-      lowpass: 2600 + t * 1400,
-    });
-    // The band slapping the rind: a soft body thud.
-    audio.tone({ freq: 150 - t * 40, to: 80, glide: 0.08, decay: 0.1, gain: 0.08 + t * 0.06, pan });
-    if (t > 0.45) {
-      // Deep resonant body that grows with tension.
-      audio.pluck({
-        freq: scale(-3) * (1 - (t - 0.45) * 0.15),
-        sustain: 0.8,
-        brightness: 0.15,
-        bend: 1.03,
-        gain: 0.12 + (t - 0.45) * 0.35,
-        pan,
-        lowpass: 900,
-      });
+  bandSnap(count: number, pan = 0) {
+    const n = Math.max(0, count);
+    const deep = smooth(22, 30, n);
+    // Early on it walks up the scale; later it drifts among a few low notes.
+    const step = deep > 0.5 ? Math.round(rand(-4, -1)) : Math.round(lerp(-3, 2, Math.min(1, n / 22)) + rand(-0.5, 0.5));
+    const f = scale(step);
+    audio.pluck({ freq: f, sustain: 0.55 + deep * 0.25, brightness: 0.18, bend: 1.03, gain: 0.2, pan, lowpass: 1300, reverb: 0.25 });
+    // A soft pat as it settles on the skin.
+    audio.tone({ freq: 110, to: 80, glide: 0.1, attack: 0.01, decay: 0.12, gain: 0.04, pan, lowpass: 400 });
+    if (deep > 0) {
+      // A warm octave below, and a quiet hum, swelling in rather than hitting.
+      audio.pluck({ freq: f / 2, sustain: 0.8, brightness: 0.1, bend: 1.01, gain: 0.09 * deep, pan, lowpass: 500, delay: 0.02 });
+      audio.tone({ freq: f / 2, attack: 0.12, decay: 0.9, gain: 0.04 * deep, pan, lowpass: 300 });
     }
+  },
+  /**
+   * A slow, soft pulse under the later bands, like breathing. `intensity`
+   * 0..1. Played at a slightly uneven pace by the room, it keeps a gentle
+   * sense of anticipation without ever hinting when the fruit will go.
+   */
+  heartbeat(intensity = 1, pan = 0) {
+    const k = clamp(intensity, 0, 1);
+    audio.tone({ freq: 62, to: 52, glide: 0.3, attack: 0.08, decay: 0.45, gain: 0.07 * k, pan, lowpass: 200 });
   },
   /** Quiet strain. intensity 0..1. */
   creak(intensity: number, pan = 0) {
@@ -140,39 +139,36 @@ export const material = {
       dur: 0.35 + k * 0.5,
       rate: 26 + k * 40,
       rateEnd: 14 + k * 20,
-      freq: 520 + rand(-60, 60) + k * 160,
-      gain: 0.05 + k * 0.1,
+      freq: 380 + rand(-50, 50) + k * 110,
+      gain: 0.025 + k * 0.04,
       pan,
     });
   },
   /** The big, soft, satisfying release. */
   burst(pan = 0) {
-    audio.tone({ freq: 140, to: 38, glide: 0.35, decay: 0.45, gain: 0.42, pan, attack: 0.002 });
-    // The bang: a deep sub drop and a sharp crack of rind.
-    audio.tone({ freq: 72, to: 28, glide: 0.6, decay: 0.8, gain: 0.5, pan, attack: 0.002 });
-    audio.noise({ dur: 0.09, gain: 0.2, filter: 'highpass', freq: 1800, pan, attack: 0.001 });
-    audio.noise({ dur: 0.35, gain: 0.22, filter: 'lowpass', freq: 3200, to: 300, pan, reverb: 0.35, attack: 0.002 });
-    audio.noise({ dur: 0.05, gain: 0.12, filter: 'bandpass', freq: 2200, q: 1.4, pan });
-    // Juicy splatter grains trailing behind.
-    for (let i = 0; i < 7; i++) {
+    // A deep, round "fwump" rather than a bang: a soft low drop and a breath of air.
+    audio.tone({ freq: 110, to: 40, glide: 0.45, attack: 0.01, decay: 0.6, gain: 0.3, pan, lowpass: 500 });
+    audio.noise({ dur: 0.5, gain: 0.1, filter: 'lowpass', freq: 1400, to: 250, pan, reverb: 0.5, attack: 0.01 });
+    // A gentle, juicy patter trailing behind.
+    for (let i = 0; i < 6; i++) {
       audio.noise({
-        dur: 0.05 + Math.random() * 0.05,
-        gain: 0.03,
+        dur: 0.06 + Math.random() * 0.05,
+        gain: 0.018,
         filter: 'bandpass',
-        freq: 600 + Math.random() * 900,
+        freq: 500 + Math.random() * 600,
         q: 2,
         pan: pan + rand(-0.3, 0.3),
-        delay: 0.06 + i * 0.045 + Math.random() * 0.03,
+        delay: 0.1 + i * 0.06 + Math.random() * 0.03,
       });
     }
     // Bands flicking away.
     for (let i = 0; i < 4; i++) {
       audio.pluck({
-        freq: scale(9 + Math.floor(Math.random() * 5)),
-        sustain: 0.2,
-        brightness: 0.4,
-        bend: 1.2,
-        gain: 0.12,
+        freq: scale(5 + Math.floor(Math.random() * 5)),
+        sustain: 0.4,
+        brightness: 0.2,
+        bend: 1.05,
+        gain: 0.05,
         pan: rand(-0.5, 0.5),
         delay: 0.03 + i * 0.05,
       });

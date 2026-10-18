@@ -12,8 +12,10 @@ import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
 import { paintBackdrop, paintGrain } from '../../render/paint';
 import { el, Hint } from '../../ui/components';
+import { reducedMotion } from '../../render/camera';
 import { getMelonScene, type MelonScene } from './MelonScene';
-import { nextBandColor } from './shape';
+import { nextBandColor, strainFor, SUSPENSE_FROM } from './shape';
+import { nextPopFruit } from './fruits';
 
 type Phase = 'intro' | 'play' | 'critical' | 'burst' | 'clear';
 
@@ -35,11 +37,13 @@ const DROP_FROM = 9;
 const DROP_G = 46;
 
 /**
- * Room: watermelon + rubber bands, in 3D. A melon lies on the table; tap
- * it or swipe down across it to snap a band round its middle. It pinches
- * into a peanut, gets nervous, creaks… and at some unknowable point it
- * bursts — slow motion, the camera swoops low, rind and juice everywhere.
- * Poke the pieces; then they pop away and a fresh melon drops in.
+ * Room: fruit + rubber bands, in 3D. A fruit lies on the table — a
+ * watermelon, a cantaloupe, an orange, a pomegranate, a coconut… — tap it or
+ * swipe down across it to snap a band round its middle. It pinches into a
+ * peanut, gets nervous, creaks… and at some unknowable point it bursts the
+ * way that fruit really would — slow motion, the camera swoops low, and
+ * whatever's inside goes everywhere. Poke the pieces; then they pop away and
+ * a different fruit drops in.
  */
 export class MelonRoom implements Scene {
   readonly id = 'melon';
@@ -49,7 +53,15 @@ export class MelonRoom implements Scene {
   private s: MelonScene;
   private w = 0;
   private h = 0;
-  private hint = new Hint('tap the melon, or swipe down across it', 'hand');
+  private hint = new Hint('tap the fruit, or swipe down across it', 'hand');
+  /** The fruit's name, low on the screen. */
+  private tag: HTMLElement;
+  /** How many bands are on, at the top. */
+  private count: HTMLElement;
+  private countNum: HTMLElement;
+  /** Timers for the suspense: the heartbeat and the creaks, each a little uneven. */
+  private beatT = 0;
+  private creakT = 0;
   private phase: Phase = 'intro';
   private phaseT = 0;
   /** Scene-local time scale: slow motion lives here. */
@@ -62,13 +74,18 @@ export class MelonRoom implements Scene {
   private vy = 0;
   private nextColor = nextBandColor();
   private lastBandAt = 0;
-  private nextCreak = 0;
   private quietFor = 0;
   private swipes = new Map<number, Swipe>();
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-melon');
-    this.ui.append(this.hint.root);
+    this.tag = el('div', 'pop-tag is-leaving');
+    this.countNum = el('span', 'pop-count-num', {}, ['0']);
+    this.count = el('div', 'pop-count', { role: 'status', 'aria-live': 'polite' }, [
+      this.countNum,
+      el('span', 'pop-count-label', {}, ['bands']),
+    ]);
+    this.ui.append(this.hint.root, this.tag, this.count);
     this.s = getMelonScene();
     this.s.events = {
       land: (b, speed, at) => {
@@ -106,13 +123,19 @@ export class MelonRoom implements Scene {
 
   private beginIntro(keep = false) {
     if (!keep) {
+      // A different fruit each time.
+      this.s.setFruit(nextPopFruit(this.s.fruit));
       this.s.resetMelon(DROP_FROM);
       this.s.shape.face.set('happy', 1.5);
     }
     this.phase = keep ? 'play' : 'intro';
     this.phaseT = 0;
+    this.tag.textContent = this.s.fruit.name;
+    this.tag.classList.remove('is-leaving');
+    this.showCount(false);
+    this.beatT = rand(0.4, 0.8);
+    this.creakT = rand(2, 4);
     this.vy = 0;
-    this.nextCreak = rand(0.65, 0.82);
   }
 
   // ——— input ———
@@ -188,15 +211,29 @@ export class MelonRoom implements Scene {
     s.addBand(xn, this.nextColor);
     this.nextColor = nextBandColor(this.nextColor);
     const m = s.shape;
-    const t = m.fullness;
-    material.twang(m.tension * 0.6 + t * 0.4, panFor(x, this.w));
-    haptics.play(t > 0.6 ? 'snap' : 'tap');
-    m.face.set(t > 0.7 ? 'squeeze' : t > 0.35 ? 'wide' : 'happy', 0.45);
+    // Everything you see and hear follows the count, never the hidden break point.
+    const n = m.bands.length;
+    const t = strainFor(n);
+    material.bandSnap(n, panFor(x, this.w));
+    haptics.play('tap');
+    m.face.set(t > 0.85 ? 'squeeze' : t > 0.45 ? 'wide' : 'happy', 0.45);
+    this.showCount(true);
     if (!settings.value.seenHints.includes(this.id) && m.bands.length >= 2) {
       settings.markHintSeen(this.id);
       this.hint.hide();
     }
     if (m.ready) this.beginCritical();
+  }
+
+  /** The band count at the top: `bump` rolls the new number in. */
+  private showCount(bump: boolean) {
+    const n = this.s.shape.bands.length;
+    this.countNum.textContent = String(n);
+    this.count.classList.remove('is-up');
+    if (bump && !reducedMotion) {
+      void this.count.offsetWidth;
+      this.count.classList.add('is-up');
+    }
   }
 
   private beginCritical() {
@@ -222,6 +259,7 @@ export class MelonRoom implements Scene {
     const mid = s.toScreen(s.centre);
     this.waveAt = { x: at.x, y: (at.y + mid.y) / 2 };
     s.burst();
+    this.tag.classList.add('is-leaving');
     s.swoop(1, 1.8);
     s.shake(0.5);
     material.burst(0);
@@ -266,16 +304,32 @@ export class MelonRoom implements Scene {
         break;
       }
       case 'play': {
-        // Expression and voice follow the (hidden) tension.
+        // Its face, its shiver and the sounds all follow the band count, so
+        // past twenty-odd bands every fruit seems about to go at any moment.
+        const n = m.bands.length;
         const T = m.tension;
         m.face.base = T < 0.3 ? 'calm' : T < 0.62 ? 'wide' : T < 0.86 ? 'nervous' : 'strain';
-        m.shiver = smoothstep(0.75, 1, m.fullness) * 0.8;
-        // Close to its limit, a hairline crack shows at the tightest groove.
-        s.crack = smoothstep(0.9, 1, m.fullness) * 0.22;
-        if (m.fullness > this.nextCreak && m.bands.length > 2) {
-          material.creak(m.fullness, rand(-0.2, 0.2));
-          this.nextCreak = m.fullness + rand(0.04, 0.12);
-          m.sway.impulse(rand(-0.6, 0.6));
+        m.shiver = n >= SUSPENSE_FROM ? 0.45 + 0.15 * Math.sin(this.phaseT * 1.3) : smoothstep(14, SUSPENSE_FROM, n) * 0.25;
+        s.crack = 0;
+        if (n >= SUSPENSE_FROM) {
+          // A slow, soft pulse like breathing, and now and then a quiet creak.
+          this.beatT -= realDt;
+          if (this.beatT <= 0) {
+            this.beatT = rand(1.7, 2.3);
+            material.heartbeat(rand(0.75, 1), 0);
+          }
+          this.creakT -= realDt;
+          if (this.creakT <= 0) {
+            this.creakT = rand(1.6, 3.8);
+            material.creak(rand(0.55, 0.85), rand(-0.2, 0.2));
+            m.sway.impulse(rand(-0.6, 0.6));
+          }
+        } else if (n > 10) {
+          this.creakT -= realDt;
+          if (this.creakT <= 0) {
+            this.creakT = rand(4, 7);
+            material.creak(rand(0.2, 0.4), rand(-0.2, 0.2));
+          }
         }
         break;
       }

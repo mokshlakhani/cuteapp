@@ -921,6 +921,70 @@ svg {
     transform 420ms var(--ease-out);
 }
 
+/* The band count, top and centre: a quiet numeral that rolls up as each band goes on. */
+.pop-count {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.pop-count-num {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 48px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.pop-count-label {
+  margin-top: 2px;
+  font-family: var(--font-text);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.pop-count.is-up .pop-count-num {
+  animation: pop-count-up 300ms var(--ease-overshoot) both;
+}
+
+@keyframes pop-count-up {
+  from {
+    transform: translateY(35%) scale(0.92);
+    opacity: 0.4;
+  }
+}
+
+.pop-tag {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 30px);
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  pointer-events: none;
+  transition:
+    opacity 600ms var(--ease-out),
+    transform 600ms var(--ease-out);
+}
+
+.pop-tag.is-leaving {
+  opacity: 0;
+  transform: translate(-50%, 4px);
+}
+
 .pour-tag.is-leaving {
   opacity: 0;
   transform: translate(-50%, 4px);

@@ -2,12 +2,14 @@ import type { Preview } from '../../app/scene';
 import { rand } from '../../core/math';
 import { reducedMotion } from '../../render/camera';
 import { MelonScene } from './MelonScene';
+import { nextPopFruit } from './fruits';
 
 /** Seconds between its little contented moments. */
 const EVERY: [number, number] = [5, 7.5];
 
 /**
- * The home card: a melon of its own, resting on the table. It breathes and
+ * The home card: a fruit of its own (a different one each time the app
+ * opens), resting on the table. It breathes and
  * blinks, and every so often gives a slow, soft squish and a contented smile.
  * Nothing more: the home screen is a calm place.
  */
@@ -32,6 +34,7 @@ export function melonPreview(): Preview {
     draw(ctx, x, y, w, h) {
       if (!scene) {
         scene = new MelonScene();
+        scene.setFruit(nextPopFruit(null));
         scene.resetMelon(0);
       }
       const key = `${Math.round(w)}x${Math.round(h)}`;

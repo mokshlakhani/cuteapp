@@ -1,28 +1,30 @@
 import * as THREE from 'three';
-import { fruitPalette } from '../../design/fruitPalette';
 import { clamp, rand, randInt, TAU } from '../../core/math';
 import { Face, drawFace, type Expression } from '../../render/face';
 import { Debris, type Body } from './debris';
 import { MELON_A, MELON_R, type MelonShape } from './shape';
 import { makeFleshMaterial } from './melonMaterial';
+import { POP_FRUITS, type PopFruit, type SeedKind } from './fruits';
 
 /**
- * The pop. The squeezed melon fractures like a real rind: irregular pieces,
- * small and many where it split, big end caps that tumble open. Wet flesh
- * (some with seeds still in it), juice that stretches into streaks as it
- * flies and lands in shaded puddles, seeds, and the bands snapping into
- * wriggly strands. A soft puff of mist and a ring across the table mark the
- * bang. No two bursts are alike: each one picks its own direction, strength
- * and amount of mess. A few bigger chunks keep little dizzy faces.
+ * The pop. The squeezed fruit fractures the way its skin really would: a
+ * watermelon's brittle rind into many irregular pieces, small where it split
+ * and big end caps that tumble open; an orange's peel tears in a few big
+ * flaps; a coconut's shell cracks into a handful of hard pieces. Out comes
+ * what's really inside — wet lumps of flesh (some with seeds still in), citrus
+ * segments, clusters of pomegranate arils, curls of coconut meat — with juice
+ * that stretches into streaks as it flies and lands in shaded puddles, seeds,
+ * stringy pulp, and the bands snapping into wriggly strands. A soft puff of
+ * mist and a ring across the table mark the bang. No two bursts are alike:
+ * each picks its own direction, strength and amount of mess. A few bigger
+ * chunks keep little dizzy faces.
  */
-
-const W = fruitPalette.watermelon;
 
 /** Fracture grid on the rind: along the melon, and around it. */
 const GX = 44;
 const GY = 60;
 const MAX_DROPS = 420;
-const MAX_SEEDS = 80;
+const MAX_SEEDS = 170;
 const MAX_PULP = 60;
 const MAX_NOODLES = 65;
 const MAX_SPLATS = 480;
@@ -72,6 +74,7 @@ const tmpV = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpS = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const WHITE = new THREE.Color('#ffffff');
 const hasDom = typeof document !== 'undefined';
 
 export class Explosion {
@@ -101,7 +104,12 @@ export class Explosion {
   private fleshMat = makeFleshMaterial();
   private chunkMats: THREE.MeshPhysicalMaterial[];
   private seedGeo: THREE.BufferGeometry;
-  private seedMat: THREE.MeshStandardMaterial;
+  private seedMat: THREE.MeshPhysicalMaterial;
+  private dropMat: THREE.MeshPhysicalMaterial;
+  private pulpMat: THREE.MeshPhysicalMaterial;
+  private liningMat: THREE.MeshPhysicalMaterial;
+  private fruit: PopFruit = POP_FRUITS[0];
+  private juice = new THREE.Color();
   /** The bang: a soft puff of mist and a ring running out across the table. */
   private puffs: THREE.Sprite[] = [];
   private ring: THREE.Mesh | null = null;
@@ -114,43 +122,34 @@ export class Explosion {
     private bandMat: (color: string) => THREE.Material,
   ) {
     this.fleshMat.side = THREE.DoubleSide;
-    this.chunkMats = [W.flesh, W.fleshLight, '#FF5468', '#FF6B7C'].map(
-      (c) =>
-        new THREE.MeshPhysicalMaterial({
-          color: c,
-          roughness: 0.42,
-          clearcoat: 0.8,
-          clearcoatRoughness: 0.18,
-          sheen: 0.3,
-          sheenColor: new THREE.Color('#ffd6dc'),
-          envMapIntensity: 0.7,
-        }),
-    );
+    const glossy = (c: string) =>
+      new THREE.MeshPhysicalMaterial({
+        color: c,
+        roughness: 0.42,
+        clearcoat: 0.8,
+        clearcoatRoughness: 0.18,
+        sheen: 0.3,
+        sheenColor: new THREE.Color('#ffffff'),
+        envMapIntensity: 0.7,
+      });
+    this.chunkMats = [0, 1, 2, 3].map(() => glossy('#ffffff'));
+    this.liningMat = glossy('#ffffff');
     // Juice: glossy, a touch deeper than the flesh, stretched along its flight.
-    this.dropMesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(1, 14, 10),
-      new THREE.MeshPhysicalMaterial({ color: '#FF5C70', roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1 }),
-      MAX_DROPS,
-    );
+    this.dropMat = new THREE.MeshPhysicalMaterial({ roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1 });
+    this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), this.dropMat, MAX_DROPS);
     this.dropMesh.castShadow = true;
-    this.seedGeo = new THREE.SphereGeometry(1, 14, 10);
-    // A teardrop seed: rounder at one end.
-    const sp = this.seedGeo.attributes.position;
-    for (let i = 0; i < sp.count; i++) {
-      const x = sp.getX(i);
-      sp.setXYZ(i, x * (x > 0 ? 1.15 : 0.85), sp.getY(i) * 0.42, sp.getZ(i) * 0.62 * (1 - x * 0.25));
-    }
-    this.seedGeo.computeVertexNormals();
-    this.seedMat = new THREE.MeshStandardMaterial({ color: W.seed, roughness: 0.22, envMapIntensity: 1 });
+    this.seedGeo = seedGeometry('teardrop');
+    this.seedMat = new THREE.MeshPhysicalMaterial({ roughness: 0.22, envMapIntensity: 1 });
     this.seedMesh = new THREE.InstancedMesh(this.seedGeo, this.seedMat, MAX_SEEDS);
     this.seedMesh.castShadow = true;
-    this.pulpMesh = new THREE.InstancedMesh(lumpGeometry(1, 0), this.chunkMats[0], MAX_PULP);
+    this.pulpMat = glossy('#ffffff');
+    this.pulpMesh = new THREE.InstancedMesh(lumpGeometry(1, 0), this.pulpMat, MAX_PULP);
     this.pulpMesh.castShadow = true;
     this.splatMesh = new THREE.InstancedMesh(
       blobGeometry(),
       new THREE.MeshBasicMaterial({
         map: hasDom ? splatTexture() : null,
-        color: hasDom ? '#ffffff' : W.fleshLight,
+        color: '#ffffff',
         transparent: true,
         opacity: 0.9,
         depthWrite: false,
@@ -169,7 +168,7 @@ export class Explosion {
       const soft = softTexture();
       for (let i = 0; i < 3; i++) {
         const s = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: soft, color: i ? '#ffd9de' : '#ffffff', transparent: true, depthWrite: false, opacity: 0 }),
+          new THREE.SpriteMaterial({ map: soft, color: '#ffffff', transparent: true, depthWrite: false, opacity: 0 }),
         );
         s.visible = false;
         this.puffs.push(s);
@@ -186,6 +185,33 @@ export class Explosion {
       this.group.add(this.ring);
     }
     this.debris.events.land = (b, speed) => this.onLand(b, speed);
+    this.setFruit(this.fruit);
+  }
+
+  /** Dress the burst as `fruit`: its flesh, juice, seeds and pulp. */
+  setFruit(fruit: PopFruit) {
+    this.fruit = fruit;
+    const flesh = new THREE.Color(fruit.flesh);
+    const light = new THREE.Color(fruit.fleshLight);
+    // Four tones of flesh, so the lumps aren't all one colour.
+    [0, 1, 0.35, 0.6].forEach((k, i) => this.chunkMats[i].color.copy(flesh).lerp(light, k));
+    for (const m of this.chunkMats) m.sheenColor.copy(light).lerp(new THREE.Color('#ffffff'), 0.5);
+    this.liningMat.color.set(fruit.lining);
+    this.juice.set(fruit.juice.color);
+    this.dropMat.color.copy(this.juice);
+    this.pulpMat.color.set(fruit.pulp.color);
+    // Seeds: a new shape for each kind.
+    this.seedGeo.dispose();
+    this.seedGeo = seedGeometry(fruit.seeds.kind);
+    this.seedMesh.geometry = this.seedGeo;
+    this.seedMat.color.set(fruit.seeds.color);
+    const aril = fruit.seeds.kind === 'aril';
+    this.seedMat.roughness = aril ? 0.08 : 0.22;
+    this.seedMat.clearcoat = aril ? 1 : 0;
+    this.seedMat.emissive.set(aril ? fruit.seeds.color : '#000000');
+    this.seedMat.emissiveIntensity = aril ? 0.25 : 0;
+    // The bang's puff takes a little of the juice's colour.
+    this.puffs.forEach((p, i) => (p.material as THREE.SpriteMaterial).color.set(i ? '#ffffff' : '#ffffff').lerp(this.juice, i ? 0.25 : 0));
   }
 
   // ——— building the burst ———
@@ -230,7 +256,7 @@ export class Explosion {
 
     // ——— the rind fractures ———
     const scale = melon.getWorldScale(new THREE.Vector3());
-    const frags = fracture(shape, g);
+    const frags = fracture(shape, g, this.fruit);
     const meanArea = frags.reduce((a, f) => a + f.area, 0) / frags.length;
     for (const f of frags) {
       const k = f.area / meanArea;
@@ -259,23 +285,14 @@ export class Explosion {
     }
     this.shards = frags.length;
 
-    // ——— flesh: wet, rounded lumps, some with seeds still in ———
-    const chunks = Math.round(randInt(20, 32) * mess);
+    // ——— what's inside: lumps of flesh (seeds and all), segments, arils, meat ———
+    const F = this.fruit;
+    const chunks = Math.max(FACES, Math.round(randInt(20, 32) * mess * F.chunks));
     for (let i = 0; i < chunks; i++) {
       const big = i < FACES || Math.random() < 0.3;
       const r = (i < FACES ? 1.25 : 1) * (big ? rand(0.36, 0.58) : rand(0.14, 0.32));
-      const mesh = new THREE.Mesh(lumpGeometry(r, 1), this.chunkMats[i % this.chunkMats.length]);
+      const mesh = this.insideChunk(r, i);
       mesh.castShadow = true;
-      if (r > 0.25) {
-        for (let k = 0; k < randInt(1, 3); k++) {
-          const seed = new THREE.Mesh(this.seedGeo, this.seedMat);
-          const dir = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize();
-          seed.position.copy(dir).multiplyScalar(r * 0.78);
-          seed.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-          seed.scale.setScalar(0.1);
-          mesh.add(seed);
-        }
-      }
       const c = local(split(rand(-0.9, 0.9)), rand(0, TAU), rand(0.25, 0.8));
       const body = this.debris.add({
         kind: 'chunk',
@@ -283,7 +300,7 @@ export class Explosion {
         vel: away(c, rand(6, 17) / (0.6 + r), rand(6, 15)),
         q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), rand(0, TAU))),
         w: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(rand(5, 16)),
-        rest: r * 0.7,
+        rest: r * (F.inside === 'meat' ? 0.3 : F.inside === 'segments' ? 0.45 : 0.7),
         bounce: rand(0.3, 0.5),
         size: r,
         grip: rand(2, 3.6),
@@ -293,9 +310,9 @@ export class Explosion {
     }
 
     // ——— juice, a burst of mist, seeds and pulp ———
-    const drops = Math.round(randInt(170, 230) * mess);
+    const drops = Math.min(MAX_DROPS - 40, Math.round(randInt(170, 230) * mess * F.juice.amount));
     for (let i = 0; i < drops; i++) {
-      const mist = Math.random() < 0.3;
+      const mist = Math.random() < F.juice.mist;
       const c = local(split(rand(-1, 1)), rand(0, TAU), rand(0, 0.5));
       this.drops.push(
         this.debris.add({
@@ -307,7 +324,8 @@ export class Explosion {
         }),
       );
     }
-    const seeds = Math.min(MAX_SEEDS, Math.round(randInt(45, 70) * mess));
+    const seeds = Math.min(MAX_SEEDS, Math.round(randInt(45, 70) * mess * F.seeds.count));
+    const seedSize = F.seeds.size / 0.1;
     for (let i = 0; i < seeds; i++) {
       const c = local(split(rand(-1, 1)), rand(0, TAU), rand(0.25, 0.6));
       this.seeds.push(
@@ -320,11 +338,11 @@ export class Explosion {
           rest: 0.04,
           up: new THREE.Vector3(0, 1, 0),
           bounce: 0.35,
-          size: rand(0.085, 0.12),
+          size: rand(0.085, 0.12) * seedSize,
         }),
       );
     }
-    const pulp = Math.min(MAX_PULP, Math.round(randInt(35, 55) * mess));
+    const pulp = Math.min(MAX_PULP, Math.round(randInt(35, 55) * mess * F.pulp.count));
     for (let i = 0; i < pulp; i++) {
       const c = local(split(rand(-1, 1)), rand(0, TAU), rand(0.2, 0.7));
       this.pulp.push(
@@ -341,8 +359,29 @@ export class Explosion {
         }),
       );
     }
+    // Stringy pulp from round the seeds (melons, pumpkins), flung out in wet strands.
+    if (F.pulp.strings) {
+      for (let i = 0, n = randInt(8, 14); i < n; i++) {
+        const mesh = new THREE.Mesh(strandGeometry(rand(0.6, 1.4)), this.pulpMat);
+        mesh.castShadow = true;
+        const c = local(split(rand(-0.5, 0.5)), rand(0, TAU), rand(0.5, 0.85));
+        const body = this.debris.add({
+          kind: 'band',
+          pos: c.clone().applyMatrix4(M),
+          vel: away(c, rand(4, 12), rand(5, 12)),
+          q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), 0)),
+          w: new THREE.Vector3(rand(-10, 10), rand(-10, 10), rand(-10, 10)),
+          rest: 0.035,
+          up: new THREE.Vector3(0, 0, 1),
+          bounce: 0.1,
+          size: 0.5,
+        });
+        this.addPiece(body, mesh);
+      }
+    }
+
     // Juice keeps spurting out of the split for a moment.
-    const total = Math.min(MAX_DROPS - this.drops.length, Math.round(rand(60, 110) * mess));
+    const total = Math.min(MAX_DROPS - this.drops.length, Math.round(rand(60, 110) * mess * F.juice.amount));
     this.squirt = {
       t: 0,
       left: total,
@@ -387,6 +426,52 @@ export class Explosion {
       this.addSplat(centre.x + Math.cos(a) * d, centre.z + Math.sin(a) * d, rand(0.3, 0.95), 0.12 + i * 0.025, a, rand(1, 2.4));
     }
     this.syncAll();
+  }
+
+  /** A piece of what's inside, for this fruit. */
+  private insideChunk(r: number, i: number): THREE.Mesh {
+    const F = this.fruit;
+    const mat = this.chunkMats[i % this.chunkMats.length];
+    const seed = (n: number, depth: number, size: number) => {
+      for (let k = 0; k < n; k++) {
+        const s = new THREE.Mesh(this.seedGeo, this.seedMat);
+        const dir = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize();
+        s.position.copy(dir).multiplyScalar(r * depth);
+        s.quaternion.setFromUnitVectors(UP, dir);
+        s.scale.setScalar(size);
+        mesh.add(s);
+      }
+    };
+    let mesh: THREE.Mesh;
+    switch (F.inside) {
+      case 'segments':
+        // A citrus segment: a plump half-moon, its inner edge flat.
+        mesh = new THREE.Mesh(segmentGeometry(r), mat);
+        if (F.seeds.kind === 'pip' && Math.random() < 0.3) seed(1, 0.4, 0.08);
+        return mesh;
+      case 'arils':
+        // A lump of pale pith, crowded with glossy arils.
+        mesh = new THREE.Mesh(lumpGeometry(r * 0.8, 1), this.liningMat);
+        seed(Math.round(6 + r * 16), 0.72, 0.14 + r * 0.05);
+        return mesh;
+      case 'meat': {
+        // A curl of coconut meat: a thick, bent flake of white.
+        const g = lumpGeometry(r, 1);
+        g.scale(1.2, 0.34, 0.9);
+        const p = g.attributes.position;
+        for (let k = 0; k < p.count; k++) p.setY(k, p.getY(k) + p.getX(k) ** 2 * 0.35);
+        g.computeVertexNormals();
+        return new THREE.Mesh(g, this.liningMat);
+      }
+      default:
+        mesh = new THREE.Mesh(lumpGeometry(r, 1), mat);
+        if (r > 0.25) {
+          const kind = F.seeds.kind;
+          if (kind === 'tiny') seed(randInt(6, 12), 0.92, 0.06);
+          else if (kind === 'teardrop' || kind === 'flat') seed(randInt(1, 3), 0.78, 0.1);
+        }
+        return mesh;
+    }
   }
 
   private addPiece(body: Body, mesh: THREE.Object3D) {
@@ -479,7 +564,7 @@ export class Explosion {
       ctx.clearRect(0, 0, FACE_PX, FACE_PX);
       ctx.save();
       ctx.translate(FACE_PX / 2, FACE_PX / 2);
-      drawFace(ctx, f.face, FACE_PX * 0.62, { ink: '#3A2621', blush: '#FF9AAE' });
+      drawFace(ctx, f.face, FACE_PX * 0.62, { ink: '#3A2621', blush: this.fruit.blush });
       ctx.restore();
       f.tex.needsUpdate = true;
     }
@@ -544,7 +629,8 @@ export class Explosion {
       tmpQ.setFromAxisAngle(UP, -s.ang);
       tmpM.compose(tmpV, tmpQ, tmpS);
       this.splatMesh.setMatrixAt(i, tmpM);
-      this.splatMesh.setColorAt(i, color.setRGB(1, 0.86 + s.tint * 0.14, 0.88 + s.tint * 0.12));
+      // Puddles in the juice's colour, each a slightly different strength.
+      this.splatMesh.setColorAt(i, color.copy(this.juice).lerp(WHITE, 0.18 + s.tint * 0.2));
     });
     this.splatMesh.count = this.splats.length;
     this.splatMesh.instanceMatrix.needsUpdate = true;
@@ -664,9 +750,9 @@ interface Fragment {
  * rind nearest them. The fracture lines run along a jittered grid, so edges
  * are ragged and neighbouring pieces still fit together.
  */
-export function fracture(shape: MelonShape, g: number): Fragment[] {
+export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRUITS[0]): Fragment[] {
   const L = MELON_A * shape.lengthScale;
-  const n = randInt(20, 30);
+  const n = randInt(fruit.shards[0], fruit.shards[1]);
   const sites: { x: number; p: number }[] = [];
   for (let i = 0; i < n; i++) {
     const near = Math.random() < 0.6;
@@ -707,11 +793,13 @@ export function fracture(shape: MelonShape, g: number): Fragment[] {
     }
   }
 
-  const skin = new THREE.Color(W.skin);
-  const flesh = new THREE.Color(W.flesh);
-  const fleshLight = new THREE.Color(W.fleshLight);
-  const rind = new THREE.Color(W.rind);
-  const thick = 0.16;
+  const skin = new THREE.Color(fruit.skin.base);
+  // The inside face of the rind, and the layers you see at a torn edge.
+  const flesh = new THREE.Color(fruit.lining);
+  const fleshLight = new THREE.Color(fruit.fleshLight);
+  const rindOuter = new THREE.Color(fruit.rind.outer);
+  const rindInner = new THREE.Color(fruit.rind.inner);
+  const thick = fruit.rind.thick;
   const out: Fragment[] = [];
   for (let s = 0; s < n; s++) {
     const pos: number[] = [];
@@ -773,10 +861,10 @@ export function fracture(shape: MelonShape, g: number): Fragment[] {
         for (const [ni, nj, k0, k1] of edges) {
           if (ni < 0 || ni >= GX) continue;
           if (owner[ni * GY + (((nj % GY) + GY) % GY)] === s) continue;
-          const o0 = vert(k0, 0.005, rind);
-          const o1 = vert(k1, 0.005, rind);
-          const m0 = vert(k0, thick * 0.5, rind);
-          const m1 = vert(k1, thick * 0.5, rind);
+          const o0 = vert(k0, 0.005, rindOuter);
+          const o1 = vert(k1, 0.005, rindOuter);
+          const m0 = vert(k0, thick * 0.5, rindInner);
+          const m1 = vert(k1, thick * 0.5, rindInner);
           const i0 = vert(k0, thick, flesh);
           const i1 = vert(k1, thick, flesh);
           idx1.push(o0, o1, m1, o0, m1, m0, m0, m1, i1, m0, i1, i0);
@@ -830,6 +918,55 @@ export function lumpGeometry(r: number, detail = 1) {
   }
   geo.computeVertexNormals();
   return geo;
+}
+
+/** A seed of each kind, about 1 unit long (scaled down where it's used). */
+export function seedGeometry(kind: SeedKind) {
+  if (kind === 'aril') {
+    // A juicy aril: a plump, slightly faceted kernel.
+    const g = new THREE.IcosahedronGeometry(1, 1);
+    g.scale(0.78, 1, 0.78);
+    return g;
+  }
+  const g = new THREE.SphereGeometry(1, 14, 10);
+  if (kind === 'tiny') return g;
+  const sp = g.attributes.position;
+  for (let i = 0; i < sp.count; i++) {
+    const x = sp.getX(i);
+    if (kind === 'flat') {
+      // A flat melon or pumpkin seed: an oval, pointed at one end.
+      sp.setXYZ(i, x * (x > 0 ? 1.2 : 0.9), sp.getY(i) * 0.2, sp.getZ(i) * 0.6 * (1 - x * 0.3));
+    } else {
+      // A teardrop (watermelon) or a little citrus pip: rounder at one end.
+      sp.setXYZ(i, x * (x > 0 ? 1.15 : 0.85), sp.getY(i) * (kind === 'pip' ? 0.55 : 0.42), sp.getZ(i) * 0.62 * (1 - x * 0.25));
+    }
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A citrus segment: a plump half-moon with a flat inner edge (radius ≈ r). */
+export function segmentGeometry(r: number) {
+  const g = new THREE.SphereGeometry(r, 18, 10, 0, Math.PI);
+  g.scale(1.25, 0.7, 0.62);
+  // Close the flat side so it isn't hollow.
+  // (The half-sphere bulges toward +z; its open face is the whole x-y cross-section, facing -z.)
+  const cap = new THREE.CircleGeometry(r, 24);
+  cap.rotateY(Math.PI);
+  cap.scale(1.25, 0.7, 1);
+  const merged = new THREE.BufferGeometry();
+  const a = g.toNonIndexed();
+  const b = cap.toNonIndexed();
+  const pos = new Float32Array(a.attributes.position.array.length + b.attributes.position.array.length);
+  pos.set(a.attributes.position.array as Float32Array, 0);
+  pos.set(b.attributes.position.array as Float32Array, a.attributes.position.array.length);
+  // Bent along its length into a crescent, like a real segment.
+  for (let i = 0; i < pos.length; i += 3) pos[i + 1] -= (pos[i] / (r * 1.25)) ** 2 * r * 0.45;
+  merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  merged.computeVertexNormals();
+  g.dispose();
+  cap.dispose();
+  return merged;
 }
 
 /** A juice puddle's outline: a lumpy blob with satellite droplets (radius ≈ 1). */
@@ -903,11 +1040,12 @@ function splatTexture() {
   const m = 64;
   const R = m / 1.8; // radius 1 of the blob
   const grad = g.createRadialGradient(m, m, 0, m, m, R * 1.7);
-  grad.addColorStop(0, 'rgba(255,128,142,0.72)');
-  grad.addColorStop(0.42, 'rgba(255,104,122,0.8)');
-  grad.addColorStop(0.58, 'rgba(240,70,96,0.92)');
-  grad.addColorStop(0.62, 'rgba(255,92,112,0.85)');
-  grad.addColorStop(1, 'rgba(255,92,112,0.85)');
+  // Neutral tones: each puddle is tinted with its juice's colour.
+  grad.addColorStop(0, 'rgba(255,255,255,0.72)');
+  grad.addColorStop(0.42, 'rgba(238,238,238,0.8)');
+  grad.addColorStop(0.58, 'rgba(206,206,206,0.92)');
+  grad.addColorStop(0.62, 'rgba(228,228,228,0.85)');
+  grad.addColorStop(1, 'rgba(228,228,228,0.85)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
   const hi = g.createRadialGradient(m - R * 0.3, m - R * 0.35, 0, m - R * 0.3, m - R * 0.35, R * 0.5);
@@ -942,7 +1080,7 @@ function ringTexture() {
   const grad = g.createRadialGradient(64, 64, 40, 64, 64, 64);
   grad.addColorStop(0, 'rgba(255,255,255,0)');
   grad.addColorStop(0.75, 'rgba(255,255,255,0.7)');
-  grad.addColorStop(0.88, 'rgba(255,214,220,0.5)');
+  grad.addColorStop(0.88, 'rgba(255,240,240,0.5)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);

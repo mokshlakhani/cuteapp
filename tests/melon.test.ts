@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Object3D, Quaternion, Vector3 } from 'three';
-import { BAND_COLORS, BREAK_RANGE, MELON_R, MelonShape, nextBandColor } from '../src/rooms/melon/shape';
+import { BAND_COLORS, BREAK_RANGE, MELON_R, MelonShape, nextBandColor, strainFor } from '../src/rooms/melon/shape';
 import { Debris } from '../src/rooms/melon/debris';
 
 function settle(m: MelonShape, seconds: number) {
@@ -19,6 +19,18 @@ function wrap(m: MelonShape, n: number, x = 0.05) {
 }
 
 describe('melon shape', () => {
+  it('looks just as strained at the same count whatever its break point', () => {
+    const a = new MelonShape();
+    const b = new MelonShape();
+    a.breakAt = 31;
+    b.breakAt = 50;
+    wrap(a, 30);
+    wrap(b, 30);
+    expect(a.tension).toBeCloseTo(b.tension, 3);
+    expect(strainFor(30)).toBeCloseTo(1, 2);
+    expect(strainFor(10)).toBeLessThan(strainFor(24));
+  });
+
   it('starts as a plain melon resting on its belly', () => {
     const m = new MelonShape();
     settle(m, 1);
@@ -27,7 +39,7 @@ describe('melon shape', () => {
     expect(m.lengthScale).toBeCloseTo(1, 2);
   });
 
-  it('pops somewhere between 40 and 65 bands', () => {
+  it('pops somewhere between 27 and 50 bands', () => {
     const seen = new Set<number>();
     const m = new MelonShape();
     for (let i = 0; i < 2000; i++) {
@@ -36,9 +48,9 @@ describe('melon shape', () => {
       expect(m.breakAt).toBeLessThanOrEqual(BREAK_RANGE.max);
       seen.add(m.breakAt);
     }
-    expect(BREAK_RANGE).toEqual({ min: 40, max: 65 });
-    expect(seen.has(40)).toBe(true);
-    expect(seen.has(65)).toBe(true);
+    expect(BREAK_RANGE).toEqual({ min: 27, max: 50 });
+    expect(seen.has(27)).toBe(true);
+    expect(seen.has(50)).toBe(true);
   });
 
   it('is only ready once it reaches its break point', () => {

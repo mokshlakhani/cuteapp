@@ -43,8 +43,21 @@ export const BAND_COLORS = [
   '#F08F8F', // coral
 ];
 
-/** The melon pops somewhere in this range of bands. Never shown, never the same. */
-export const BREAK_RANGE = { min: 40, max: 65 } as const;
+/** The fruit pops somewhere in this range of bands. Never shown, never the same. */
+export const BREAK_RANGE = { min: 27, max: 50 } as const;
+
+/** From about this many bands on, the fruit (and its sound) turns tense — and stays that way. */
+export const SUSPENSE_FROM = 24;
+
+/**
+ * How strained a fruit looks with `count` bands on, 0..1. It depends only on
+ * the count, never on where this fruit will actually break, so its face and
+ * flinches never give the moment away: by about thirty bands every fruit
+ * looks just as close to bursting, whether it goes at 31 or at 50.
+ */
+export function strainFor(count: number) {
+  return clamp((1 - Math.exp(-count / 11)) / (1 - Math.exp(-30 / 11)), 0, 1);
+}
 
 /** How far toward the ends a band can be placed (normalised). */
 export const BAND_REACH = { min: -0.8, max: 0.8 };
@@ -97,6 +110,9 @@ export class MelonShape {
   time = rand(0, 100);
   /** Where it's squeezed tightest (normalised): where it will give way. */
   grooveX = 0;
+  /** Length relative to the watermelon (round fruits are shorter), and its outline. */
+  aspect = 1;
+  profile: 'ellipse' | 'lemon' = 'ellipse';
   private nextIdle = rand(3, 6);
   /** Radius along the melon (fraction of MELON_R), and scratch tables. */
   private readonly prof = new Float32Array(WN + 1);
@@ -148,7 +164,7 @@ export class MelonShape {
     b.x.target = this.slotFor(clamp(xn, BAND_REACH.min, BAND_REACH.max));
     b.loose.target = 0;
     this.bands.push(b);
-    const t = this.fullness;
+    const t = strainFor(this.bands.length);
     // It flinches: squashes down, rolls a little, and the waist snaps in.
     this.squash.impulse(1.6 + t * 1.2);
     this.sway.impulse(rand(-1, 1) * (1.2 + t));
@@ -185,9 +201,9 @@ export class MelonShape {
     this.swell.update(dt);
     this.throb.update(dt);
     this.face.update(dt);
-    // Visual tension eases toward a saturating curve of fullness: early bands
-    // read clearly, the last stretch all looks "very tight".
-    const target = (1 - Math.exp(-this.fullness * 2.4)) / (1 - Math.exp(-2.4));
+    // Visual tension follows the band count (not the hidden break point):
+    // early bands read clearly, and past thirty or so it all looks very tight.
+    const target = strainFor(this.bands.length);
     this.tension = lerp(this.tension, target, 1 - Math.exp(-dt * 4));
     this.nextIdle -= dt;
     if (this.nextIdle <= 0) {
@@ -221,7 +237,7 @@ export class MelonShape {
       const x = (j / WN) * 2 - 1;
       const pinch = this.raw[j];
       const f = 1 - clamp(pinch / PINCH_MAX, 0, 1);
-      r[j] = Math.sqrt(Math.max(0, 1 - x * x)) * (1 - pinch);
+      r[j] = this.base(x) * (1 - pinch);
       this.pinch[j] = f * f;
       if (pinch > deepest) {
         deepest = pinch;
@@ -242,7 +258,7 @@ export class MelonShape {
       a += rc * rc;
       bb += rc * rc * w[j];
       c += rc * rc * w[j] * w[j];
-      v0 += 1 - x * x;
+      v0 += this.base(x) ** 2;
     }
     this.grooveX = this.bands.length ? groove : 0;
     // Displaced volume: some makes it longer, the rest bulges the free parts.
@@ -257,6 +273,22 @@ export class MelonShape {
     r[0] = r[WN] = 0;
   }
 
+  /** The unsqueezed outline: radius at `x` as a fraction of the full radius. */
+  private base(x: number) {
+    if (this.profile === 'lemon') {
+      // Full in the middle, drawn out to a little point at each end.
+      return Math.pow(Math.max(0, 1 - Math.pow(Math.abs(x), 2.6)), 0.75);
+    }
+    return Math.sqrt(Math.max(0, 1 - x * x));
+  }
+
+  /** Become a different fruit's shape (takes effect from the next reset). */
+  setFruit(aspect: number, profile: 'ellipse' | 'lemon') {
+    this.aspect = aspect;
+    this.profile = profile;
+    this.build();
+  }
+
   /** Distance from the axis to the surface at `xn` (scene units, before squash). */
   surfaceAt(xn: number) {
     const f = (clamp(xn, -1, 1) + 1) * 0.5 * WN;
@@ -267,7 +299,7 @@ export class MelonShape {
 
   /** The melon grows longer as it's squeezed. */
   get lengthScale() {
-    return 1 + this.elong + this.swell.value * 0.3;
+    return this.aspect * (1 + this.elong + this.swell.value * 0.3);
   }
 
   /**
