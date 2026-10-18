@@ -6,13 +6,13 @@
  */
 
 :root {
-  --bg: #efe5d7;
-  --bg-deep: #e4d6c3;
-  --surface: #fffdf9;
-  --surface-sunk: #eae0d2;
+  --bg: #eecdb4;
+  --bg-deep: #e2b99b;
+  --surface: #fffaf5;
+  --surface-sunk: #f2dccb;
   --ink: #5e4b42;
-  --ink-soft: #8d7a6e;
-  --ink-faint: #cdbfb2;
+  --ink-soft: #7d685b;
+  --ink-faint: #bc9f8b;
   --shadow-rgb: 128, 92, 66;
   --accent: #a9d39a;
   --font-display: 'Fredoka', 'Nunito', ui-rounded, system-ui, sans-serif;

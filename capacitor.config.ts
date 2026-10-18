@@ -4,19 +4,19 @@ const config: CapacitorConfig = {
   appId: 'app.softspot.toys',
   appName: 'soft spot',
   webDir: 'dist',
-  backgroundColor: '#EFE5D7',
+  backgroundColor: '#EECDB4',
   ios: {
     contentInset: 'never',
-    backgroundColor: '#EFE5D7',
+    backgroundColor: '#EECDB4',
   },
   android: {
-    backgroundColor: '#EFE5D7',
+    backgroundColor: '#EECDB4',
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 600,
       launchFadeOutDuration: 300,
-      backgroundColor: '#EFE5D7',
+      backgroundColor: '#EECDB4',
       showSpinner: false,
     },
   },

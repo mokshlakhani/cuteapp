@@ -402,6 +402,20 @@ export class Lab {
     }
   }
 
+  /**
+   * A little hop straight up, nothing sideways: the home card's poke. (A
+   * sideways shove there sent the jelly skidding off to the edge of the
+   * table just as you walked into the room.)
+   */
+  hop() {
+    for (const e of this.entries) {
+      const p = e.piece;
+      if (p.grabs.size) continue;
+      for (let i = 0; i < p.n; i++) p.vy[i] += rand(90, 120);
+      p.face?.set('happy', 1.2);
+    }
+  }
+
   /** Line the knife up over a stroke from screen a → b. */
   aimKnife(ax: number, ay: number, bx: number, by: number) {
     const A = this.floorAt(ax, ay, 1.4);

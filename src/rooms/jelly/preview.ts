@@ -40,7 +40,7 @@ export function jellyPreview(): Preview {
     },
     poke() {
       jv += 1.6;
-      getLab().nudge();
+      getLab().hop();
     },
   };
 }

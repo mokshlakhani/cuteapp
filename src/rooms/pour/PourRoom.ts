@@ -650,13 +650,12 @@ export class PourRoom implements Scene {
 
   /**
    * The lamp over the counter: a soft pool of light behind the glass and on
-   * the counter under it, and the room falling away into shade at the edges,
-   * so the eye lands on the glass first.
+   * the counter under it, so the eye lands on the glass first.
    */
   private paintLamp(ctx: CanvasRenderingContext2D) {
     const t = theme.current;
     const day = t.name === 'day';
-    const { w, h } = this;
+    const { w } = this;
     const g = this.g;
     const cy = this.floorY - g.H * 0.75;
     const r = g.H * 2;
@@ -677,11 +676,6 @@ export class PourRoom implements Scene {
     ctx.arc(0, 0, g.wt * 3.4, 0, TAU);
     ctx.fill();
     ctx.restore();
-    const vg = ctx.createRadialGradient(w / 2, h * 0.5, Math.min(w, h) * 0.42, w / 2, h * 0.5, Math.hypot(w, h) * 0.62);
-    vg.addColorStop(0, `rgba(${t.shadowRgb},0)`);
-    vg.addColorStop(1, `rgba(${t.shadowRgb},${(day ? 0.14 : 0.22) * t.shadowStrength})`);
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, w, h);
   }
 
   /** A soft reflection of the glass in the counter, fading away from it. */

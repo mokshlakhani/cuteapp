@@ -713,7 +713,9 @@ export class WrapRoom implements Scene {
   draw(ctx: CanvasRenderingContext2D) {
     const t = theme.current;
     const { w, h } = this;
-    paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null });
+    const a = this.area;
+    const spot = { x: a.x + a.w / 2, y: a.y + a.h / 2, r: Math.max(a.w, a.h) * 0.8 };
+    paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null, spot });
     ctx.save();
     this.shake.apply(ctx, w / 2, h / 2);
     if (this.zoom !== 1) {

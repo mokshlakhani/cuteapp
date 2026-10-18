@@ -60,11 +60,14 @@ export interface RoomBackdrop {
   tint: string;
   /** y of the floor line, or null for no floor (home). */
   floorY: number | null;
+  /** A soft pool of lamplight where the toy is, so the eye lands on it. */
+  spot?: { x: number; y: number; r: number };
 }
 
 /** The one background treatment used by home and every room. */
 export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme, b: RoomBackdrop) {
-  const tintAmt = t.name === 'day' ? 1 : 0.35;
+  // On the peach ground a full room tint would turn muddy; a hint is enough.
+  const tintAmt = t.name === 'day' ? 0.5 : 0.35;
   const top = mix(t.bg, b.tint, 0.1 * tintAmt);
   const bottom = mix(t.bgDeep, b.tint, 0.22 * tintAmt);
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -79,6 +82,16 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
   pool.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = pool;
   ctx.fillRect(0, 0, w, h);
+
+  if (b.spot) {
+    const { x, y, r } = b.spot;
+    const lamp = ctx.createRadialGradient(x, y, 0, x, y, r);
+    lamp.addColorStop(0, rgba('#fff6ec', t.name === 'day' ? 0.3 : 0.07));
+    lamp.addColorStop(0.55, rgba('#fff6ec', t.name === 'day' ? 0.1 : 0.025));
+    lamp.addColorStop(1, rgba('#fff6ec', 0));
+    ctx.fillStyle = lamp;
+    ctx.fillRect(0, 0, w, h);
+  }
 
   if (b.floorY != null) {
     const fy = b.floorY;
@@ -96,6 +109,14 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
     ctx.fillStyle = t.floorEdge;
     ctx.fillRect(0, fy - 1, w, 1.5);
   }
+
+  // The room falls softly into shade at its edges, so the eye settles on
+  // the toy in the middle.
+  const vg = ctx.createRadialGradient(w / 2, h * 0.48, Math.min(w, h) * 0.42, w / 2, h * 0.48, Math.hypot(w, h) * 0.62);
+  vg.addColorStop(0, `rgba(${t.shadowRgb},0)`);
+  vg.addColorStop(1, `rgba(${t.shadowRgb},${(t.name === 'day' ? 0.14 : 0.2) * t.shadowStrength})`);
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, w, h);
 }
 
 export function paintGrain(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme) {

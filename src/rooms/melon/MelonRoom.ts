@@ -326,7 +326,7 @@ export class MelonRoom implements Scene {
   draw(ctx: CanvasRenderingContext2D) {
     const t = theme.current;
     const { w, h } = this;
-    paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null });
+    paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null, spot: { x: w / 2, y: h * 0.46, r: Math.min(w, h) * 0.8 } });
     ctx.drawImage(this.s.render(), 0, 0, w, h);
     if (this.flash > 0) {
       const c = this.waveAt;

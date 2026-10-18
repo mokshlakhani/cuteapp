@@ -9,7 +9,7 @@ import { mix, rgba } from '../../core/color';
 import { rand, TAU } from '../../core/math';
 import { material } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
-import { paintBackdrop, paintGrain, roundRect, gloss, shade } from '../../render/paint';
+import { contactShadow, paintBackdrop, paintGrain, roundRect, gloss, shade } from '../../render/paint';
 import { Face, drawFace } from '../../render/face';
 import { el, tactile } from '../../ui/components';
 
@@ -219,11 +219,8 @@ export class HomeScene implements Scene {
     const R = Math.min(w, h) * 0.26;
     const breathe = Math.sin(this.time * 1.1 + x * 0.01) * 0.035;
     const wig = c.wiggle!.value * 0.01;
-    // Pad
-    ctx.fillStyle = mix(t.surface, c.info.tint, t.name === 'day' ? 0.25 : 0.12);
-    ctx.beginPath();
-    ctx.ellipse(cx, base + R * 0.15, R * 1.55, R * 0.42, 0, 0, TAU);
-    ctx.fill();
+    // A soft shadow where it rests (a pale pad read as a white plate on the peach ground).
+    contactShadow(ctx, t, cx, base + R * 0.15, R * 1.4, R * 0.36, 0.22);
     // Sleepy blob (a toy that hasn't moved in yet)
     ctx.save();
     ctx.translate(cx, base);

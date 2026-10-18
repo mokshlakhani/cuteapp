@@ -31,9 +31,9 @@ rest is a short list of rules.
 
 | token                          | day                    | dusk                  | use                             |
 | ------------------------------ | ---------------------- | --------------------- | ------------------------------- |
-| `bg` / `bgDeep`                | `#EFE5D7` / `#E4D6C3`  | `#3A3346` / `#2C2737` | vertical background wash        |
-| `surface`                      | `#FFFDF9`              | `#4A4258`             | buttons, cards, sheets          |
-| `surfaceSunk`                  | `#EAE0D2`              | `#3A3347`             | tracks, wells                   |
+| `bg` / `bgDeep`                | `#EECDB4` / `#E2B99B`  | `#3A3346` / `#2C2737` | vertical background wash        |
+| `surface`                      | `#FFFAF5`              | `#4A4258`             | buttons, cards, sheets          |
+| `surfaceSunk`                  | `#F2DCCB`              | `#3A3347`             | tracks, wells                   |
 | `ink` / `inkSoft` / `inkFaint` | warm cocoa `#5E4B42` … | warm cream …          | text & icons — never pure black |
 | `shadowRgb`                    | `128,92,66`            | `16,10,26`            | every shadow is warm-tinted     |
 

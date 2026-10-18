@@ -457,7 +457,8 @@ export class JellyRoom implements Scene {
 
   draw(ctx: CanvasRenderingContext2D) {
     const t = theme.current;
-    paintBackdrop(ctx, this.w, this.h, t, { tint: this.tint, floorY: null });
+    const spot = { x: this.w / 2, y: this.h * 0.4, r: Math.min(this.w, this.h) * 0.9 };
+    paintBackdrop(ctx, this.w, this.h, t, { tint: this.tint, floorY: null, spot });
     ctx.drawImage(this.lab.render(), 0, 0, this.w, this.h);
     // A soft dotted guide under the knife while you draw.
     const s = this.stroke;
