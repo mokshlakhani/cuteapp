@@ -109,6 +109,9 @@ const K_WEIGHTS = 6;
 const PRESSURE = 2500;
 /** Smallest piece the knife will make (cm, inscribed radius). */
 const MIN_INRADIUS = 0.18;
+/** Tilt (rad) over which the pull back to lying flat fades fully in. */
+const UPRIGHT_FADE = 0.15;
+const smooth01 = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 export function wedgeFootprint(R: number = WEDGE.radius): Poly {
   const { halfAngle: h, arcSegments: s } = WEDGE;
@@ -596,13 +599,16 @@ export class Piece {
       G.set(R);
     }
     // Resting on the table, a jelly rolls back to lie flat: the whole goal
-    // pose is tipped part of the way back toward upright.
+    // pose is tipped part of the way back toward upright. The pull fades in
+    // smoothly with the tilt — switching it straight on past a threshold made
+    // a piece lying almost flat flick it on and off every step, and buzz.
     if (this.upright > 0) {
       const ux = R[1];
       const uy = R[4];
       const uz = R[7];
       const ang = Math.acos(Math.max(-1, Math.min(1, uy)));
-      if (ang > 0.01) {
+      const pull = this.upright * smooth01(ang / UPRIGHT_FADE);
+      if (pull > 1e-4) {
         let ax = -uz;
         let az = ux;
         const l = Math.hypot(ax, az);
@@ -613,7 +619,7 @@ export class Piece {
           ax /= l;
           az /= l;
         }
-        const C = quatToM3(quatAxisAngle(ax, 0, az, ang * this.upright), tmpUp);
+        const C = quatToM3(quatAxisAngle(ax, 0, az, ang * pull), tmpUp);
         G.set(m3Mul(C, G, tmpUpG));
       }
     }
@@ -642,6 +648,10 @@ export class Piece {
     const pxa = on * Math.max(-0.25, Math.min(0.3, 1 - st[0]));
     const pya = on * Math.max(-0.25, Math.min(0.3, 1 - st[1]));
     const pza = on * Math.max(-0.25, Math.min(0.3, 1 - st[2]));
+    // Resting on the table, bobbing up and down is wobble too (the table soaks
+    // it up): otherwise a squashed piece's centre rises and falls with each
+    // squash, counts as "flight", and a small piece bounces on for seconds.
+    const bob = this.onFloor && !held ? 0 : this.vcy;
     let wob = 0;
     for (let i = 0; i < n; i++) {
       const gx = this.cx + G[0] * qx[i] + G[1] * qy[i] + G[2] * qz[i];
@@ -662,7 +672,7 @@ export class Piece {
       const ry = y[i] - this.cy;
       const rz = z[i] - this.cz;
       const ux = this.vcx + this.wy * rz - this.wz * ry;
-      const uy = this.vcy + this.wz * rx - this.wx * rz;
+      const uy = bob + this.wz * rx - this.wx * rz;
       const uz = this.vcz + this.wx * ry - this.wy * rx;
       vx[i] = (ux + (vx[i] - ux) * damp) * air;
       vy[i] = (uy + (vy[i] - uy) * damp) * air;

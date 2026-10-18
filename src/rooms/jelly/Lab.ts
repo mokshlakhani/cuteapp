@@ -5,8 +5,8 @@ import { clamp, rand } from '../../core/math';
 import { polyCentroid } from '../../core/geometry';
 import { Piece, WEDGE, collidePieces, mergePieces, wedgeFootprint, type Bounds, type PhysicsParams } from './Piece';
 import { createShared, makeJellyMaterial, type LocalUniforms, type SharedUniforms } from './material';
-import { KNIFE_EDGE_HALF, Knife, type CutResult } from './Knife';
-import { bladeSpan, bladeTouches, cutPiece, strokePlane } from './cutting';
+import { Knife, type CutResult } from './Knife';
+import { cutTable, topHeight } from './cutting';
 import { jellyFruit } from './fruits';
 
 /**
@@ -40,14 +40,12 @@ export interface LabEvents {
   land?(): void;
 }
 
+/** A knife stroke, as drawn on the screen (CSS px). */
 interface CutLine {
-  nx: number;
-  nz: number;
-  d: number;
   ax: number;
-  az: number;
+  ay: number;
   bx: number;
-  bz: number;
+  by: number;
 }
 
 export interface Stats {
@@ -414,9 +412,7 @@ export class Lab {
     const l = Math.hypot(dx, dz);
     if (l < 0.6) return false;
     this.knife.aim((A.x + B.x) / 2, (A.z + B.z) / 2, dx / l, dz / l);
-    const nx = -dz / l;
-    const nz = dx / l;
-    this.pendingCut = { nx, nz, d: nx * A.x + nz * A.z, ax: A.x, az: A.z, bx: B.x, bz: B.z };
+    this.pendingCut = { ax, ay, bx, by };
     return true;
   }
 
@@ -443,28 +439,24 @@ export class Lab {
     const c = this.chopCut;
     this.chopCut = null;
     if (!c) return 'none';
-    const stroke = { ax: c.ax, az: c.az, bx: c.bx, bz: c.bz };
-    const plane = strokePlane(stroke);
-    // Whatever the blade comes down on is cut — the whole edge, not just
-    // the line you drew.
-    const blade = bladeSpan(stroke, KNIFE_EDGE_HALF);
-    let cuts = 0;
-    const tooSmall: Piece[] = [];
-    let full = false;
-    for (const e of [...this.entries]) {
-      const p = e.piece;
-      if (!bladeTouches(p, blade)) continue;
-      // The table holds so many pieces; past that the blade bounces off.
-      const parts = this.entries.length < MAX_PIECES ? cutPiece(p, plane, MIN_VOLUME) : null;
-      if (!parts && this.entries.length >= MAX_PIECES) full = true;
-      if (!parts) {
-        tooSmall.push(p);
-        continue;
-      }
-      cuts++;
-      const idx = this.entries.indexOf(e);
+    // The line you drew, laid over each piece's own top face: that's where you
+    // saw it cross the jelly, so that's where the cut goes.
+    const res = cutTable(
+      this.entries.map((e) => e.piece),
+      (p) => {
+        const y = topHeight(p);
+        const A = this.floorAt(c.ax, c.ay, y);
+        const B = this.floorAt(c.bx, c.by, y);
+        return A && B ? { ax: A.x, az: A.z, bx: B.x, bz: B.z } : null;
+      },
+      MIN_VOLUME,
+      MAX_PIECES - this.entries.length,
+    );
+    for (const { piece: p, parts } of res.cut) {
+      const e = this.entries.find((x) => x.piece === p);
+      if (!e) continue;
       this.disposeEntry(e);
-      this.entries.splice(idx, 1);
+      this.entries.splice(this.entries.indexOf(e), 1);
       for (const g of [...this.grabPlanes]) if (g[1].piece === p) this.grabPlanes.delete(g[0]);
       // Faces: the bigger half keeps the old face; the other wakes up.
       const [a, b] = parts[0].restVolume >= parts[1].restVolume ? parts : [parts[1], parts[0]];
@@ -479,6 +471,9 @@ export class Lab {
         }
       }
     }
+    const cuts = res.cut.length;
+    const tooSmall = [...res.tooSmall, ...res.full];
+    const full = res.full.length > 0;
     if (cuts === 0 && tooSmall.length) {
       // Too tiny to split: the blade boings off and they jiggle, unbothered.
       for (const p of tooSmall) {
@@ -490,8 +485,9 @@ export class Lab {
       }
       this.events.bounce?.(tooSmall, full);
     } else {
-      // Mixed cut: the crumbs it couldn't split still flinch under the blade.
-      for (const p of tooSmall) {
+      // Mixed cut: the crumbs it couldn't split, and any piece the blade only
+      // brushed the edge of, still flinch under it.
+      for (const p of [...tooSmall, ...res.grazed]) {
         for (let i = 0; i < p.n; i++) p.vy[i] -= 30;
         p.face?.set('squeeze', 0.5);
       }
@@ -594,7 +590,9 @@ export class Lab {
       this.idleT = rand(2.2, 4.5);
       const p = ps[Math.floor(Math.random() * ps.length)];
       if (p.onFloor && !p.grabs.size) {
-        for (let i = 0; i < p.n; i++) if (p.y[i] > p.cy) p.vy[i] -= rand(10, 18);
+        // A gentle jiggle, scaled down for small bits so a sliver doesn't hop.
+        const k = clamp(p.inradius / 1.2, 0.3, 1);
+        for (let i = 0; i < p.n; i++) if (p.y[i] > p.cy) p.vy[i] -= rand(10, 18) * k;
         if (Math.random() < 0.4) p.face?.set('happy', 1.1);
       }
     }

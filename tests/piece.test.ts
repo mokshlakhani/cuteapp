@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Piece, WEDGE, collidePieces, mergePieces, wedgeFootprint, type Bounds, type PhysicsParams } from '../src/rooms/jelly/Piece';
 import { JELLY_FRUITS, jellyFruit } from '../src/rooms/jelly/fruits';
-import { bladeSpan, bladeTouches, cutPiece, strokePlane } from '../src/rooms/jelly/cutting';
+import { BLADE_OVERHANG, MAX_SLIDE, cutPiece, cutTable, strokePlane, worldOutline } from '../src/rooms/jelly/cutting';
 import { polyArea } from '../src/core/geometry';
 
 const P: PhysicsParams = { stiffness: 1800, damping: 7, beta: 0.3, gravity: 700 };
@@ -139,8 +139,18 @@ describe('knife', () => {
           bz: cz + (Math.sin(a) * L) / 2,
         };
         if (!strokeHits(p, s)) continue;
-        hits++;
         const pl = strokePlane(s);
+        // A line that only skims the very edge isn't a cut (it'd have to land
+        // somewhere you didn't draw); anything properly across the fruit is.
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const v of worldOutline(p)) {
+          const t = pl.nx * v.x + pl.nz * v.z;
+          lo = Math.min(lo, t);
+          hi = Math.max(hi, t);
+        }
+        if (pl.d - lo < 0.2 || hi - pl.d < 0.2) continue;
+        hits++;
         if (cutPiece(p, pl, 0.35)) splits++;
       }
       expect(hits).toBeGreaterThan(15);
@@ -214,23 +224,67 @@ describe('resting still', () => {
 });
 
 describe('knife reach', () => {
-  it('a short stroke still cuts everything under the whole blade', () => {
+  const lemonAt = (x: number) => {
     const f = jellyFruit('lemon');
     const p = new Piece(f.footprint(), 0, f.height);
-    p.placeRest(0, 4.5, f.height / 2, 0);
-    // A 1 cm stroke centred 4.5 cm away: only the blade's own length reaches.
-    const s = { ax: -0.5, az: 0, bx: 0.5, bz: 0 };
-    expect(bladeTouches(p, bladeSpan(s))).toBe(false);
-    expect(bladeTouches(p, bladeSpan(s, 4.7))).toBe(true);
+    p.placeRest(0, x, f.height / 2, 0);
+    return p;
+  };
+
+  it('cuts only the pieces the stroke crosses, not neighbours under the blade', () => {
+    const a = lemonAt(-3.2);
+    const b = lemonAt(3.2);
+    simulate([a, b], 0.3);
+    // A short stroke right across the left lemon only.
+    const s = { ax: a.cx, az: a.cz - 3, bx: a.cx, bz: a.cz + 3 };
+    const res = cutTable([a, b], () => s, 0.35, 10);
+    expect(res.cut.map((c) => c.piece)).toEqual([a]);
+    expect(res.tooSmall).toEqual([]);
+    // A stroke that stops just short of a piece still reaches it (fingertip slack)…
+    const near = cutTable([b], () => ({ ax: b.cx, az: b.cz - 6, bx: b.cx, bz: b.cz - 2.4 - BLADE_OVERHANG * 0.5 }), 0.35, 10);
+    expect(near.cut.length).toBe(1);
+    // …but one that stops well short does not.
+    const far = cutTable([b], () => ({ ax: b.cx, az: b.cz - 6, bx: b.cx, bz: b.cz - 2.6 - BLADE_OVERHANG * 2 }), 0.35, 10);
+    expect(far.cut.length).toBe(0);
   });
 
-  it('a graze near the edge slides in to a thin slice; a crumb is too small to cut', () => {
+  it('the cut lands on the line you drew', () => {
+    let seed = 9;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (const f of JELLY_FRUITS) {
+      for (let k = 0; k < 12; k++) {
+        const p = new Piece(f.footprint(), 0, f.height);
+        p.placeRest(rnd() * 6, 0, f.height / 2 + 0.2, 0);
+        simulate([p], 0.4);
+        const a = rnd() * Math.PI;
+        const off = (rnd() - 0.5) * f.radius * 1.4;
+        const mx = p.cx + Math.cos(a + Math.PI / 2) * off;
+        const mz = p.cz + Math.sin(a + Math.PI / 2) * off;
+        const s = { ax: mx - Math.cos(a) * 8, az: mz - Math.sin(a) * 8, bx: mx + Math.cos(a) * 8, bz: mz + Math.sin(a) * 8 };
+        const pl = strokePlane(s);
+        const parts = cutPiece(p, pl, 0.35);
+        if (!parts) continue;
+        // Every bit of each half is on its own side of the line, give or take the allowed slide.
+        for (const q of parts) {
+          const side = Math.sign(pl.nx * q.cx + pl.nz * q.cz - pl.d);
+          for (const v of worldOutline(q)) expect(side * (pl.nx * v.x + pl.nz * v.z - pl.d)).toBeGreaterThan(-MAX_SLIDE - 0.05);
+        }
+      }
+    }
+  });
+
+  it('a graze near the edge slides in a little; further off it is left whole; a crumb is too small to cut', () => {
     const f = jellyFruit('kiwi');
     const p = new Piece(f.footprint(), 0, f.height);
     p.placeRest(0, 0, f.height / 2, 0);
     simulate([p], 0.3);
-    const parts = cutPiece(p, { nx: 1, nz: 0, d: p.cx + f.radius - 0.05 }, 0.35);
+    let hi = -Infinity;
+    for (const v of worldOutline(p)) hi = Math.max(hi, v.x);
+    // Just inside the edge: a thin slice, a little in from the line.
+    const parts = cutPiece(p, { nx: 1, nz: 0, d: hi - 0.05 }, 0.35);
     expect(parts).not.toBeNull();
+    // Off the edge by more than the slide allows: not cut at all.
+    expect(cutPiece(p, { nx: 1, nz: 0, d: hi + 0.2 }, 0.35)).toBeNull();
     let crumb = parts!.reduce((a, b) => (a.restVolume < b.restVolume ? a : b));
     // Keep cutting the smallest piece until it can't be cut any more.
     for (let k = 0; k < 20; k++) {
@@ -242,6 +296,79 @@ describe('knife reach', () => {
     }
     expect(cutPiece(crumb, strokePlane({ ax: crumb.cx - 1, az: crumb.cz, bx: crumb.cx + 1, bz: crumb.cz }), 0.35)).toBeNull();
     expect(crumb.restVolume).toBeLessThan(1.5);
+  });
+
+  it('a full table is reported, and nothing is cut', () => {
+    const a = lemonAt(0);
+    simulate([a], 0.2);
+    const res = cutTable([a], () => ({ ax: a.cx, az: a.cz - 4, bx: a.cx, bz: a.cz + 4 }), 0.35, 0);
+    expect(res.cut).toEqual([]);
+    expect(res.full).toEqual([a]);
+  });
+});
+
+describe('after a cut', () => {
+  // The room's own settings, with the longer sub-step it uses on a busy table.
+  const ROOM: PhysicsParams = { stiffness: 1000 + 0.4 * 2600, damping: 1 + 0.45 * 9, beta: 0.32 - 0.4 * 0.12, gravity: 700 };
+
+  /** Largest per-frame mesh movement (cm at 60 fps) between `from` and `to` seconds from now. */
+  function lateMotion(ps: Piece[], from = 4, to = 6) {
+    const h = 1 / 120;
+    let prev: number[][] = [];
+    let worst = 0;
+    for (let f = 0; f < to * 60; f++) {
+      for (let s = 0; s < 2; s++) {
+        for (const p of ps) {
+          p.step(h, ROOM);
+          p.collideBounds(B, 0.95);
+        }
+        for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) collidePieces(ps[i], ps[j]);
+      }
+      const cur = ps.map((p) => {
+        p.frame(ROOM.beta);
+        p.updateMesh();
+        return Array.from(p.pos);
+      });
+      if (f >= from * 60) cur.forEach((c, k) => c.forEach((v, i) => (worst = Math.max(worst, Math.abs(v - prev[k][i])))));
+      prev = cur;
+    }
+    return worst;
+  }
+
+  it('the halves come to rest instead of rocking on the table', () => {
+    let seed = 5;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (const f of JELLY_FRUITS) {
+      for (let k = 0; k < 3; k++) {
+        const p = new Piece(f.footprint(), 0, f.height);
+        p.placeRest(rnd() * 6, 0, f.height / 2 + 0.05, 0);
+        simulate([p], 0.25);
+        const a = rnd() * Math.PI;
+        const nx = Math.cos(a);
+        const nz = Math.sin(a);
+        const parts = cutPiece(p, { nx, nz, d: nx * p.cx + nz * p.cz + (rnd() * 2 - 1) * f.radius * 0.9 }, 0.35);
+        if (!parts) continue;
+        // Used to keep seesawing at ~0.013 cm a frame for good; now it stops.
+        expect(lateMotion(parts), `${f.id} #${k}`).toBeLessThan(0.004);
+      }
+    }
+  });
+
+  it('a thin slice nudged on the table settles, instead of bouncing on', () => {
+    for (const f of JELLY_FRUITS) {
+      const w = new Piece(f.footprint(), 0, f.height);
+      w.placeRest(0.3, 0, f.height / 2 + 0.05, 0);
+      simulate([w], 0.3);
+      let hi = -Infinity;
+      for (const v of worldOutline(w)) hi = Math.max(hi, v.x);
+      const parts = cutPiece(w, { nx: 1, nz: 0, d: hi - 0.9 }, 0.35)!;
+      const s = parts.reduce((a, b) => (a.restVolume < b.restVolume ? a : b));
+      simulate([s], 2);
+      // A firm poke on its top, harder than the room's idle jiggle.
+      for (let i = 0; i < s.n; i++) if (s.y[i] > s.cy) s.vy[i] -= 18;
+      // Two seconds after the poke it's still (it used to bounce for three).
+      expect(lateMotion([s], 2, 3.5), f.id).toBeLessThan(0.004);
+    }
   });
 });
 
@@ -266,7 +393,7 @@ describe('merging', () => {
     w.placeRest(0, 0, WEDGE.height / 2, 0);
     simulate([w], 0.3);
     const [a, rest] = cutPiece(w, { nx: 0, nz: 1, d: w.cz - 2.5 }, 0.35)!;
-    const [, b] = cutPiece(rest, { nx: 0, nz: 1, d: rest.cz + 1.5 }, 0.35)!;
+    const [, b] = cutPiece(rest, { nx: 0, nz: 1, d: rest.cz + 1 }, 0.35)!;
     const m = mergePieces(a, b);
     expect(m.restVolume).toBeCloseTo(a.restVolume + b.restVolume, 3);
     expect(m.inradius).toBeGreaterThan(Math.min(a.inradius, b.inradius));

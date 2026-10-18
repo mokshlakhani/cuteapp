@@ -30,9 +30,6 @@ const CHOP_T = 0.14;
 const BOUNCE_T = 0.62;
 const LIFT_T = 0.45;
 
-/** Half the cutting edge in world units: the blade cuts at least this far either side of the stroke's middle. */
-export const KNIFE_EDGE_HALF = (BLADE_L * SCALE) / 2;
-
 type Phase = 'hidden' | 'aiming' | 'chop' | 'hold' | 'bounce' | 'lift';
 export type CutResult = 'cut' | 'bounce' | 'none';
 
@@ -199,7 +196,7 @@ export class Knife {
     body.add(blade, handle, bolster);
     // The body is built heel-at-origin (edge along 0..BLADE_L). Pivot the
     // wobble at the heel and put the heel at −BLADE_L/2, so the edge is
-    // centred on x = 0 — exactly the span the cut uses (KNIFE_EDGE_HALF).
+    // centred on x = 0, over the middle of the line you drew.
     this.wob.position.x = -BLADE_L / 2;
     this.wob.add(body);
     this.group.add(this.wob);
