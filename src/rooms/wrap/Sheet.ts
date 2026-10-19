@@ -201,7 +201,7 @@ export class Sheet {
       for (let c = 0; c < cols; c++) {
         const u = m + c * pitch + (odd ? pitch / 2 : 0);
         if (u > this.W - m + 0.5) continue;
-        const face = faces && (size !== 'small' || Math.random() < 0.4) ? new Face() : null;
+        const face = faces ? new Face() : null;
         this.bubbles.push({
           u,
           v: m + row * rowStep,
