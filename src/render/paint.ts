@@ -1,7 +1,6 @@
 import { mix, rgba } from '../core/color';
 import { light } from '../design/tokens';
 import type { Theme } from '../design/tokens';
-import { reducedMotion } from './camera';
 
 /**
  * Shared material & lighting helpers. Every toy uses these, which is how a
@@ -37,11 +36,11 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
 
 // ——— environment ———
 
-let grainPattern: CanvasPattern | null = null;
-let grainCtx: CanvasRenderingContext2D | null = null;
-
-function grain(ctx: CanvasRenderingContext2D) {
-  if (grainPattern && grainCtx === ctx) return grainPattern;
+/**
+ * Paper grain, as an image for the page's grain overlay (see App). Laid over
+ * the canvas by the browser rather than painted on it, it costs nothing per frame.
+ */
+export function grainImage() {
   const c = document.createElement('canvas');
   c.width = c.height = 160;
   const g = c.getContext('2d')!;
@@ -52,9 +51,7 @@ function grain(ctx: CanvasRenderingContext2D) {
     img.data[i + 3] = Math.random() * 255;
   }
   g.putImageData(img, 0, 0);
-  grainPattern = ctx.createPattern(c, 'repeat');
-  grainCtx = ctx;
-  return grainPattern!;
+  return c.toDataURL();
 }
 
 export interface RoomBackdrop {
@@ -66,30 +63,25 @@ export interface RoomBackdrop {
 }
 
 /** Backdrops drawn recently (each room has its own), newest last. */
-const backdrops: { key: string; canvas: HTMLCanvasElement; at: number }[] = [];
-/** The glows drift so slowly that redrawing them a few times a second looks continuous. */
-const BACKDROP_REFRESH = 0.15;
+const backdrops: { key: string; canvas: HTMLCanvasElement }[] = [];
 
 /**
  * The one background treatment used by home and every room. It's a stack of
- * full-screen gradients, which is a lot of fill for a phone to repaint every
- * frame, so it's painted into its own canvas and only redrawn when the room,
- * size or theme changes, or now and then as the glows drift.
+ * full-screen gradients, which on an iPhone costs more to paint than
+ * everything else on screen put together, so it's painted once into its own
+ * canvas and only repainted when the room, size or theme changes.
  */
 export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme, b: RoomBackdrop) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const r = (n: number) => Math.round(n);
   const spot = b.spot ? `${r(b.spot.x)},${r(b.spot.y)},${r(b.spot.r)}` : '';
   const key = `${r(w)}x${r(h)}@${dpr}|${t.name}|${t.bg}|${b.tint}|${b.floorY == null ? '' : r(b.floorY)}|${spot}`;
-  const now = performance.now() / 1000;
   let entry = backdrops.find((e) => e.key === key);
-  if (!entry || (!reducedMotion && now - entry.at > BACKDROP_REFRESH)) {
-    if (!entry) {
-      // Reuse the oldest of a few canvases rather than making a new one each time.
-      const canvas = backdrops.length >= 3 ? backdrops.shift()!.canvas : document.createElement('canvas');
-      entry = { key, canvas, at: 0 };
-      backdrops.push(entry);
-    }
+  if (!entry) {
+    // Reuse the oldest of a few canvases rather than making a new one each time.
+    const canvas = backdrops.length >= 3 ? backdrops.shift()!.canvas : document.createElement('canvas');
+    entry = { key, canvas };
+    backdrops.push(entry);
     const c = entry.canvas;
     const cw = Math.max(1, Math.round(w * dpr));
     const ch = Math.max(1, Math.round(h * dpr));
@@ -100,7 +92,6 @@ export function paintBackdrop(ctx: CanvasRenderingContext2D, w: number, h: numbe
     const g = c.getContext('2d')!;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawBackdrop(g, w, h, t, b);
-    entry.at = now;
   }
   // Most recently used last, so the least used is the one recycled.
   backdrops.splice(backdrops.indexOf(entry), 1);
@@ -119,9 +110,7 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  // Two wide, soft glows of colour, rosy up top and cool down low, drifting
-  // so slowly (about half a minute a sway) that the ground seems to breathe.
-  const s = reducedMotion ? 0 : performance.now() / 1000;
+  // Two wide, soft glows of colour, rosy up top and cool down low.
   const glow = (color: string, x: number, y: number, r: number, a: number) => {
     const gl = ctx.createRadialGradient(x, y, 0, x, y, r);
     gl.addColorStop(0, rgba(color, a));
@@ -131,8 +120,8 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
     ctx.fillRect(0, 0, w, h);
   };
   const big = Math.max(w, h);
-  glow(t.glowWarm, w * (0.8 + Math.sin(s * 0.21) * 0.08), h * (0.1 + Math.cos(s * 0.17) * 0.04), big * 0.7, 0.32);
-  glow(t.glowCool, w * (0.15 + Math.cos(s * 0.19) * 0.08), h * (0.88 + Math.sin(s * 0.23) * 0.04), big * 0.75, 0.38);
+  glow(t.glowWarm, w * 0.8, h * 0.1, big * 0.7, 0.32);
+  glow(t.glowCool, w * 0.15, h * 0.88, big * 0.75, 0.38);
 
   // A soft pool of light from the upper left, like a window nearby.
   const pool = ctx.createRadialGradient(w * 0.25, h * 0.12, 0, w * 0.25, h * 0.12, Math.max(w, h) * 0.75);
@@ -175,14 +164,6 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
   vg.addColorStop(1, `rgba(${t.shadowRgb},${(t.light ? 0.14 : 0.2) * t.shadowStrength})`);
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, w, h);
-}
-
-export function paintGrain(ctx: CanvasRenderingContext2D, w: number, h: number, t: Theme) {
-  ctx.save();
-  ctx.globalAlpha = t.grain;
-  ctx.fillStyle = grain(ctx);
-  ctx.fillRect(0, 0, w, h);
-  ctx.restore();
 }
 
 // ——— lighting ———

@@ -14,44 +14,46 @@ const EVERY: [number, number] = [5, 7.5];
  * Nothing more: the home screen is a calm place.
  */
 export function melonPreview(): Preview {
-  let scene: MelonScene | null = null;
+  const scene = new MelonScene();
+  scene.setFruit(anyPopFruit());
+  scene.resetMelon(0);
   let size = '';
   let next = rand(2, 3.5);
+  const fit = (w: number, h: number) => {
+    const key = `${Math.round(w)}x${Math.round(h)}`;
+    if (key === size) return;
+    size = key;
+    // Framed as if the free band were a strip above the label, which pulls
+    // the camera back so the melon sits comfortably inside the card.
+    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.3, h * 0.54);
+  };
 
   return {
+    canvas: scene.canvas,
     update(dt) {
-      const s = scene;
-      if (!s) return;
+      // Not until the card has sized its scene.
+      if (!size) return;
       next -= dt;
       if (next <= 0 && !reducedMotion) {
         next = rand(...EVERY);
-        s.shape.squash.impulse(rand(1.6, 2.2));
-        s.shape.sway.impulse(rand(-0.4, 0.4));
-        s.shape.face.set('happy', 1.8);
+        scene.shape.squash.impulse(rand(1.6, 2.2));
+        scene.shape.sway.impulse(rand(-0.4, 0.4));
+        scene.shape.face.set('happy', 1.8);
       }
-      s.update(dt);
+      scene.update(dt);
+    },
+    render(w, h) {
+      fit(w, h);
+      scene.render();
     },
     draw(ctx, x, y, w, h) {
-      if (!scene) {
-        scene = new MelonScene();
-        scene.setFruit(anyPopFruit());
-        scene.resetMelon(0);
-      }
-      const key = `${Math.round(w)}x${Math.round(h)}`;
-      if (key !== size) {
-        size = key;
-        // Framed as if the free band were a strip above the label, which pulls
-        // the camera back so the melon sits comfortably inside the card.
-        scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.3, h * 0.54);
-      }
+      fit(w, h);
       ctx.drawImage(scene.render(), x, y, w, h);
     },
     poke() {
-      const s = scene;
-      if (!s) return;
-      s.shape.squash.impulse(rand(4, 5));
-      s.shape.sway.impulse(rand(-1, 1));
-      s.shape.face.set('happy', 1.4);
+      scene.shape.squash.impulse(rand(4, 5));
+      scene.shape.sway.impulse(rand(-1, 1));
+      scene.shape.face.set('happy', 1.4);
     },
   };
 }

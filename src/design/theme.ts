@@ -31,6 +31,7 @@ function applyCss(t: Theme) {
   s.setProperty('--ink-soft', t.inkSoft);
   s.setProperty('--ink-faint', t.inkFaint);
   s.setProperty('--shadow-rgb', t.shadowRgb);
+  s.setProperty('--grain', String(t.grain));
   s.setProperty('--font-display', typeTokens.display);
   s.setProperty('--font-text', typeTokens.text);
   s.setProperty('--r-sm', `${radius.sm}px`);

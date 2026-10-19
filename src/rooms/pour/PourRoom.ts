@@ -10,7 +10,7 @@ import { panFor } from '../../core/audio';
 import { material, ui as uiSound } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
-import { paintBackdrop, paintGrain } from '../../render/paint';
+import { paintBackdrop } from '../../render/paint';
 import { Particles } from '../../render/particles';
 import { reducedMotion, Shake } from '../../render/camera';
 import { Face } from '../../render/face';
@@ -671,7 +671,6 @@ export class PourRoom implements Scene {
     drawJug(ctx, t, this.j, jug.x, jug.y, jug.tilt, this.drink, jug.alpha);
     this.particles.draw(ctx);
     ctx.restore();
-    paintGrain(ctx, w, h, t);
   }
 
   /**

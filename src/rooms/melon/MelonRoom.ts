@@ -10,7 +10,7 @@ import { panFor } from '../../core/audio';
 import { material } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
-import { paintBackdrop, paintGrain } from '../../render/paint';
+import { paintBackdrop } from '../../render/paint';
 import { el, Hint } from '../../ui/components';
 import { reducedMotion } from '../../render/camera';
 import { getMelonScene, type MelonScene } from './MelonScene';
@@ -49,6 +49,8 @@ export class MelonRoom implements Scene {
   readonly id = 'melon';
   readonly tint = roomTint.melon;
   readonly ui: HTMLElement;
+  readonly view: HTMLCanvasElement;
+  live = false;
 
   private s: MelonScene;
   private w = 0;
@@ -87,6 +89,7 @@ export class MelonRoom implements Scene {
     ]);
     this.ui.append(this.hint.root, this.tag, this.count);
     this.s = getMelonScene();
+    this.view = this.s.canvas;
     this.s.events = {
       land: (b, speed, at) => {
         const pan = panFor(this.s.toScreen(at).x, this.w);
@@ -380,7 +383,8 @@ export class MelonRoom implements Scene {
     const t = theme.current;
     const { w, h } = this;
     paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null, spot: { x: w / 2, y: h * 0.46, r: Math.min(w, h) * 0.8 } });
-    ctx.drawImage(this.s.render(), 0, 0, w, h);
+    const view = this.s.render();
+    if (!this.live) ctx.drawImage(view, 0, 0, w, h);
     if (this.flash > 0) {
       const c = this.waveAt;
       const r = Math.min(w, h) * (0.35 + (1 - this.flash) * 0.6);
@@ -393,6 +397,5 @@ export class MelonRoom implements Scene {
       ctx.arc(c.x, c.y, r, 0, TAU);
       ctx.fill();
     }
-    paintGrain(ctx, w, h, t);
   }
 }

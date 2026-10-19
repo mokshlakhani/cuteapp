@@ -25,6 +25,8 @@ interface Entry {
   local: LocalUniforms;
   faceCanvas: HTMLCanvasElement | null;
   faceTex: THREE.CanvasTexture | null;
+  /** The face last drawn into the texture (see Face.signature). */
+  faceSig: string;
 }
 
 export interface LabEvents {
@@ -120,7 +122,8 @@ export class Lab {
     this.key = new THREE.DirectionalLight('#fff4e6', 2.4);
     this.key.position.set(-7, 16, 9);
     this.key.castShadow = true;
-    this.key.shadow.mapSize.set(1024, 1024);
+    // Small and blurred: the shadow is soft anyway, and the blur runs every frame.
+    this.key.shadow.mapSize.set(512, 512);
     const sc = this.key.shadow.camera;
     sc.left = -18;
     sc.right = 18;
@@ -130,8 +133,8 @@ export class Lab {
     sc.far = 60;
     this.key.shadow.bias = -0.0006;
     this.key.shadow.normalBias = 0.03;
-    this.key.shadow.radius = 12;
-    this.key.shadow.blurSamples = 16;
+    this.key.shadow.radius = 6;
+    this.key.shadow.blurSamples = 8;
     this.scene.add(this.key, this.key.target);
 
     // The app's warm shadow tone (design/tokens: shadowRgb), a little deeper.
@@ -241,7 +244,7 @@ export class Lab {
     wire.visible = this.showMesh;
     wire.frustumCulled = false;
     this.scene.add(mesh, wire);
-    const e: Entry = { piece: p, mesh, wire, geo, mat, local, faceCanvas: null, faceTex: null };
+    const e: Entry = { piece: p, mesh, wire, geo, mat, local, faceCanvas: null, faceTex: null, faceSig: '' };
     this.entries.push(e);
     return e;
   }
@@ -656,16 +659,16 @@ export class Lab {
 
   // ——— render ———
 
-  private faceFrame = 0;
   render() {
-    this.faceFrame++;
     for (const e of this.entries) {
       const p = e.piece;
       p.updateMesh();
       e.geo.attributes.position.needsUpdate = true;
       e.geo.computeVertexNormals();
-      // Faces animate (blinks, pops, spirals) — refresh at ~30 fps.
-      if (p.face && e.faceCanvas && e.faceTex && (this.faceFrame + p.id) % 2 === 0) {
+      // Faces are redrawn only when they change (blinks, pops, spirals).
+      const sig = p.face?.signature ?? '';
+      if (p.face && e.faceCanvas && e.faceTex && sig !== e.faceSig) {
+        e.faceSig = sig;
         const ctx = e.faceCanvas.getContext('2d')!;
         ctx.clearRect(0, 0, FACE_PX, FACE_PX);
         ctx.save();

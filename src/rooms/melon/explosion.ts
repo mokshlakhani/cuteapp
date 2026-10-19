@@ -52,6 +52,8 @@ interface FaceSprite {
   face: Face;
   piece: Piece;
   r: number;
+  /** The face last drawn (see Face.signature). */
+  sig: string;
 }
 
 interface Splat {
@@ -130,6 +132,11 @@ export class Explosion {
   private bangT = 1;
   private bangAt = new THREE.Vector3();
   private clearT = -1;
+
+  /** Nothing in the mess is moving or fading: its shadows needn't be redrawn. */
+  get resting() {
+    return this.active && this.clearT < 0 && this.debris.still;
+  }
 
   constructor(
     private shardMat: THREE.Material,
@@ -528,7 +535,7 @@ export class Explosion {
     const face = new Face();
     face.set('dizzy', rand(2.2, 3.2));
     face.base = 'happy';
-    this.faces.push({ sprite, canvas, tex, face, piece, r });
+    this.faces.push({ sprite, canvas, tex, face, piece, r, sig: '' });
     this.group.add(sprite);
   }
 
@@ -595,6 +602,10 @@ export class Explosion {
       f.sprite.position.copy(p).addScaledVector(tmpV, f.r * 0.95);
       f.sprite.scale.setScalar(f.r * 1.25 * f.piece.scale);
       f.sprite.visible = f.piece.scale > 0.02;
+      // Redrawn only when it changes: re-uploading the texture is slow on iPhones.
+      const sig = f.face.signature;
+      if (sig === f.sig) continue;
+      f.sig = sig;
       const ctx = f.canvas.getContext('2d')!;
       ctx.clearRect(0, 0, FACE_PX, FACE_PX);
       ctx.save();

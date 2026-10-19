@@ -146,6 +146,31 @@ svg {
 
 /* ——— layers ——— */
 
+.world {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.world-view {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.world-view.is-hidden {
+  visibility: hidden;
+}
+
+.grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-size: 160px 160px;
+  opacity: var(--grain);
+}
+
 .ui-layer {
   position: absolute;
   inset: 0;
@@ -617,6 +642,20 @@ svg {
   aspect-ratio: 0.8;
   border-radius: var(--r-lg);
   background: transparent;
+}
+
+/* A 3D toy's own canvas, shown on its card once home has settled (see HomeScene.draw). */
+.card-toy {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.card-toy.is-hidden {
+  visibility: hidden;
 }
 
 .card-label {

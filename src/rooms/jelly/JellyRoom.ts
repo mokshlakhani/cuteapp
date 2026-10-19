@@ -9,7 +9,7 @@ import { rgba } from '../../core/color';
 import { material, ui as uiSound } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
-import { paintBackdrop, paintGrain } from '../../render/paint';
+import { paintBackdrop } from '../../render/paint';
 import { Face, drawFace } from '../../render/face';
 import { el, iconButton, Hint, Segmented, tactile } from '../../ui/components';
 import { getLab, type Lab } from './Lab';
@@ -36,6 +36,11 @@ export class JellyRoom implements Scene {
   readonly id = 'jelly';
   readonly tint = roomTint.jelly;
   readonly ui: HTMLElement;
+  readonly view: HTMLCanvasElement;
+  live = false;
+  /** The dotted guide under the knife, over the jelly (an SVG line, above the 3D canvas). */
+  private guide = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  private guideLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
 
   private lab: Lab;
   private w = 0;
@@ -66,6 +71,9 @@ export class JellyRoom implements Scene {
 
   constructor(_nav: RoomNav) {
     this.lab = getLab();
+    this.view = this.lab.canvas;
+    this.guide.classList.add('knife-guide');
+    this.guide.append(this.guideLine);
     this.lab.events = {
       impact: (p, v) => this.onImpact(p, v),
       bump: (_a, _b, v) => {
@@ -194,6 +202,7 @@ export class JellyRoom implements Scene {
     );
 
     this.ui.append(
+      this.guide,
       this.hints.knife.root,
       this.hints.hand.root,
       this.mergeHint.root,
@@ -459,21 +468,19 @@ export class JellyRoom implements Scene {
     const t = theme.current;
     const spot = { x: this.w / 2, y: this.h * 0.4, r: Math.min(this.w, this.h) * 0.9 };
     paintBackdrop(ctx, this.w, this.h, t, { tint: this.tint, floorY: null, spot });
-    ctx.drawImage(this.lab.render(), 0, 0, this.w, this.h);
+    const view = this.lab.render();
+    if (!this.live) ctx.drawImage(view, 0, 0, this.w, this.h);
     // A soft dotted guide under the knife while you draw.
     const s = this.stroke;
-    if (s && Math.hypot(s.bx - s.ax, s.by - s.ay) > 6) {
-      ctx.save();
-      ctx.strokeStyle = rgba(t.ink, 0.35);
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
-      ctx.setLineDash([0.1, 8]);
-      ctx.beginPath();
-      ctx.moveTo(s.ax, s.ay);
-      ctx.lineTo(s.bx, s.by);
-      ctx.stroke();
-      ctx.restore();
+    const show = !!s && Math.hypot(s.bx - s.ax, s.by - s.ay) > 6;
+    this.guide.classList.toggle('is-shown', show);
+    if (s && show) {
+      const l = this.guideLine;
+      l.setAttribute('x1', s.ax.toFixed(1));
+      l.setAttribute('y1', s.ay.toFixed(1));
+      l.setAttribute('x2', s.bx.toFixed(1));
+      l.setAttribute('y2', s.by.toFixed(1));
+      l.style.stroke = rgba(t.ink, 0.35);
     }
-    paintGrain(ctx, this.w, this.h, t);
   }
 }

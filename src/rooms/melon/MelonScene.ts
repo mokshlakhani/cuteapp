@@ -60,7 +60,8 @@ export class MelonScene {
   private stem = new THREE.Group();
   private faceCanvas = document.createElement('canvas');
   private faceTex: THREE.CanvasTexture;
-  private faceFrame = 0;
+  /** The face last drawn into the texture (see Face.signature). */
+  private faceSig = '';
   private surf = new Float32Array(PROFILE);
   private slope = new Float32Array(PROFILE);
   private ray = new THREE.Raycaster();
@@ -91,6 +92,8 @@ export class MelonScene {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.VSMShadowMap;
+    // Redrawn only while something moves (see render).
+    this.renderer.shadowMap.autoUpdate = false;
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -100,7 +103,8 @@ export class MelonScene {
     const key = new THREE.DirectionalLight('#fff4e6', 2.3);
     key.position.set(-9, 16, 8);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    // Small and blurred: the shadow is soft anyway, and the blur runs every frame.
+    key.shadow.mapSize.set(512, 512);
     const sc = key.shadow.camera;
     sc.left = -12;
     sc.right = 12;
@@ -110,8 +114,8 @@ export class MelonScene {
     sc.far = 60;
     key.shadow.bias = -0.0006;
     key.shadow.normalBias = 0.03;
-    key.shadow.radius = 14;
-    key.shadow.blurSamples = 16;
+    key.shadow.radius = 7;
+    key.shadow.blurSamples = 8;
     this.scene.add(key, key.target);
 
     // The app's warm shadow tone, on an invisible table.
@@ -560,8 +564,9 @@ export class MelonScene {
   // ——— rendering ———
 
   private drawFace() {
-    this.faceFrame++;
-    if (this.faceFrame % 2) return;
+    const sig = this.shape.face.signature;
+    if (sig === this.faceSig) return;
+    this.faceSig = sig;
     const ctx = this.faceCanvas.getContext('2d')!;
     ctx.clearRect(0, 0, FACE_PX, FACE_PX);
     ctx.save();
@@ -573,6 +578,9 @@ export class MelonScene {
 
   render() {
     if (this.melonVisible) this.drawFace();
+    // Once the mess has come to rest its shadows stay put: each piece is a
+    // draw call, and Safari makes those costly.
+    this.renderer.shadowMap.needsUpdate = this.melonVisible || !this.explosion.resting;
     this.renderer.render(this.scene, this.camera);
     return this.canvas;
   }

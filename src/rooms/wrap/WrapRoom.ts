@@ -11,7 +11,7 @@ import { panFor } from '../../core/audio';
 import { material, ui as uiSound } from '../../core/sounds';
 import { haptics, type HapticWord } from '../../core/haptics';
 import { settings } from '../../core/settings';
-import { paintBackdrop, paintGrain } from '../../render/paint';
+import { paintBackdrop } from '../../render/paint';
 import { Particles } from '../../render/particles';
 import { Shake, reducedMotion } from '../../render/camera';
 import { el, iconButton, Hint, Segmented, tactile } from '../../ui/components';
@@ -777,7 +777,6 @@ export class WrapRoom implements Scene {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
     }
-    paintGrain(ctx, w, h, t);
   }
 
   /** A soft glow round the held bubble that throbs quicker as it nears popping. */

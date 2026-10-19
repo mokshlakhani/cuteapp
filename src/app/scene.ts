@@ -19,6 +19,13 @@ export interface Scene extends PointerHandler {
   leave(): void;
   update(dt: number): void;
   draw(ctx: CanvasRenderingContext2D): void;
+  /**
+   * A 3D room's own canvas. Once the room has settled the App shows it over
+   * the stage and sets `live`, and the room only renders it instead of
+   * copying it onto the stage: Safari stalls on that copy every frame.
+   */
+  readonly view?: HTMLCanvasElement;
+  live?: boolean;
 }
 
 /** A tiny live toy drawn on a home card. Lets the home "show, not tell". */
@@ -28,6 +35,13 @@ export interface Preview {
   draw(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void;
   /** The card was pressed: react (wobble, giggle). */
   poke(): void;
+  /**
+   * A 3D toy's own canvas. At rest the home shows it on the card itself and
+   * calls `render` instead of `draw`: Safari stalls each time a canvas drawn
+   * this frame is copied onto another, so it's only copied in transitions.
+   */
+  canvas?: HTMLCanvasElement;
+  render?(w: number, h: number): void;
 }
 
 export interface RoomInfo {

@@ -103,6 +103,20 @@ export class Face {
   get time() {
     return this.t;
   }
+
+  /**
+   * What the face looks like right now, coarsely. A face drawn into a 3D
+   * toy's texture is only redrawn when this changes: uploading a freshly
+   * drawn canvas to the GPU is slow on iPhones, and most frames nothing moved.
+   */
+  get signature() {
+    const e = this.expression;
+    const look = LOOK[e];
+    // Trembles, sweat and dizzy spirals move all the time.
+    const moving = look.tremble || look.sweat || look.eyes === 'spiral' ? Math.floor(this.t * 30) : 0;
+    const q = (v: number, k: number) => Math.round(v * k);
+    return `${e}|${q(this.blink, 12)}|${q(this.pop.value, 60)}|${q(this.lookX.value, 24)}|${q(this.lookY.value, 24)}|${moving}`;
+  }
 }
 
 export interface FaceStyle {

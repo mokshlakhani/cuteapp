@@ -9,6 +9,7 @@ import { duration } from '../design/tokens';
 import { ease } from '../design/motion';
 import { lighten, rgba } from '../core/color';
 import { TopBar, el } from '../ui/components';
+import { grainImage } from '../render/paint';
 import type { RoomInfo, RoomNav, Scene } from './scene';
 
 interface Transition {
@@ -29,6 +30,8 @@ export class App implements RoomNav {
   readonly stage: Stage;
   private input: InputRouter;
   private layer: HTMLDivElement;
+  /** 3D rooms' own canvases, between the stage and the grain (see Scene.view). */
+  private world: HTMLDivElement;
   private topbar: TopBar;
   private scenes = new Map<string, Scene>();
   private current!: Scene;
@@ -42,6 +45,12 @@ export class App implements RoomNav {
   ) {
     theme.init();
     this.stage = new Stage(host);
+    this.world = el('div', 'world');
+    host.append(this.world);
+    // Paper grain over every room, laid on by the browser (see grainImage).
+    const grain = el('div', 'grain');
+    grain.style.backgroundImage = `url(${grainImage()})`;
+    host.append(grain);
     this.layer = el('div', 'ui-layer');
     host.append(this.layer);
     this.topbar = new TopBar(() => this.home());
@@ -86,6 +95,17 @@ export class App implements RoomNav {
   private mount(s: Scene) {
     s.ui.classList.add('scene-ui');
     if (!s.ui.isConnected) this.layer.append(s.ui);
+    if (s.view && !s.view.isConnected) {
+      s.view.classList.add('world-view', 'is-hidden');
+      this.world.append(s.view);
+    }
+  }
+
+  /** Show a 3D room's canvas itself, or have the room copy it onto the stage. */
+  private setLive(s: Scene, on: boolean) {
+    if (!s.view || !!s.live === on) return;
+    s.live = on;
+    s.view.classList.toggle('is-hidden', !on);
   }
 
   private scene(id: string): Scene | null {
@@ -157,6 +177,9 @@ export class App implements RoomNav {
       tr.from.update(dt);
     }
     this.current.update(dt);
+    // In a transition both rooms are drawn on the stage, clipped and scaled.
+    if (tr) this.setLive(tr.from, false);
+    this.setLive(this.current, !tr);
 
     this.stage.begin();
     if (!tr) {
