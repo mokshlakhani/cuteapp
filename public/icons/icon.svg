@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9A64AA"/>
+      <stop offset="1" stop-color="#5E3A70"/>
+    </linearGradient>
+    <radialGradient id="warm" cx="0.28" cy="0.2" r="0.6">
+      <stop offset="0" stop-color="#E7A4C4" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#E7A4C4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="body" cx="0.4" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#FFE3EC"/>
+      <stop offset="0.55" stop-color="#F7B7CB"/>
+      <stop offset="1" stop-color="#E38DAB"/>
+    </radialGradient>
+    <radialGradient id="shadow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3A2047" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#3A2047" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#ground)"/>
+  <rect width="1024" height="1024" fill="url(#warm)"/>
+  <ellipse cx="512" cy="760" rx="300" ry="54" fill="url(#shadow)"/>
+  <path d="M512 262c178 0 300 128 300 282 0 120-70 204-300 204S212 664 212 544c0-154 122-282 300-282z" fill="url(#body)"/>
+  <ellipse cx="398" cy="372" rx="78" ry="44" transform="rotate(-24 398 372)" fill="#fff" opacity="0.75"/>
+  <circle cx="478" cy="324" r="16" fill="#fff" opacity="0.8"/>
+  <circle cx="420" cy="540" r="26" fill="#4A2F45"/>
+  <circle cx="604" cy="540" r="26" fill="#4A2F45"/>
+  <circle cx="429" cy="531" r="8" fill="#fff"/>
+  <circle cx="613" cy="531" r="8" fill="#fff"/>
+  <path d="M482 588q30 28 60 0" stroke="#4A2F45" stroke-width="16" fill="none" stroke-linecap="round"/>
+  <ellipse cx="362" cy="598" rx="40" ry="24" fill="#F28AAB" opacity="0.7"/>
+  <ellipse cx="662" cy="598" rx="40" ry="24" fill="#F28AAB" opacity="0.7"/>
+</svg>

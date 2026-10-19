@@ -99,6 +99,19 @@ body {
   inset: 0;
 }
 
+/* Opened from the home screen, iOS gives the page a viewport one status bar
+   short of the screen, though it draws from the very top: fill the screen. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    height: 100vh;
+  }
+
+  body {
+    bottom: auto;
+  }
+}
+
 #app {
   position: fixed;
   inset: 0;
@@ -695,7 +708,8 @@ svg {
 
 .range-row {
   display: grid;
-  grid-template-columns: auto 1fr;
+  /* A fixed label column, so every slider's track starts in the same place. */
+  grid-template-columns: 64px 1fr;
   align-items: center;
   column-gap: 12px;
   padding: 4px 10px 2px;

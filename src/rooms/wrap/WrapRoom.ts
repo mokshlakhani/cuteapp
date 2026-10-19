@@ -214,7 +214,8 @@ export class WrapRoom implements Scene {
     this.h = h;
     this.safe = safe;
     const top = safe.top + 76;
-    const bottom = h - safe.bottom - 18 - 64 - 26;
+    // Clear of the dock and the hint pill that sits on top of it.
+    const bottom = h - safe.bottom - 104 - 44 - 10;
     const aw = Math.min(w - 40, 420);
     const ah = Math.max(200, Math.min(bottom - top, aw * 1.7));
     const area = { x: (w - aw) / 2, y: top + Math.max(0, (bottom - top - ah) / 2), w: aw, h: ah };
