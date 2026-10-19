@@ -1,5 +1,5 @@
 import { audio } from './audio';
-import { clamp, lerp, rand, smoothstep as smooth } from './math';
+import { clamp, lerp, rand } from './math';
 
 /**
  * The sound vocabulary of soft spot.
@@ -108,19 +108,23 @@ export const material = {
    * hum under them, and then just stay there, drifting, never building toward
    * the burst: nothing in it says how close the fruit is to giving way.
    */
-  bandSnap(count: number, pan = 0) {
-    const n = Math.max(0, count);
-    const deep = smooth(22, 30, n);
-    // Early on it walks up the scale; later it drifts among a few low notes.
-    const step = deep > 0.5 ? Math.round(rand(-4, -1)) : Math.round(lerp(-3, 2, Math.min(1, n / 22)) + rand(-0.5, 0.5));
+  /** A band snapping on; `left` is how many more the fruit can take before it pops. */
+  bandSnap(left: number, pan = 0) {
+    // 0 for most of the game, rising to 1 over the last six bands.
+    const k = clamp((7 - left) / 6, 0, 1);
+    // A warm, round bloom on a gentle pentatonic note: no click, no bend.
+    // In the last few bands the notes climb a little and come quicker to the ear.
+    const step = Math.round(rand(0, 4.4) + k * 3);
     const f = scale(step);
-    audio.pluck({ freq: f, sustain: 0.55 + deep * 0.25, brightness: 0.18, bend: 1.03, gain: 0.2, pan, lowpass: 1300, reverb: 0.25 });
+    audio.tone({ freq: f, attack: 0.025 - k * 0.012, decay: 1.0 - k * 0.3, gain: 0.26 + k * 0.08, pan, lowpass: 900 + k * 500, reverb: 0.4 });
+    // The octave above, so it carries on a phone speaker.
+    audio.tone({ freq: f * 2, attack: 0.03, decay: 0.55, gain: 0.06 + k * 0.04, pan, lowpass: 1400, reverb: 0.4 });
     // A soft pat as it settles on the skin.
-    audio.tone({ freq: 110, to: 80, glide: 0.1, attack: 0.01, decay: 0.12, gain: 0.04, pan, lowpass: 400 });
-    if (deep > 0) {
-      // A warm octave below, and a quiet hum, swelling in rather than hitting.
-      audio.pluck({ freq: f / 2, sustain: 0.8, brightness: 0.1, bend: 1.01, gain: 0.09 * deep, pan, lowpass: 500, delay: 0.02 });
-      audio.tone({ freq: f / 2, attack: 0.12, decay: 0.9, gain: 0.04 * deep, pan, lowpass: 300 });
+    audio.tone({ freq: 100, to: 75, glide: 0.12, attack: 0.015, decay: 0.15, gain: 0.06, pan, lowpass: 300 });
+    if (k > 0) {
+      // Near the end it tightens: a firm round pluck and a low hum swelling under it.
+      audio.pluck({ freq: f, sustain: 0.6, brightness: 0.12, bend: 1.01, gain: 0.2 * k, pan, lowpass: 900, reverb: 0.3 });
+      audio.tone({ freq: f / 2, attack: 0.08, decay: 1.1, gain: 0.12 * k, pan, lowpass: 300 });
     }
   },
   /**

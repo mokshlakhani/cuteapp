@@ -217,7 +217,7 @@ export class MelonRoom implements Scene {
     // Everything you see and hear follows the count, never the hidden break point.
     const n = m.bands.length;
     const t = strainFor(n);
-    material.bandSnap(n, panFor(x, this.w));
+    material.bandSnap(m.breakAt - n, panFor(x, this.w));
     haptics.play('tap');
     m.face.set(t > 0.85 ? 'squeeze' : t > 0.45 ? 'wide' : 'happy', 0.45);
     this.showCount(true);
