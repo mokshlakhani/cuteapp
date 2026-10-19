@@ -14,7 +14,7 @@ import { Explosion, type ExplosionEvents } from './explosion';
  * The pop table: a watermelon lying on its side, seen from a calm raised
  * three-quarter view, lit like the rest of soft spot (one soft key light
  * from the upper left, warm cocoa shadows). Bands snap on and pinch its
- * middle; when it bursts, the camera swoops down low over the mess.
+ * middle; when it bursts, the camera stays put and the mess lands round the middle of the screen.
  */
 
 /** Profile samples along the melon (for the surface and its slope). */
@@ -315,6 +315,24 @@ export class MelonScene {
     cam.updateProjectionMatrix();
   }
 
+  /** How far the visible table reaches from the fruit's middle (the nearest edge of the view). */
+  tableReach() {
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const at = (sx: number, sy: number) => this.rayFrom(sx, sy).ray.intersectPlane(plane, new THREE.Vector3());
+    const c = this.root.position;
+    let r = Infinity;
+    for (const [sx, sy] of [
+      [0, this.h * 0.5],
+      [this.w, this.h * 0.5],
+      [this.w * 0.5, this.h * 0.9],
+      [this.w * 0.5, this.h * 0.2],
+    ]) {
+      const p = at(sx, sy);
+      if (p) r = Math.min(r, Math.hypot(p.x - c.x, p.z - c.z));
+    }
+    return Number.isFinite(r) ? Math.max(3, r) : 8;
+  }
+
   /** Swoop the camera: 0 = calm three-quarter view, 1 = low over the table. */
   swoop(to: number, seconds: number) {
     this.camFrom = this.camK;
@@ -367,13 +385,19 @@ export class MelonScene {
     this.refresh();
   }
 
-  /** Pop! The melon becomes flying pieces. */
+  /**
+   * Pop! The fruit becomes flying pieces, thrown just hard enough that the
+   * mess lands within the part of the table the camera can see, round the
+   * middle of the screen.
+   */
   burst() {
+    const reach = this.tableReach();
     this.refresh();
     this.explosion.start(
       this.shape,
       this.root,
       this.shape.bands.map((b) => b.color),
+      { rim: reach * 0.9, force: Math.min(1, 0.32 + reach / 13), depth: 0.4 },
     );
     this.melonVisible = false;
     this.root.visible = false;
@@ -459,8 +483,15 @@ export class MelonScene {
     }
   }
 
+  /** It's about to go: start breaking the rind ahead of time, a little each frame. */
+  prepareBurst() {
+    this.refresh();
+    this.explosion.prepare(this.shape);
+  }
+
   update(dt: number) {
     this.time += dt;
+    this.explosion.pump();
     this.shape.update(dt);
     if (this.melonVisible) this.refresh();
     this.explosion.update(dt, this.camera);
@@ -477,6 +508,8 @@ export class MelonScene {
 
   private rayFrom(sx: number, sy: number) {
     const ndc = new THREE.Vector2((sx / this.w) * 2 - 1, -(sy / this.h) * 2 + 1);
+    // The camera may have moved since it was last drawn: aim from where it is now.
+    this.camera.updateMatrixWorld();
     this.ray.setFromCamera(ndc, this.camera);
     return this.ray;
   }
@@ -498,6 +531,7 @@ export class MelonScene {
 
   /** Screen position of a world point. */
   toScreen(v: THREE.Vector3) {
+    this.camera.updateMatrixWorld();
     tmpV.copy(v).project(this.camera);
     return { x: ((tmpV.x + 1) / 2) * this.w, y: ((1 - tmpV.y) / 2) * this.h };
   }

@@ -535,9 +535,9 @@ svg {
   animation: nudge 1.8s var(--ease-in-out) infinite;
 }
 
-/* The melon room has no dock, so its hint can sit low on the floor. */
+/* The pop room has no dock, so its hint sits low, just above the fruit's name. */
 .room-melon .hint {
-  bottom: calc(var(--safe-bottom) + 34px);
+  bottom: calc(var(--safe-bottom) + 64px);
 }
 
 @keyframes nudge {

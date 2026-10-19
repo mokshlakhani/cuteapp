@@ -21,8 +21,8 @@ import { POP_FRUITS, type PopFruit, type SeedKind } from './fruits';
  */
 
 /** Fracture grid on the rind: along the melon, and around it. */
-const GX = 44;
-const GY = 60;
+const GX = 84;
+const GY = 112;
 const MAX_DROPS = 420;
 const MAX_SEEDS = 170;
 const MAX_PULP = 60;
@@ -77,6 +77,17 @@ const UP = new THREE.Vector3(0, 1, 0);
 const WHITE = new THREE.Color('#ffffff');
 const hasDom = typeof document !== 'undefined';
 
+/**
+ * How a burst goes: `force` scales how hard everything flies, `rim` is how far
+ * the mess may spread (so it stays where the camera can see it), and `depth`
+ * how much of it heads toward or away from the camera.
+ */
+export interface BurstOptions {
+  force?: number;
+  rim?: number;
+  depth?: number;
+}
+
 export class Explosion {
   readonly group = new THREE.Group();
   readonly debris = new Debris();
@@ -109,6 +120,9 @@ export class Explosion {
   private pulpMat: THREE.MeshPhysicalMaterial;
   private liningMat: THREE.MeshPhysicalMaterial;
   private fruit: PopFruit = POP_FRUITS[0];
+  /** The rind, being broken ahead of the pop (a few pieces each frame). */
+  private prep: { steps: Generator<void, Fragment[], void>; g: number; frags: Fragment[] | null } | null = null;
+  private pulpSacs = false;
   private juice = new THREE.Color();
   /** The bang: a soft puff of mist and a ring running out across the table. */
   private puffs: THREE.Sprite[] = [];
@@ -200,6 +214,15 @@ export class Explosion {
     this.juice.set(fruit.juice.color);
     this.dropMat.color.copy(this.juice);
     this.pulpMat.color.set(fruit.pulp.color);
+    // Citrus pulp is little teardrop juice sacs; everything else, soft lumps.
+    const sacs = fruit.inside === 'segments';
+    if (sacs !== this.pulpSacs) {
+      this.pulpSacs = sacs;
+      this.pulpMesh.geometry.dispose();
+      this.pulpMesh.geometry = sacs ? sacGeometry() : lumpGeometry(1, 0);
+    }
+    this.pulpMat.transparent = sacs;
+    this.pulpMat.opacity = sacs ? 0.85 : 1;
     // Seeds: a new shape for each kind.
     this.seedGeo.dispose();
     this.seedGeo = seedGeometry(fruit.seeds.kind);
@@ -220,7 +243,10 @@ export class Explosion {
    * Burst `shape` as it stands, placed in the world by `melon` (its root
    * object: position, yaw, squash).
    */
-  start(shape: MelonShape, melon: THREE.Object3D, bandColors: string[]) {
+  start(shape: MelonShape, melon: THREE.Object3D, bandColors: string[], opts: BurstOptions = {}) {
+    const { force = 1, rim = RIM, depth = 1 } = opts;
+    const prep = this.prep;
+    this.prep = null;
     this.reset();
     this.active = true;
     melon.updateMatrixWorld(true);
@@ -228,7 +254,7 @@ export class Explosion {
     const rot = new THREE.Quaternion();
     melon.getWorldQuaternion(rot);
     const centre = new THREE.Vector3().setFromMatrixPosition(M);
-    this.debris.rim = { x: centre.x, z: centre.z, r: RIM };
+    this.debris.rim = { x: centre.x, z: centre.z, r: rim };
     const Ls = shape.lengthScale;
     const L = MELON_A * Ls;
     const local = (xn: number, phi: number, inset = 0) => {
@@ -237,18 +263,21 @@ export class Explosion {
     };
 
     // Every burst has its own personality.
-    const power = rand(0.85, 1.25);
+    const power = rand(0.9, 1.15) * force;
     const mess = rand(0.75, 1.15);
-    const blast = new THREE.Vector3(rand(-1, 1), 0, rand(-1, 1)).normalize().multiplyScalar(rand(0, 0.45));
+    // A gentle lean, so it spreads round the middle rather than off to one side.
+    const blast = new THREE.Vector3(rand(-1, 1), 0, rand(-1, 1)).normalize().multiplyScalar(rand(0, 0.2));
     // It gives way at its tightest groove: the split, where juice squirts from.
-    const g = clamp(shape.grooveX, -0.7, 0.7);
+    const g = prep ? prep.g : clamp(shape.grooveX, -0.7, 0.7);
     const origin = new THREE.Vector3(g * L, rand(-0.2, 0.3), rand(-0.2, 0.2));
     const split = (xn: number) => clamp(g + (xn - g) * 0.35, -0.95, 0.95);
     /** World velocity flying away from the split, with this burst's lean. */
     const away = (p: THREE.Vector3, speed: number, up: number) => {
       const d = new THREE.Vector3().copy(p).sub(origin);
       d.x *= 0.6;
-      d.normalize().applyQuaternion(rot).add(blast).normalize();
+      d.normalize().applyQuaternion(rot).add(blast);
+      d.z *= depth;
+      d.normalize();
       return d.multiplyScalar(speed * power).add(new THREE.Vector3(0, up * power, 0));
     };
     this.bangAt.copy(origin).applyMatrix4(M);
@@ -256,7 +285,13 @@ export class Explosion {
 
     // ——— the rind fractures ———
     const scale = melon.getWorldScale(new THREE.Vector3());
-    const frags = fracture(shape, g, this.fruit);
+    // Broken ahead of time if we had the chance; whatever's left is finished now.
+    let frags: Fragment[];
+    if (prep) {
+      let r = prep.frags ? null : prep.steps.next();
+      while (r && !r.done) r = prep.steps.next();
+      frags = prep.frags ?? (r && r.done ? r.value : fracture(shape, g, this.fruit));
+    } else frags = fracture(shape, g, this.fruit);
     const meanArea = frags.reduce((a, f) => a + f.area, 0) / frags.length;
     for (const f of frags) {
       const k = f.area / meanArea;
@@ -422,7 +457,7 @@ export class Explosion {
     const lean = Math.atan2(blast.z, blast.x);
     for (let i = 0; i < 16; i++) {
       const a = lean + rand(-1.6, 1.6);
-      const d = rand(0.2, 2.6);
+      const d = rand(0.2, 2.6) * Math.min(1, rim / RIM + 0.3);
       this.addSplat(centre.x + Math.cos(a) * d, centre.z + Math.sin(a) * d, rand(0.3, 0.95), 0.12 + i * 0.025, a, rand(1, 2.4));
     }
     this.syncAll();
@@ -637,6 +672,29 @@ export class Explosion {
     if (this.splatMesh.instanceColor) this.splatMesh.instanceColor.needsUpdate = true;
   }
 
+  /**
+   * Start breaking the rind now, ahead of the pop (call when it's about to
+   * go); `pump` then does a little of it each frame.
+   */
+  prepare(shape: MelonShape) {
+    const g = clamp(shape.grooveX, -0.7, 0.7);
+    this.prep = { steps: fractureSteps(shape, g, this.fruit), g, frags: null };
+  }
+
+  /** Spend up to `ms` breaking the rind ahead of the pop. */
+  pump(ms = 3) {
+    const p = this.prep;
+    if (!p || p.frags) return;
+    const end = performance.now() + ms;
+    while (performance.now() < end) {
+      const r = p.steps.next();
+      if (r.done) {
+        p.frags = r.value;
+        return;
+      }
+    }
+  }
+
   /** Has everything come to rest? */
   get settled() {
     return this.debris.still && (!this.squirt || this.squirt.left === 0);
@@ -751,6 +809,17 @@ interface Fragment {
  * are ragged and neighbouring pieces still fit together.
  */
 export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRUITS[0]): Fragment[] {
+  const it = fractureSteps(shape, g, fruit);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
+
+/**
+ * The fracture, a piece at a time: it yields after each piece so the work can
+ * be spread over the frames before the pop instead of landing on one.
+ */
+export function* fractureSteps(shape: MelonShape, g: number, fruit: PopFruit = POP_FRUITS[0]): Generator<void, Fragment[], void> {
   const L = MELON_A * shape.lengthScale;
   const n = randInt(fruit.shards[0], fruit.shards[1]);
   const sites: { x: number; p: number }[] = [];
@@ -780,15 +849,18 @@ export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRU
       const r = Math.sqrt(Math.max(0.02, 1 - x * x)) * MELON_R;
       let best = 0;
       let bestD = Infinity;
-      sites.forEach((s, k) => {
-        let dp = Math.abs(p - s.p) % TAU;
+      for (let k = 0; k < n; k++) {
+        const st = sites[k];
+        let dp = Math.abs(p - st.p) % TAU;
         if (dp > Math.PI) dp = TAU - dp;
-        const d = ((x - s.x) * L) ** 2 + (dp * r) ** 2;
+        const dx = (x - st.x) * L;
+        const dy = dp * r;
+        const d = dx * dx + dy * dy;
         if (d < bestD) {
           bestD = d;
           best = k;
         }
-      });
+      }
       owner[i * GY + j] = best;
     }
   }
@@ -797,9 +869,17 @@ export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRU
   // The inside face of the rind, and the layers you see at a torn edge.
   const flesh = new THREE.Color(fruit.lining);
   const fleshLight = new THREE.Color(fruit.fleshLight);
-  const rindOuter = new THREE.Color(fruit.rind.outer);
-  const rindInner = new THREE.Color(fruit.rind.inner);
   const thick = fruit.rind.thick;
+  // The torn edge, from just under the skin to the inside face, layer by layer.
+  const stops: [number, THREE.Color][] = [
+    ...fruit.rind.layers.map(([at, c]) => [at, new THREE.Color(c)] as [number, THREE.Color]),
+    [1, flesh],
+  ];
+  const speck = fruit.speckle;
+  const speckColor = speck ? new THREE.Color(speck.color) : null;
+  // Each piece's cells, gathered once (rather than every piece scanning the whole rind).
+  const cellsOf: number[][] = Array.from({ length: n }, () => []);
+  for (let c = 0; c < GX * GY; c++) cellsOf[owner[c]].push(c);
   const out: Fragment[] = [];
   for (let s = 0; s < n; s++) {
     const pos: number[] = [];
@@ -827,8 +907,9 @@ export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRU
     const inner = (k: number) => {
       let v = innerIdx.get(k);
       if (v === undefined) {
-        // Juicy, uneven flesh inside.
-        const c = flesh.clone().lerp(fleshLight, 0.15 + 0.45 * hash(k));
+        // Juicy, uneven flesh inside, with seeds showing here and there.
+        const h = hash(k);
+        const c = speck && speckColor && hash(k * 7.13 + 1.7) < speck.density ? speckColor : flesh.clone().lerp(fleshLight, 0.1 + 0.35 * h);
         innerIdx.set(k, (v = vert(k, thick, c)));
       }
       return v;
@@ -836,9 +917,10 @@ export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRU
     let cells = 0;
     let area = 0;
     const nrm = new THREE.Vector3();
-    for (let i = 0; i < GX; i++) {
-      for (let j = 0; j < GY; j++) {
-        if (owner[i * GY + j] !== s) continue;
+    for (const cell of cellsOf[s]) {
+      {
+        const i = Math.floor(cell / GY);
+        const j = cell - i * GY;
         cells++;
         const a = node(i, j);
         const b = node(i + 1, j);
@@ -861,13 +943,16 @@ export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRU
         for (const [ni, nj, k0, k1] of edges) {
           if (ni < 0 || ni >= GX) continue;
           if (owner[ni * GY + (((nj % GY) + GY) % GY)] === s) continue;
-          const o0 = vert(k0, 0.005, rindOuter);
-          const o1 = vert(k1, 0.005, rindOuter);
-          const m0 = vert(k0, thick * 0.5, rindInner);
-          const m1 = vert(k1, thick * 0.5, rindInner);
-          const i0 = vert(k0, thick, flesh);
-          const i1 = vert(k1, thick, flesh);
-          idx1.push(o0, o1, m1, o0, m1, m0, m0, m1, i1, m0, i1, i0);
+          let p0 = -1;
+          let p1 = -1;
+          for (const [at, c] of stops) {
+            const depth = Math.max(0.005, at * thick);
+            const a0 = vert(k0, depth, c);
+            const a1 = vert(k1, depth, c);
+            if (p0 >= 0) idx1.push(p0, p1, a1, p0, a1, a0);
+            p0 = a0;
+            p1 = a1;
+          }
         }
       }
     }
@@ -893,6 +978,7 @@ export function fracture(shape: MelonShape, g: number, fruit: PopFruit = POP_FRU
     geo.addGroup(idx0.length, idx1.length, 1);
     geo.computeVertexNormals();
     out.push({ geo, centre, normal: nrm.normalize(), area: area / (GX * GY), sag: sag * 0.12 });
+    yield;
   }
   return out;
 }
@@ -940,6 +1026,19 @@ export function seedGeometry(kind: SeedKind) {
       // A teardrop (watermelon) or a little citrus pip: rounder at one end.
       sp.setXYZ(i, x * (x > 0 ? 1.15 : 0.85), sp.getY(i) * (kind === 'pip' ? 0.55 : 0.42), sp.getZ(i) * 0.62 * (1 - x * 0.25));
     }
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A citrus juice sac: a plump, elongated teardrop about 1 unit across. */
+export function sacGeometry() {
+  const g = new THREE.SphereGeometry(1, 12, 8);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    const k = y > 0 ? 1 - y * 0.55 : 1;
+    p.setXYZ(i, p.getX(i) * 0.55 * k, y * 1.35, p.getZ(i) * 0.55 * k);
   }
   g.computeVertexNormals();
   return g;

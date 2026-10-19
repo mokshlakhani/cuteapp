@@ -2,7 +2,7 @@ import type { Preview } from '../../app/scene';
 import { rand } from '../../core/math';
 import { reducedMotion } from '../../render/camera';
 import { MelonScene } from './MelonScene';
-import { nextPopFruit } from './fruits';
+import { anyPopFruit } from './fruits';
 
 /** Seconds between its little contented moments. */
 const EVERY: [number, number] = [5, 7.5];
@@ -34,7 +34,7 @@ export function melonPreview(): Preview {
     draw(ctx, x, y, w, h) {
       if (!scene) {
         scene = new MelonScene();
-        scene.setFruit(nextPopFruit(null));
+        scene.setFruit(anyPopFruit());
         scene.resetMelon(0);
       }
       const key = `${Math.round(w)}x${Math.round(h)}`;

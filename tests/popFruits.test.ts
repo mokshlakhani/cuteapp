@@ -26,6 +26,20 @@ describe('pop fruits', () => {
     expect(seen.size).toBe(POP_FRUITS.length);
   });
 
+  it('deals every fruit once before any comes round again', () => {
+    let prev = null;
+    for (let round = 0; round < 20; round++) {
+      const seen = new Set<string>();
+      for (let i = 0; i < POP_FRUITS.length; i++) {
+        const f = nextPopFruit(prev);
+        if (prev) expect(f.id).not.toBe(prev.id);
+        seen.add(f.id);
+        prev = f;
+      }
+      expect(seen.size).toBe(POP_FRUITS.length);
+    }
+  });
+
   it('round fruits are shorter, and a lemon tapers to points', () => {
     const melon = new MelonShape();
     const orange = new MelonShape();

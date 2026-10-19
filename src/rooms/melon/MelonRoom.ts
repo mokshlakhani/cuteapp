@@ -41,8 +41,8 @@ const DROP_G = 46;
  * watermelon, a cantaloupe, an orange, a pomegranate, a coconut… — tap it or
  * swipe down across it to snap a band round its middle. It pinches into a
  * peanut, gets nervous, creaks… and at some unknowable point it bursts the
- * way that fruit really would — slow motion, the camera swoops low, and
- * whatever's inside goes everywhere. Poke the pieces; then they pop away and
+ * way that fruit really would — slow motion, and whatever's inside goes
+ * everywhere, right there in the middle of the screen. Poke the pieces; then they pop away and
  * a different fruit drops in.
  */
 export class MelonRoom implements Scene {
@@ -239,6 +239,7 @@ export class MelonRoom implements Scene {
   private beginCritical() {
     this.phase = 'critical';
     this.phaseT = 0;
+    this.s.prepareBurst();
     this.s.shape.face.set('strain', 3);
     this.s.shape.swell.target = 0.05;
     material.creak(1, 0);
@@ -260,8 +261,7 @@ export class MelonRoom implements Scene {
     this.waveAt = { x: at.x, y: (at.y + mid.y) / 2 };
     s.burst();
     this.tag.classList.add('is-leaving');
-    s.swoop(1, 1.8);
-    s.shake(0.5);
+
     material.burst(0);
     haptics.play('burst');
   }
@@ -277,7 +277,7 @@ export class MelonRoom implements Scene {
       this.timeScale = this.slowmo < hold ? scale : lerp(scale, 1, ease.inCubic(clamp((this.slowmo - hold) / back, 0, 1)));
       if (!this.released && this.slowmo > hold + back * 0.55) {
         this.released = true;
-        this.s.shake(0.3);
+
         haptics.play('thud');
       }
     }
@@ -359,7 +359,6 @@ export class MelonRoom implements Scene {
           this.phase = 'clear';
           this.phaseT = 0;
           s.explosion.beginClear();
-          s.swoop(0, 1.3);
         }
         break;
       }
