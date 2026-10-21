@@ -23,21 +23,29 @@ const CUTS: [number, number][] = [
 
 /**
  * A fresh order, every fruit: no levels, just a random number of cuts and a
- * count well over half the most they could make (you'll need to cross most
- * of your cuts, and turn it between them).
+ * count somewhere between easy and the most they could make, weighted toward
+ * a fair challenge. It never repeats the last fruit's number of cuts, nor any
+ * of the last few orders, so it keeps changing.
  */
-export function orderFor(rnd = Math.random): Order {
-  const total = CUTS.reduce((a, [, w]) => a + w, 0);
-  let r = rnd() * total;
-  let cuts = CUTS[CUTS.length - 1][0];
-  for (const [c, w] of CUTS) {
-    if ((r -= w) < 0) {
-      cuts = c;
-      break;
+export function orderFor(rnd = Math.random, recent: Order[] = []): Order {
+  for (let tries = 0; ; tries++) {
+    const total = CUTS.reduce((a, [, w]) => a + w, 0);
+    let r = rnd() * total;
+    let cuts = CUTS[CUTS.length - 1][0];
+    for (const [c, w] of CUTS) {
+      if ((r -= w) < 0) {
+        cuts = c;
+        break;
+      }
     }
+    // Anywhere from a little over half to all of the most, leaning to the middle.
+    const k = 0.5 + ((rnd() + rnd()) / 2) * 0.5;
+    const target = Math.min(most(cuts), Math.max(cuts + 1, Math.round(most(cuts) * k)));
+    const o = { cuts, target };
+    const last = recent[recent.length - 1];
+    const stale = (last && last.cuts === cuts) || recent.slice(-5).some((p) => p.cuts === cuts && p.target === target);
+    if (!stale || tries > 30) return o;
   }
-  const target = Math.min(most(cuts), Math.max(cuts + 1, Math.round(most(cuts) * (0.6 + rnd() * 0.2))));
-  return { cuts, target };
 }
 
 /** Three for exactly the order, two for one piece off either way, one for trying. */

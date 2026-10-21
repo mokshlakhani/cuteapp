@@ -106,9 +106,19 @@ describe('slice orders', () => {
       expect(o.cuts).toBeGreaterThanOrEqual(2);
       expect(o.cuts).toBeLessThanOrEqual(6);
       expect(o.target).toBeLessThanOrEqual(most(o.cuts));
-      expect(o.target).toBeGreaterThan(Math.max(o.cuts, most(o.cuts) * 0.55));
+      expect(o.target).toBeGreaterThan(Math.max(o.cuts, most(o.cuts) * 0.45));
     }
     expect(seen.size).toBe(5);
+  });
+
+  it('never repeats the last cut count, or a recent order', () => {
+    const recent: ReturnType<typeof orderFor>[] = [];
+    for (let i = 0; i < 300; i++) {
+      const o = orderFor(Math.random, recent);
+      if (recent.length) expect(o.cuts).not.toBe(recent[recent.length - 1].cuts);
+      expect(recent.slice(-5).some((p) => p.cuts === o.cuts && p.target === o.target)).toBe(false);
+      recent.push(o);
+    }
   });
 
   it('stars: three for exactly the order, two for one off, one otherwise', () => {

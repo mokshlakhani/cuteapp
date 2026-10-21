@@ -77,6 +77,8 @@ export class SliceRoom implements Scene {
   private phaseT = 0;
   private progress: Progress = loadProgress();
   private order: Order;
+  /** The last few orders, so the next is always something new. */
+  private recent: Order[] = [];
   private stroke = new Map<number, Stroke>();
   private lastCutAt = 0;
   private turned = 0;
@@ -187,7 +189,8 @@ export class SliceRoom implements Scene {
   // ——— the order ———
 
   private beginIntro() {
-    this.order = orderFor();
+    this.order = orderFor(Math.random, this.recent);
+    this.recent = [...this.recent.slice(-5), this.order];
     const fruit = fruitFor(this.s.fruit);
     this.s.setFruit(fruit, INTRO.lift);
     this.s.face.set('happy', 1.6);
