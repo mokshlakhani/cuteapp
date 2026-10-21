@@ -59,7 +59,7 @@ const STAR =
  * is to cross every cut you've made — and to turn it (swipe anywhere beside
  * it), so the next cut goes a new way through it. Every cut runs along
  * your swipe. A cut that would only shave off a sliver doesn't count. One to three stars per fruit, kept
- * with your level; nothing can be failed.
+ * with your stars; nothing can be failed.
  */
 export class SliceRoom implements Scene {
   readonly id = 'slice';
@@ -104,7 +104,7 @@ export class SliceRoom implements Scene {
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-slice');
-    this.order = orderFor(this.progress.level);
+    this.order = orderFor();
 
     this.countNum = el('span', 'slice-count-num', {}, ['1']);
     this.countBox = el('div', 'slice-count', {}, [this.countNum]);
@@ -189,15 +189,15 @@ export class SliceRoom implements Scene {
   // ——— the order ———
 
   private beginIntro() {
-    this.order = orderFor(this.progress.level);
-    const fruit = fruitFor(this.progress.level, this.s.fruit);
+    this.order = orderFor();
+    const fruit = fruitFor(this.s.fruit);
     this.s.setFruit(fruit, INTRO.lift);
     this.s.face.set('happy', 1.6);
     this.phase = 'intro';
     this.phaseT = 0;
     this.firstLand = false;
     this.tagName.textContent = fruit.name;
-    this.tagMeta.textContent = `level ${this.order.level}`;
+    this.tagMeta.textContent = `${this.progress.stars} star${this.progress.stars === 1 ? '' : 's'}`;
     this.tag.classList.remove('is-leaving');
     this.syncHud(false);
     this.showToast(`exactly ${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'} or fewer`, 0);
@@ -414,7 +414,7 @@ export class SliceRoom implements Scene {
     this.starsShown = 0;
     const [title, sub] = verdict(pieces, t);
     this.showToast(title, sub, this.resultStars);
-    this.progress = { level: this.progress.level + 1, stars: this.progress.stars + this.resultStars };
+    this.progress = { stars: this.progress.stars + this.resultStars };
     saveProgress(this.progress);
     this.phase = 'result';
     this.phaseT = 0;

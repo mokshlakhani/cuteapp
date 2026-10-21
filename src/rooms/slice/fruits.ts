@@ -45,9 +45,8 @@ export const SLICE_FRUITS: SliceFruit[] = [
   { id: 'cantaloupe', name: 'cantaloupe', code: 7, radii: [1.68, 1.58, 1.68], shape: { e: 2.05, taper: 0 }, shine: 0.2, blush: '#FF8C7A', juice: F.goldenMelon.flesh },
 ];
 
-/** The fruit for a level: the first eight in order, then any but the last one. */
-export function fruitFor(level: number, prev: SliceFruit | null, rnd = Math.random): SliceFruit {
-  if (level <= SLICE_FRUITS.length) return SLICE_FRUITS[level - 1];
+/** A fruit at random, never the one just before. */
+export function fruitFor(prev: SliceFruit | null, rnd = Math.random): SliceFruit {
   const pool = prev ? SLICE_FRUITS.filter((f) => f.id !== prev.id) : SLICE_FRUITS;
   return pool[Math.min(pool.length - 1, Math.floor(rnd() * pool.length))];
 }

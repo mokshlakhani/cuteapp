@@ -98,13 +98,17 @@ describe('fruit outlines', () => {
 });
 
 describe('slice orders', () => {
-  it('never asks for more than the cuts can make', () => {
-    for (let level = 1; level < 40; level++) {
-      const o = orderFor(level);
-      // Past two cuts, comfortably short of the most the cuts could make.
-      expect(o.target).toBeLessThanOrEqual(o.cuts <= 2 ? most(o.cuts) : Math.ceil(most(o.cuts) * 0.75));
-      expect(o.target).toBeGreaterThan(o.cuts);
+  it('random orders: 2–6 cuts, a count the cuts can make, more than half the most', () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 400; i++) {
+      const o = orderFor();
+      seen.add(o.cuts);
+      expect(o.cuts).toBeGreaterThanOrEqual(2);
+      expect(o.cuts).toBeLessThanOrEqual(6);
+      expect(o.target).toBeLessThanOrEqual(most(o.cuts));
+      expect(o.target).toBeGreaterThan(Math.max(o.cuts, most(o.cuts) * 0.55));
     }
+    expect(seen.size).toBe(5);
   });
 
   it('stars: three for exactly the order, two for one off, one otherwise', () => {

@@ -23,7 +23,7 @@ rest is a short list of rules.
    your best — quietly, in the top bar's centre, with no penalty for a miss
    beyond the streak starting over. **Slice** is the other: each fruit asks
    for exactly so many pieces in at most so many cuts, and is scored one to
-   three stars (three for exact, two for one off), and your level is kept —
+   three stars (three for exact, two for one off), and your stars are kept —
    but every fruit falls apart and earns at least a star, so nothing is ever
    failed._
 4. **Feel over features.** When in doubt, make an existing interaction 20%

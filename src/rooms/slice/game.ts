@@ -4,39 +4,40 @@ import { most } from './polyhedron';
  * The rules of the slice room. Each fruit is an order: exactly so many
  * pieces, in at most so many knife strokes. Land on the number and it falls
  * apart with three stars; one over or under is two; anything else, one.
- * Nothing can be failed, and the next fruit is a little harder. Your level
- * and stars are kept.
+ * Nothing can be failed. Your stars are kept.
  */
 
 export interface Order {
-  level: number;
   cuts: number;
   target: number;
 }
 
-/** The first orders, gently harder; after these they're drawn at random. */
-const LADDER: [number, number][] = [
-  [2, 3],
-  [2, 4],
-  [3, 5],
-  [3, 6],
-  [3, 6],
-  [4, 7],
-  [4, 8],
-  [5, 10],
-  [4, 9],
-  [5, 11],
+/** How many cuts an order gives, weighted toward the middle: 2 sometimes, 3–4 mostly, 6 now and then. */
+const CUTS: [number, number][] = [
+  [2, 1],
+  [3, 3],
+  [4, 3],
+  [5, 2],
+  [6, 1],
 ];
 
-export function orderFor(level: number, rnd = Math.random): Order {
-  if (level <= LADDER.length) {
-    const [cuts, target] = LADDER[level - 1];
-    return { level, cuts, target };
+/**
+ * A fresh order, every fruit: no levels, just a random number of cuts and a
+ * count well over half the most they could make (you'll need to cross most
+ * of your cuts, and turn it between them).
+ */
+export function orderFor(rnd = Math.random): Order {
+  const total = CUTS.reduce((a, [, w]) => a + w, 0);
+  let r = rnd() * total;
+  let cuts = CUTS[CUTS.length - 1][0];
+  for (const [c, w] of CUTS) {
+    if ((r -= w) < 0) {
+      cuts = c;
+      break;
+    }
   }
-  const cuts = 3 + Math.floor(rnd() * 3);
-  // About half the most there could be: crossing most cuts, not every one.
-  const target = Math.round(most(cuts) * (0.48 + rnd() * 0.1));
-  return { level, cuts, target };
+  const target = Math.min(most(cuts), Math.max(cuts + 1, Math.round(most(cuts) * (0.6 + rnd() * 0.2))));
+  return { cuts, target };
 }
 
 /** Three for exactly the order, two for one piece off either way, one for trying. */
@@ -59,7 +60,6 @@ export function verdict(pieces: number, target: number, rnd = Math.random): [str
 }
 
 export interface Progress {
-  level: number;
   stars: number;
 }
 
@@ -68,11 +68,10 @@ const KEY = 'softspot.slice.v1';
 export function loadProgress(): Progress {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    const level = Number.isFinite(p.level) && p.level >= 1 ? Math.floor(p.level) : 1;
     const stars = Number.isFinite(p.stars) && p.stars >= 0 ? Math.floor(p.stars) : 0;
-    return { level, stars };
+    return { stars };
   } catch {
-    return { level: 1, stars: 0 };
+    return { stars: 0 };
   }
 }
 
