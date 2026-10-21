@@ -81,7 +81,7 @@ const tmpS = new THREE.Vector3();
 const tmpO = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
 /** The smallest piece that counts, as a share of the whole fruit. */
-const MIN_PIECE = 0.015;
+const MIN_PIECE = 0.004;
 /** The whole fruit's mesh (smooth), and the faceted solid the knife cuts (finer is smoother pieces, slower cuts). */
 const WHOLE = { lat: 64, lon: 96 };
 const SOLID = { lat: 30, lon: 52 };
