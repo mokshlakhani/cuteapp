@@ -10,6 +10,12 @@ import { HomeScene } from './rooms/home/HomeScene';
 import { Capacitor } from '@capacitor/core';
 import { setupNative } from './native';
 
+// Feel like an app, not a page: no pinch or double-tap zoom (iOS ignores
+// user-scalable=no), no long-press menus, no dragging images out.
+for (const type of ['gesturestart', 'gesturechange', 'dblclick', 'contextmenu', 'dragstart'])
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
+
 const host = document.getElementById('app')!;
 const app = new App(host, ROOMS, (nav) => new HomeScene(nav, ROOMS));
 app.start();

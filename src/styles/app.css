@@ -99,6 +99,20 @@ body {
   inset: 0;
 }
 
+/* App, not page: no focus rings from taps (keyboard focus still shows), no
+   grey flash on buttons, no draggable images. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+button,
+img,
+svg,
+canvas {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-drag: none;
+}
+
 /* Opened from the home screen, iOS gives the page a viewport one status bar
    short of the screen, though it draws from the very top: fill the screen. */
 @media (display-mode: standalone) {
@@ -1296,12 +1310,6 @@ svg {
   font-size: 15px;
   letter-spacing: 0.01em;
   color: var(--ink-soft);
-}
-
-.slice-tag-meta {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink-faint);
 }
 
 .slice-tag.is-leaving {

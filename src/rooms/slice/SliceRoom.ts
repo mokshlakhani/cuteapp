@@ -97,7 +97,6 @@ export class SliceRoom implements Scene {
   private toastStars: HTMLElement;
   private tag: HTMLElement;
   private tagName: HTMLElement;
-  private tagMeta: HTMLElement;
   private trailSvg: SVGSVGElement;
   private trailPath: SVGPathElement;
   private plus: HTMLElement;
@@ -123,8 +122,7 @@ export class SliceRoom implements Scene {
     this.toast = el('div', 'slice-toast', { 'aria-live': 'polite' }, [this.toastStars, this.toastTitle, this.toastSub]);
 
     this.tagName = el('span', 'slice-tag-name');
-    this.tagMeta = el('span', 'slice-tag-meta');
-    this.tag = el('div', 'slice-tag', {}, [this.tagName, this.tagMeta]);
+    this.tag = el('div', 'slice-tag', {}, [this.tagName]);
 
     this.plus = el('div', 'slice-plus', { 'aria-hidden': 'true' });
 
@@ -197,7 +195,6 @@ export class SliceRoom implements Scene {
     this.phaseT = 0;
     this.firstLand = false;
     this.tagName.textContent = fruit.name;
-    this.tagMeta.textContent = `${this.progress.stars} star${this.progress.stars === 1 ? '' : 's'}`;
     this.tag.classList.remove('is-leaving');
     this.syncHud(false);
     this.showToast(`exactly ${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'} or fewer`, 0);

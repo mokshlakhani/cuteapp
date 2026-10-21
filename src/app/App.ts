@@ -151,9 +151,17 @@ export class App implements RoomNav {
   }
 
   start() {
+    // Frame timestamps wobble a little from frame to frame (and Safari's more
+    // than a native view's), so motion stepped by the raw gap judders. Step
+    // by a smoothed gap instead, snapped to the screen's own rhythm (60 or
+    // 120 Hz); a real hitch still passes through, capped.
+    let smooth = 1 / 60;
     const frame = (now: number) => {
-      const dt = this.last ? Math.min((now - this.last) / 1000, 1 / 20) : 1 / 60;
+      const raw = this.last ? Math.min((now - this.last) / 1000, 1 / 20) : 1 / 60;
       this.last = now;
+      smooth += (raw - smooth) * 0.15;
+      const beat = smooth < 1 / 90 ? 1 / 120 : 1 / 60;
+      const dt = Math.abs(raw - beat) < beat * 0.35 ? beat : raw;
       try {
         this.tick(dt);
       } catch (e) {
