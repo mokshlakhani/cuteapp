@@ -1080,6 +1080,7 @@ svg {
 
 .room-slice {
   --slice-gold: #f3d27a;
+  --slice-coral: #f4a291;
 }
 
 .slice-hud {
@@ -1113,6 +1114,11 @@ svg {
 
 .slice-count.is-done .slice-count-num {
   color: var(--slice-gold);
+}
+
+/* Past the order: a soft coral, not an alarm. */
+.slice-count.is-over .slice-count-num {
+  color: var(--slice-coral);
 }
 
 .slice-count.is-up .slice-count-num {

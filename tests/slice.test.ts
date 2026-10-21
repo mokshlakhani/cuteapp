@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cutAll, ellipsoid, massProps, most, onSkin, outside, revolve, shell, split, type Plane, type Poly } from '../src/rooms/slice/polyhedron';
+import { corners, cutAll, ellipsoid, faceNormal, massProps, most, onSkin, outside, revolve, shell, split, type Plane, type Poly } from '../src/rooms/slice/polyhedron';
 import { SLICE_FRUITS } from '../src/rooms/slice/fruits';
 import { orderFor, starsFor } from '../src/rooms/slice/game';
 
@@ -23,6 +23,20 @@ describe('slicing', () => {
     const sum = parts.reduce((s, p) => s + massProps(p).volume, 0);
     expect(sum / V).toBeCloseTo(1, 6);
     for (const p of parts) expect(p.faces.filter((f) => f.cut)).toHaveLength(1);
+  });
+
+  it('every face of every piece faces outward', () => {
+    let pieces: Poly[] = [whole];
+    for (const pl of [plane([1, 0.2, 0], 0.1), plane([0, 1, 0.3], -0.2), plane([0.3, 0.1, 1], 0.05), plane([1, 1, 0], 0.3)]) pieces = cutAll(pieces, pl).pieces;
+    for (const p of pieces) {
+      const cs = corners(p);
+      const c = cs.reduce((a, v) => [a[0] + v[0] / cs.length, a[1] + v[1] / cs.length, a[2] + v[2] / cs.length], [0, 0, 0]);
+      for (const f of p.faces) {
+        const n = faceNormal(f.pts);
+        const m = f.pts.reduce((a, v) => [a[0] + v[0] / f.pts.length, a[1] + v[1] / f.pts.length, a[2] + v[2] / f.pts.length], [0, 0, 0]);
+        expect(n[0] * (m[0] - c[0]) + n[1] * (m[1] - c[1]) + n[2] * (m[2] - c[2])).toBeGreaterThan(0);
+      }
+    }
   });
 
   it('a plane that misses leaves it whole', () => {
@@ -93,10 +107,11 @@ describe('slice orders', () => {
     }
   });
 
-  it('stars: three for the order, two for most of it, one for trying', () => {
+  it('stars: three for exactly the order, two for one off, one otherwise', () => {
     expect(starsFor(12, 12)).toBe(3);
-    expect(starsFor(13, 12)).toBe(3);
-    expect(starsFor(8, 12)).toBe(2);
+    expect(starsFor(13, 12)).toBe(2);
+    expect(starsFor(11, 12)).toBe(2);
+    expect(starsFor(14, 12)).toBe(1);
     expect(starsFor(6, 12)).toBe(1);
   });
 });

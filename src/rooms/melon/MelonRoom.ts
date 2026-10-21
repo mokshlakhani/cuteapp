@@ -307,6 +307,8 @@ export class MelonRoom implements Scene {
         break;
       }
       case 'play': {
+        // A calm moment: get the pop ready ahead of time.
+        if (this.phaseT > 0.8) s.warmUp();
         // Its face, its shiver and the sounds all follow the band count, so
         // past twenty-odd bands every fruit seems about to go at any moment.
         const n = m.bands.length;

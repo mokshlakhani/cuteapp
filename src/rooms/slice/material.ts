@@ -31,6 +31,8 @@ export interface SliceUniforms {
   uCuts: THREE.IUniform<THREE.Vector4[]>;
   uGlow: THREE.IUniform<number[]>;
   uCutCount: THREE.IUniform<number>;
+  /** Which cuts this piece really has a face on (bit i = cut i): only those draw a seam on it. */
+  uCutMask: THREE.IUniform<number>;
 }
 
 const VERT_HEAD = /* glsl */ `
@@ -45,6 +47,7 @@ uniform float uFaceOn;
 uniform vec4 uCuts[MAX_CUTS];
 uniform float uGlow[MAX_CUTS];
 uniform float uCutCount;
+uniform float uCutMask;
 varying vec3 vRest;
 float seamGlow = 0.0;
 float inside = 0.0;
@@ -68,6 +71,9 @@ if (uFaceOn > 0.5) {
 float seam = 0.0;
 for (int i = 0; i < MAX_CUTS; i++) {
   if (float(i) >= uCutCount) break;
+  // Only the cuts that really went through this piece: a cut that left it
+  // whole (it would only have shaved off a sliver) draws nothing on it.
+  if (mod(floor(uCutMask / exp2(float(i))), 2.0) < 0.5) continue;
   float d = abs(dot(uCuts[i].xyz, vRest) - uCuts[i].w);
   float fw = fwidth(d);
   float line = 1.0 - smoothstep(0.018, 0.018 + fw * 1.5, d);
@@ -106,15 +112,24 @@ const emptyTex = (() => {
   return t;
 })();
 
-export function makeSliceMaterial(seams: boolean) {
-  const uniforms: SliceUniforms = {
-    ...fruitUniforms(),
-    uFace: { value: emptyTex },
-    uFaceOn: { value: 0 },
-    uCuts: { value: Array.from({ length: MAX_CUTS }, () => new THREE.Vector4(0, 1, 0, 99)) },
-    uGlow: { value: new Array(MAX_CUTS).fill(0) },
-    uCutCount: { value: 0 },
-  };
+/**
+ * A fruit material. Give it `shared` to make another for a piece of the same
+ * fruit: it shares the fruit, its face and its cuts (one update moves them
+ * all), with its own seam mask and face switch. Every one compiles to the
+ * same shader program.
+ */
+export function makeSliceMaterial(shared?: SliceUniforms) {
+  const uniforms: SliceUniforms = shared
+    ? { ...shared, uFaceOn: { value: shared.uFaceOn.value }, uCutMask: { value: 0 } }
+    : {
+        ...fruitUniforms(),
+        uFace: { value: emptyTex },
+        uFaceOn: { value: 0 },
+        uCuts: { value: Array.from({ length: MAX_CUTS }, () => new THREE.Vector4(0, 1, 0, 99)) },
+        uGlow: { value: new Array(MAX_CUTS).fill(0) },
+        uCutCount: { value: 0 },
+        uCutMask: { value: 0 },
+      };
   const mat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     roughness: 0.5,
@@ -135,7 +150,7 @@ export function makeSliceMaterial(seams: boolean) {
       .replace('#include <roughnessmap_fragment>', FRAG_ROUGH)
       .replace('#include <emissivemap_fragment>', FRAG_EMISSIVE);
   };
-  mat.customProgramCacheKey = () => `soft-slice-v2-${seams ? 's' : 'p'}`;
+  mat.customProgramCacheKey = () => 'soft-slice-v3';
   return { mat, uniforms };
 }
 

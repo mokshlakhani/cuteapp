@@ -22,9 +22,10 @@ rest is a short list of rules.
    _The one exception is **pour**, which keeps a streak of perfect pours and
    your best — quietly, in the top bar's centre, with no penalty for a miss
    beyond the streak starting over. **Slice** is the other: each fruit asks
-   for a number of pieces in a number of cuts and is scored one to three
-   stars, and your level is kept — but every fruit falls apart and earns at
-   least a star, so nothing is ever failed._
+   for exactly so many pieces in at most so many cuts, and is scored one to
+   three stars (three for exact, two for one off), and your level is kept —
+   but every fruit falls apart and earns at least a star, so nothing is ever
+   failed._
 4. **Feel over features.** When in doubt, make an existing interaction 20%
    more satisfying instead of adding something.
 5. **Everything is alive.** Toys breathe, blink, wobble and look at your

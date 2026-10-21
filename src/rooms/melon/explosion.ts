@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, rand, randInt, TAU } from '../../core/math';
+import { clamp, pick, rand, randInt, TAU } from '../../core/math';
 import { Face, drawFace, type Expression } from '../../render/face';
 import { Debris, type Body } from './debris';
 import { MELON_A, MELON_R, type MelonShape } from './shape';
@@ -43,6 +43,8 @@ interface Piece {
   /** When it starts to pop away during the clear-up (s). */
   goneAt: number;
   popped: boolean;
+  /** Its own size (a pooled shape is scaled to it), which the pop-away scales from. */
+  base: THREE.Vector3;
 }
 
 interface FaceSprite {
@@ -103,6 +105,12 @@ export class Explosion {
 
   private pieces: Piece[] = [];
   private faces: FaceSprite[] = [];
+  /**
+   * Ready-made shapes, built once and reused at any size (scaled): flesh
+   * lumps, citrus segments, band strands and loops. Building them fresh at
+   * the moment of the pop was its hitch.
+   */
+  private pool: { lumps: THREE.BufferGeometry[]; segments: THREE.BufferGeometry[]; strands: THREE.BufferGeometry[]; loops: { r: number; geo: THREE.BufferGeometry }[] } | null = null;
   private drops: Body[] = [];
   private seeds: Body[] = [];
   private pulp: Body[] = [];
@@ -158,14 +166,14 @@ export class Explosion {
     // Juice: glossy, a touch deeper than the flesh, stretched along its flight.
     this.dropMat = new THREE.MeshPhysicalMaterial({ roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1 });
     this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), this.dropMat, MAX_DROPS);
-    this.dropMesh.castShadow = true;
+    // Drops, seeds and pulp are too small to see a shadow under (they leave splats instead).
     this.seedGeo = seedGeometry('teardrop');
     this.seedMat = new THREE.MeshPhysicalMaterial({ roughness: 0.22, envMapIntensity: 1 });
     this.seedMesh = new THREE.InstancedMesh(this.seedGeo, this.seedMat, MAX_SEEDS);
-    this.seedMesh.castShadow = true;
+
     this.pulpMat = glossy('#ffffff');
     this.pulpMesh = new THREE.InstancedMesh(lumpGeometry(1, 0), this.pulpMat, MAX_PULP);
-    this.pulpMesh.castShadow = true;
+
     this.splatMesh = new THREE.InstancedMesh(
       blobGeometry(),
       new THREE.MeshBasicMaterial({
@@ -207,6 +215,66 @@ export class Explosion {
     }
     this.debris.events.land = (b, speed) => this.onLand(b, speed);
     this.setFruit(this.fruit);
+  }
+
+  /** The shape pool, built on first need (warmUp builds it ahead of time). */
+  private shapes() {
+    if (this.pool) return this.pool;
+    const keep = (g: THREE.BufferGeometry) => {
+      g.userData.pooled = true;
+      return g;
+    };
+    const many = (n: number, make: () => THREE.BufferGeometry) => Array.from({ length: n }, () => keep(make()));
+    this.pool = {
+      lumps: many(8, () => lumpGeometry(1, 1)),
+      segments: many(4, () => segmentGeometry(1)),
+      // Strands 2 long, stretched to length along x (their thickness stays).
+      strands: many(8, () => strandGeometry(2)),
+      // Loops in a few sizes, so scaling one never makes it thick or thin.
+      loops: [0.45, 0.55, 0.65, 0.75, 0.85].flatMap((r) => [0, 1].map(() => ({ r, geo: keep(noodleGeometry(r)) }))),
+    };
+    return this.pool;
+  }
+
+  /**
+   * Get ready for a pop ahead of time, at a calm moment: build the shape pool
+   * and hand back stand-ins for everything a burst draws, so the room can
+   * compile their shaders before the moment (the first pop used to stall on it).
+   */
+  warmUp(): THREE.Object3D[] {
+    const pool = this.shapes();
+    const seedHolder = new THREE.Mesh(pool.lumps[0], this.chunkMats[0]);
+    seedHolder.add(new THREE.Mesh(this.seedGeo, this.seedMat));
+    const shardGeo = new THREE.BufferGeometry();
+    const tri = new Float32Array([0, 0, 0, 0.01, 0, 0, 0, 0.01, 0]);
+    shardGeo.setAttribute('position', new THREE.BufferAttribute(tri, 3));
+    shardGeo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), 3));
+    shardGeo.setAttribute('aRest', new THREE.BufferAttribute(tri.slice(), 3));
+    shardGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(9).fill(1), 3));
+    shardGeo.addGroup(0, 3, 0);
+    shardGeo.addGroup(0, 3, 1);
+    const objs: THREE.Object3D[] = [
+      new THREE.Mesh(shardGeo, [this.shardMat, this.fleshMat]),
+      seedHolder,
+      new THREE.Mesh(pool.lumps[0], this.liningMat),
+      new THREE.Mesh(pool.strands[0], this.pulpMat),
+      new THREE.Mesh(pool.strands[0], this.bandMat('#ffffff')),
+      new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false })),
+    ];
+    // Every pooled shape once, so it's uploaded to the GPU before it's needed.
+    for (const g of [...pool.lumps, ...pool.segments, ...pool.strands, ...pool.loops.map((l) => l.geo)]) objs.push(new THREE.Mesh(g, this.chunkMats[0]));
+    // The instanced kinds (drops, seeds, pulp), which shadow with their own shaders.
+    for (const [geo, mat] of [
+      [this.dropMesh.geometry, this.dropMat],
+      [this.seedGeo, this.seedMat],
+      [this.pulpMesh.geometry, this.pulpMat],
+    ] as const) {
+      const im = new THREE.InstancedMesh(geo, mat, 1);
+      im.setMatrixAt(0, new THREE.Matrix4());
+      objs.push(im);
+    }
+    for (const o of objs) if (!(o instanceof THREE.InstancedMesh)) o.traverse((m) => (m.castShadow = true));
+    return objs;
   }
 
   /** Dress the burst as `fruit`: its flesh, juice, seeds and pulp. */
@@ -404,7 +472,8 @@ export class Explosion {
     // Stringy pulp from round the seeds (melons, pumpkins), flung out in wet strands.
     if (F.pulp.strings) {
       for (let i = 0, n = randInt(8, 14); i < n; i++) {
-        const mesh = new THREE.Mesh(strandGeometry(rand(0.6, 1.4)), this.pulpMat);
+        const mesh = new THREE.Mesh(pick(this.shapes().strands), this.pulpMat);
+        mesh.scale.x = rand(0.6, 1.4) / 2;
         mesh.castShadow = true;
         const c = local(split(rand(-0.5, 0.5)), rand(0, TAU), rand(0.5, 0.85));
         const body = this.debris.add({
@@ -440,7 +509,8 @@ export class Explosion {
     colors.forEach((color, i) => {
       const loop = Math.random() < 0.28;
       const r = rand(0.42, 0.85);
-      const mesh = new THREE.Mesh(loop ? noodleGeometry(r) : strandGeometry(r * rand(2, 2.8)), this.bandMat(color));
+      const mesh = loop ? this.loopMesh(r, this.bandMat(color)) : new THREE.Mesh(pick(this.shapes().strands), this.bandMat(color));
+      if (!loop) mesh.scale.x = (r * rand(2, 2.8)) / 2;
       mesh.castShadow = true;
       const xn = (i / Math.max(1, colors.length - 1) - 0.5) * 0.5 + g;
       const c = local(clamp(xn, -0.9, 0.9), rand(0, TAU), 0);
@@ -470,30 +540,47 @@ export class Explosion {
     this.syncAll();
   }
 
-  /** A piece of what's inside, for this fruit. */
+  /** A loose band loop of about radius r, from the pool (the nearest size, scaled the rest of the way). */
+  private loopMesh(r: number, mat: THREE.Material) {
+    const loops = this.shapes().loops;
+    let best = loops[0];
+    for (const l of loops) if (Math.abs(l.r - r) < Math.abs(best.r - r) || (l.r === best.r && Math.random() < 0.5)) best = l;
+    const mesh = new THREE.Mesh(best.geo, mat);
+    mesh.scale.setScalar(r / best.r);
+    return mesh;
+  }
+
+  /** A piece of what's inside, for this fruit (pooled unit shapes, scaled to r). */
   private insideChunk(r: number, i: number): THREE.Mesh {
     const F = this.fruit;
     const mat = this.chunkMats[i % this.chunkMats.length];
+    const pool = this.shapes();
+    // Seeds sit in the chunk's own (unit) space, so they're sized against r.
     const seed = (n: number, depth: number, size: number) => {
       for (let k = 0; k < n; k++) {
         const s = new THREE.Mesh(this.seedGeo, this.seedMat);
         const dir = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize();
-        s.position.copy(dir).multiplyScalar(r * depth);
+        s.position.copy(dir).multiplyScalar(depth);
         s.quaternion.setFromUnitVectors(UP, dir);
-        s.scale.setScalar(size);
+        s.scale.setScalar(size / r);
         mesh.add(s);
       }
+    };
+    const unit = (geo: THREE.BufferGeometry, m: THREE.Material, k = 1) => {
+      const u = new THREE.Mesh(geo, m);
+      u.scale.setScalar(r * k);
+      return u;
     };
     let mesh: THREE.Mesh;
     switch (F.inside) {
       case 'segments':
         // A citrus segment: a plump half-moon, its inner edge flat.
-        mesh = new THREE.Mesh(segmentGeometry(r), mat);
+        mesh = unit(pick(pool.segments), mat);
         if (F.seeds.kind === 'pip' && Math.random() < 0.3) seed(1, 0.4, 0.08);
         return mesh;
       case 'arils':
         // A lump of pale pith, crowded with glossy arils.
-        mesh = new THREE.Mesh(lumpGeometry(r * 0.8, 1), this.liningMat);
+        mesh = unit(pick(pool.lumps), this.liningMat, 0.8);
         seed(Math.round(6 + r * 16), 0.72, 0.14 + r * 0.05);
         return mesh;
       case 'meat': {
@@ -506,7 +593,7 @@ export class Explosion {
         return new THREE.Mesh(g, this.liningMat);
       }
       default:
-        mesh = new THREE.Mesh(lumpGeometry(r, 1), mat);
+        mesh = unit(pick(pool.lumps), mat);
         if (r > 0.25) {
           const kind = F.seeds.kind;
           if (kind === 'tiny') seed(randInt(6, 12), 0.92, 0.06);
@@ -517,7 +604,7 @@ export class Explosion {
   }
 
   private addPiece(body: Body, mesh: THREE.Object3D) {
-    const piece: Piece = { body, mesh, scale: 1, goneAt: 0, popped: false };
+    const piece: Piece = { body, mesh, scale: 1, goneAt: 0, popped: false, base: mesh.scale.clone() };
     this.pieces.push(piece);
     this.group.add(mesh);
     mesh.position.copy(body.pos);
@@ -692,18 +779,23 @@ export class Explosion {
     this.prep = { steps: fractureSteps(shape, g, this.fruit), g, frags: null };
   }
 
-  /** Spend up to `ms` breaking the rind ahead of the pop. */
-  pump(ms = 3) {
+  /**
+   * Spend up to `ms` breaking the rind ahead of the pop. Once it's broken,
+   * returns the pieces once, as stand-ins to draw for a frame (tiny, out of
+   * sight) so they're on the GPU before the pop, not uploaded during it.
+   */
+  pump(ms = 3): THREE.Object3D[] | null {
     const p = this.prep;
-    if (!p || p.frags) return;
+    if (!p || p.frags) return null;
     const end = performance.now() + ms;
     while (performance.now() < end) {
       const r = p.steps.next();
       if (r.done) {
         p.frags = r.value;
-        return;
+        return p.frags.map((f) => new THREE.Mesh(f.geo, [this.shardMat, this.fleshMat]));
       }
     }
+    return null;
   }
 
   /** Has everything come to rest? */
@@ -733,7 +825,7 @@ export class Explosion {
         }
         // A little swell, then gone: like a soap bubble popping.
         p.scale = t < 0.08 ? 1 + (t / 0.08) * 0.18 : Math.max(0, 1.18 * (1 - (t - 0.08) / 0.16));
-        p.mesh.scale.setScalar(Math.max(0.0001, p.scale));
+        p.mesh.scale.copy(p.base).multiplyScalar(Math.max(0.0001, p.scale));
       }
       if (p.scale > 0) left++;
     });
@@ -768,7 +860,8 @@ export class Explosion {
   reset() {
     for (const p of this.pieces) {
       this.group.remove(p.mesh);
-      (p.mesh as THREE.Mesh).geometry?.dispose();
+      const g = (p.mesh as THREE.Mesh).geometry;
+      if (g && !g.userData.pooled) g.dispose();
     }
     for (const f of this.faces) {
       this.group.remove(f.sprite);

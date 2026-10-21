@@ -1,10 +1,11 @@
 import { most } from './polyhedron';
 
 /**
- * The rules of the slice room. Each fruit is an order: a number of knife
- * strokes and a number of pieces to cut it into. Nothing can be failed:
- * every fruit falls apart and is scored with one to three stars, and the
- * next one is a little harder. Your level and stars are kept.
+ * The rules of the slice room. Each fruit is an order: exactly so many
+ * pieces, in at most so many knife strokes. Land on the number and it falls
+ * apart with three stars; one over or under is two; anything else, one.
+ * Nothing can be failed, and the next fruit is a little harder. Your level
+ * and stars are kept.
  */
 
 export interface Order {
@@ -38,22 +39,22 @@ export function orderFor(level: number, rnd = Math.random): Order {
   return { level, cuts, target };
 }
 
-/** Three for reaching the order, two for most of the way, one for trying. */
+/** Three for exactly the order, two for one piece off either way, one for trying. */
 export function starsFor(pieces: number, target: number) {
-  if (pieces >= target) return 3;
-  if (pieces >= Math.ceil(target * 0.6)) return 2;
-  return 1;
+  const off = Math.abs(pieces - target);
+  return off === 0 ? 3 : off === 1 ? 2 : 1;
 }
 
 /** What the room says once it falls apart: a headline and a quieter line. */
 export function verdict(pieces: number, target: number, rnd = Math.random): [string, string] {
-  const s = starsFor(pieces, target);
-  if (s === 3) {
-    const titles = pieces > target ? ['even better', 'extra pieces'] : ['perfect slices', 'just right', 'beautifully done'];
+  if (pieces === target) {
+    const titles = ['exactly right', 'perfect slices', 'spot on'];
     return [titles[Math.floor(rnd() * titles.length)], `${pieces} pieces`];
   }
-  const short = target - pieces;
-  if (s === 2) return ['so close', `${short} piece${short === 1 ? '' : 's'} short`];
+  const off = Math.abs(pieces - target);
+  const n = `${off} piece${off === 1 ? '' : 's'}`;
+  if (pieces > target) return [off === 1 ? 'one too many' : `${off} too many`, `aim for exactly ${target}`];
+  if (off === 1) return ['so close', `${n} short`];
   return ['a good start', 'turn it, and cross the other cuts'];
 }
 

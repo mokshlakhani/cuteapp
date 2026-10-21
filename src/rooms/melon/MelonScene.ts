@@ -75,6 +75,11 @@ export class MelonScene {
   private camT = 1;
   private camDur = 1;
   private shakeAmp = 0;
+  private frame = 0;
+  /** The broken rind, drawn for one frame out of sight so it's on the GPU before the pop. */
+  private upload: THREE.Group | null = null;
+  /** Getting ready for the pop ahead of time (see warmUp). */
+  private warm: { state: 'compiling' | 'shadows' | 'done'; holder: THREE.Group; frames: number } | null = null;
   private time = 0;
   private viewOffset = 0;
   private w = 1;
@@ -438,6 +443,29 @@ export class MelonScene {
     }
   }
 
+  /**
+   * Get the pop ready at a calm moment (the room calls this while you're
+   * adding bands): compile every shader the burst will draw, in the
+   * background, then run them once — tiny, hidden under the table — so their
+   * shadows compile too. Without it the first pop stalled for a moment.
+   */
+  warmUp() {
+    if (this.warm) return;
+    const holder = new THREE.Group();
+    holder.position.set(0, -0.5, 0);
+    holder.scale.setScalar(0.001);
+    holder.add(...this.explosion.warmUp());
+    const stage = new THREE.Scene();
+    stage.add(holder);
+    this.warm = { state: 'compiling', holder, frames: 2 };
+    const ready = () => {
+      if (!this.warm) return;
+      this.warm.state = 'shadows';
+      this.scene.add(holder);
+    };
+    this.renderer.compileAsync(stage, this.camera, this.scene).then(ready, ready);
+  }
+
   /** It's about to go: start breaking the rind ahead of time, a little each frame. */
   prepareBurst() {
     this.refresh();
@@ -446,7 +474,16 @@ export class MelonScene {
 
   update(dt: number) {
     this.time += dt;
-    this.explosion.pump();
+    const ahead = this.explosion.pump();
+    if (ahead) {
+      // Drawn for a frame, tiny and under the table: uploaded ahead of the pop.
+      const holder = new THREE.Group();
+      holder.position.set(0, -0.5, 0);
+      holder.scale.setScalar(0.001);
+      holder.add(...ahead);
+      this.scene.add(holder);
+      this.upload = holder;
+    }
     this.shape.update(dt);
     if (this.melonVisible) this.refresh();
     this.explosion.update(dt, this.camera);
@@ -531,8 +568,20 @@ export class MelonScene {
     if (this.melonVisible) this.drawFace();
     // Once the mess has come to rest its shadows stay put: each piece is a
     // draw call, and Safari makes those costly.
-    this.renderer.shadowMap.needsUpdate = this.melonVisible || !this.explosion.resting;
+    // While the mess flies, its shadows move too: redraw them every other
+    // frame (the blur makes the step invisible, and it halves the cost).
+    this.frame++;
+    this.renderer.shadowMap.needsUpdate = this.melonVisible || (!this.explosion.resting && this.frame % 2 === 0);
     this.renderer.render(this.scene, this.camera);
+    if (this.upload) {
+      this.scene.remove(this.upload);
+      this.upload = null;
+    }
+    const w = this.warm;
+    if (w?.state === 'shadows' && --w.frames <= 0) {
+      w.state = 'done';
+      this.scene.remove(w.holder);
+    }
     return this.canvas;
   }
 }

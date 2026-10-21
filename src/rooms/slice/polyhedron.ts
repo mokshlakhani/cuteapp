@@ -15,6 +15,8 @@ export interface Facet {
   pts: V3[];
   /** A flat cut face (flesh), not the fruit's skin. */
   cut: boolean;
+  /** Which cut made it (0, 1, 2…), for a cut face. */
+  plane?: number;
 }
 
 export interface Poly {
@@ -64,21 +66,27 @@ export function shell(s: Shape, x: number, y: number, z: number) {
   return Math.pow(Math.pow(ax, s.e) + Math.pow(Math.abs(y), s.e), 1 / s.e);
 }
 
-/** The skin's outward normal at a point (scene units), from the shell's slope. */
+/**
+ * The skin's outward normal at a point (scene units): the slope of the shell
+ * measure there, worked out in closed form (it's called for every corner of
+ * every new piece, so it has to be quick).
+ */
 export function skinNormal(s: Shape, radii: V3, p: V3): V3 {
   const [rx, ry, rz] = radii;
-  const q: V3 = [p[0] / rx, p[1] / ry, p[2] / rz];
-  const h = 1e-3;
-  const g = (i: number) => {
-    const a: V3 = [...q];
-    const b: V3 = [...q];
-    a[i] += h;
-    b[i] -= h;
-    return (shell(s, ...a) - shell(s, ...b)) / (2 * h);
-  };
-  const n = norm([g(0) / rx, g(1) / ry, g(2) / rz]);
-  // Right at a pointed tip the slope vanishes: point straight along the core.
-  return Number.isFinite(n[0]) && Math.hypot(...n) > 0.5 ? n : [0, Math.sign(p[1]) || 1, 0];
+  const x = p[0] / rx;
+  const y = p[1] / ry;
+  const z = p[2] / rz;
+  const w = Math.max(0.05, 1 + s.taper * y);
+  const ax = Math.hypot(x, z);
+  const ay = Math.abs(y);
+  // shell^e = (ax / w)^e + |y|^e; differentiate and drop the common factors.
+  const ae = ax > 1e-9 ? Math.pow(ax / w, s.e - 1) : 0;
+  const gx = ax > 1e-9 ? (ae * x) / ax / w : 0;
+  const gz = ax > 1e-9 ? (ae * z) / ax / w : 0;
+  const gy = (-ae * ax * s.taper) / (w * w) + (ay > 1e-9 ? Math.pow(ay, s.e - 1) * Math.sign(y) : 0);
+  const n = norm([gx / rx, gy / ry, gz / rz]);
+  // Right at a tip the slope can vanish: point straight along the core.
+  return Math.hypot(gx, gy, gz) > 1e-9 ? n : [0, Math.sign(p[1]) || 1, 0];
 }
 
 /** A point on the skin at polar angle th (0 top … π bottom) and turn ph. */
@@ -189,12 +197,25 @@ function average(pts: V3[]): V3 {
 
 /** One polygon clipped to the side of the plane where n·p − d ≥ 0 (`sign` = 1) or ≤ 0 (−1). */
 function clipFace(pts: V3[], pl: Plane, sign: number, onPlane: V3[]): V3[] {
+  // Most faces are nowhere near the cut: keep them as they are (shared, never
+  // changed afterwards) or drop them, without building anything.
+  const ds = new Array<number>(pts.length);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const d = sign * (dot(pl.n, pts[i]) - pl.d);
+    ds[i] = d;
+    if (d < lo) lo = d;
+    if (d > hi) hi = d;
+  }
+  if (lo > EPS) return pts;
+  if (hi < -EPS) return [];
   const out: V3[] = [];
   for (let i = 0; i < pts.length; i++) {
     const a = pts[i];
     const b = pts[(i + 1) % pts.length];
-    const da = sign * (dot(pl.n, a) - pl.d);
-    const db = sign * (dot(pl.n, b) - pl.d);
+    const da = ds[i];
+    const db = ds[(i + 1) % pts.length];
     if (da >= -EPS) out.push(a);
     if (Math.abs(da) <= EPS) onPlane.push(a);
     if ((da > EPS && db < -EPS) || (da < -EPS && db > EPS)) {
@@ -226,23 +247,25 @@ function capOf(points: V3[], pl: Plane): V3[] {
   return out.length >= 3 ? out : [];
 }
 
-function half(p: Poly, pl: Plane, sign: number): Poly | null {
+function half(p: Poly, pl: Plane, sign: number, id: number): Poly | null {
   const faces: Facet[] = [];
   const onPlane: V3[] = [];
   for (const f of p.faces) {
     const pts = clipFace(f.pts, pl, sign, onPlane);
-    if (pts.length >= 3) faces.push({ pts, cut: f.cut });
+    if (pts.length >= 3) faces.push({ pts, cut: f.cut, plane: f.plane });
   }
+  // Clipping keeps every face's winding, so only the new cap needs facing
+  // out: it's wound round +n, and this half's outside is −n (sign 1) or +n.
   const cap = capOf(onPlane, pl);
-  if (cap.length) faces.push({ pts: cap, cut: true });
-  return faces.length >= 4 ? orient({ faces }) : null;
+  if (cap.length) faces.push({ pts: sign > 0 ? cap.reverse() : cap, cut: true, plane: id });
+  return faces.length >= 4 ? { faces } : null;
 }
 
 /**
  * Split a piece by a plane. Returns both halves, or null if the plane
  * misses it (or would only shave off less than `minVolume`).
  */
-export function split(p: Poly, pl: Plane, minVolume = 1e-6): [Poly, Poly] | null {
+export function split(p: Poly, pl: Plane, minVolume = 1e-6, id = -1): [Poly, Poly] | null {
   let lo = Infinity;
   let hi = -Infinity;
   for (const f of p.faces) {
@@ -253,25 +276,35 @@ export function split(p: Poly, pl: Plane, minVolume = 1e-6): [Poly, Poly] | null
     }
   }
   if (lo > -1e-5 || hi < 1e-5) return null;
-  const a = half(p, pl, 1);
-  const b = half(p, pl, -1);
+  const a = half(p, pl, 1, id);
+  const b = half(p, pl, -1, id);
   if (!a || !b) return null;
   if (massProps(a).volume < minVolume || massProps(b).volume < minVolume) return null;
   return [a, b];
 }
 
-/** Cut every piece the plane passes through. Returns the new set and how many pieces were split. */
-export function cutAll(pieces: Poly[], pl: Plane, minVolume = 1e-6) {
+/**
+ * Cut every piece the plane passes through (`id` names the cut, so its faces
+ * know where they came from). Returns the new set and how many were split.
+ */
+export function cutAll(pieces: Poly[], pl: Plane, minVolume = 1e-6, id = -1) {
   const out: Poly[] = [];
   let split_ = 0;
   for (const p of pieces) {
-    const parts = split(p, pl, minVolume);
+    const parts = split(p, pl, minVolume, id);
     if (parts) {
       out.push(...parts);
       split_++;
     } else out.push(p);
   }
   return { pieces: out, split: split_ };
+}
+
+/** The cuts that really pass through a piece (it has a face on them), as bits: cut i is bit i. */
+export function cutMask(p: Poly) {
+  let m = 0;
+  for (const f of p.faces) if (f.cut && f.plane !== undefined && f.plane >= 0) m |= 1 << f.plane;
+  return m;
 }
 
 /** The most pieces k flat cuts can make of a round fruit (the "cake numbers"). */

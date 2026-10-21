@@ -34,6 +34,8 @@ interface Stroke {
   entry: { x: number; y: number } | null;
   /** The trail drawn behind the finger. */
   trail: { x: number; y: number; t: number }[];
+  /** This stroke has made its cut: one swipe is one cut, however it wanders. */
+  done?: boolean;
 }
 
 /** The drop-in: how high a new fruit starts and how long it takes to float down. */
@@ -51,7 +53,7 @@ const STAR =
 
 /**
  * Room: slice. A fruit floats over a wooden board, turning slowly, and asks
- * for an order: "8 pieces in 3 cuts". Swipe across it and the knife cuts
+ * for an order: "exactly 8 pieces, in 3 cuts". Swipe across it and the knife cuts
  * clean through along that line, leaving a glowing seam; the pieces stay
  * together until the last cut, then it falls apart onto the board. The trick
  * is to cross every cut you've made — and to turn it (swipe anywhere beside
@@ -198,14 +200,15 @@ export class SliceRoom implements Scene {
     this.tagMeta.textContent = `level ${this.order.level}`;
     this.tag.classList.remove('is-leaving');
     this.syncHud(false);
-    this.showToast(`${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'}`, 0);
+    this.showToast(`exactly ${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'} or fewer`, 0);
   }
 
   private syncHud(bump: boolean) {
     const n = this.s.pieces.length;
     this.countNum.textContent = String(n);
     this.goal.textContent = `of ${this.order.target} pieces`;
-    this.countBox.classList.toggle('is-done', n >= this.order.target);
+    this.countBox.classList.toggle('is-done', n === this.order.target);
+    this.countBox.classList.toggle('is-over', n > this.order.target);
     if (bump && !reducedMotion) {
       this.countBox.classList.remove('is-up');
       void this.countBox.offsetWidth;
@@ -289,7 +292,7 @@ export class SliceRoom implements Scene {
       return;
     }
     st.trail.push({ x: p.x, y: p.y, t: now });
-    if (!this.canCut) return;
+    if (!this.canCut || st.done) return;
     const f = this.s.screenFruit;
     this.s.face.look((p.x - f.x) / (f.r * 3), (p.y - f.y) / (f.r * 3));
     const inside = this.s.overFruit(p.x, p.y);
@@ -298,8 +301,8 @@ export class SliceRoom implements Scene {
       haptics.play('tick');
     } else if (!inside) {
       if (st.entry) {
-        // Out the other side: the knife goes right through.
-        this.tryCut(st.entry.x, st.entry.y, p.x, p.y);
+        // Out the other side: the knife goes right through (once per swipe).
+        st.done = this.tryCut(st.entry.x, st.entry.y, p.x, p.y);
         st.entry = null;
       }
       st.outside = { x: p.x, y: p.y };
@@ -309,7 +312,7 @@ export class SliceRoom implements Scene {
   pointerUp(p: Pointer, cancelled: boolean) {
     const st = this.stroke.get(p.id);
     this.stroke.delete(p.id);
-    if (!st || st.kind !== 'cut' || cancelled || !this.canCut) return;
+    if (!st || st.kind !== 'cut' || st.done || cancelled || !this.canCut) return;
     // Let go while still on the fruit: a long enough stroke still cuts.
     if (st.entry && Math.hypot(p.x - st.entry.x, p.y - st.entry.y) > this.s.screenFruit.r * 0.9) {
       this.tryCut(st.entry.x, st.entry.y, p.x, p.y);
@@ -334,9 +337,10 @@ export class SliceRoom implements Scene {
     return this.phase === 'play' || (this.phase === 'intro' && this.phaseT > INTRO.time * 0.6);
   }
 
+  /** Cut along this line. Returns whether the stroke is spent (it cut, or bounced off). */
   private tryCut(ax: number, ay: number, bx: number, by: number) {
     const now = performance.now();
-    if (now - this.lastCutAt < 140 || this.s.cutCount >= this.order.cuts) return;
+    if (now - this.lastCutAt < 140 || this.s.cutCount >= this.order.cuts) return false;
     const before = this.s.pieces.length;
     const res = this.s.cut(ax, ay, bx, by);
     if (!res) {
@@ -347,8 +351,9 @@ export class SliceRoom implements Scene {
         haptics.play('soft');
         this.s.sway.impulse(1.2);
         this.showPlus('too thin', this.s.screenFruit);
+        return true;
       }
-      return;
+      return false;
     }
     this.lastCutAt = now;
     const n = this.s.pieces.length;
@@ -365,7 +370,10 @@ export class SliceRoom implements Scene {
     }
     // After the first cut, show how to turn it (once).
     if (!settings.value.seenHints.includes('slice-turn') && this.s.cutCount < this.order.cuts) this.turnHint.show(500);
-    if (n >= this.order.target || this.s.cutCount >= this.order.cuts) this.beginHold(n >= this.order.target);
+    // Exactly right, past it (there's no un-cutting), or out of cuts: it's done.
+    const t = this.order.target;
+    if (n >= t || this.s.cutCount >= this.order.cuts) this.beginHold(n === t);
+    return true;
   }
 
   /** "+3" rising from where the cut went through. */

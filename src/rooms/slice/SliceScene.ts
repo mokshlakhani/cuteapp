@@ -7,16 +7,19 @@ import { springs } from '../../design/tokens';
 import { Face, drawFace } from '../../render/face';
 import { SLICE_FRUITS, type SliceFruit } from './fruits';
 import { MAX_CUTS, dressSlice, makeSliceMaterial, type SliceUniforms } from './material';
-import { corners, cutAll, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3 } from './polyhedron';
+import { corners, cutAll, cutMask, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3 } from './polyhedron';
 import { buildExtras, disposeExtra, type Extra } from './extras';
 
 /**
  * The slice table: a fruit floating over a wooden board, seen from a calm,
  * low three-quarter view and lit like the rest of soft spot (one soft key
  * light from the upper left, warm cocoa shadows). It turns slowly, so a
- * stroke across the screen cuts it along a different plane each time. Cuts
- * leave glowing seams; at the end it falls apart into its pieces, which
- * tumble onto the board and settle in a little heap.
+ * stroke across the screen cuts it along a different plane each time.
+ *
+ * Whole, it's one smooth mesh. From the first cut it's drawn as the pieces
+ * it really is — each with seams only for the cuts that went through it — so
+ * what you see always matches the count. At the end those same pieces fall
+ * apart, tumble onto the board and settle in a little heap.
  */
 
 const FACE_PX = 256;
@@ -73,11 +76,15 @@ const tmpQ = new THREE.Quaternion();
 const tmpM = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
 const tmpE = new THREE.Euler();
+const tmpRay = new THREE.Ray();
+const tmpS = new THREE.Vector3();
+const tmpO = new THREE.Vector3();
+const tmpD = new THREE.Vector3();
 /** The smallest piece that counts, as a share of the whole fruit. */
 const MIN_PIECE = 0.015;
 /** The whole fruit's mesh (smooth), and the faceted solid the knife cuts (finer is smoother pieces, slower cuts). */
 const WHOLE = { lat: 64, lon: 96 };
-const SOLID = { lat: 24, lon: 40 };
+const SOLID = { lat: 30, lon: 52 };
 
 export class SliceScene {
   readonly canvas: HTMLCanvasElement;
@@ -102,7 +109,10 @@ export class SliceScene {
   private whole: THREE.Mesh;
   private wholeGeo: THREE.BufferGeometry | null = null;
   private skin: { mat: THREE.MeshPhysicalMaterial; uniforms: SliceUniforms };
-  private flesh: { mat: THREE.MeshPhysicalMaterial; uniforms: SliceUniforms };
+  /** The pieces it's been cut into, still together, each as a mesh in the fruit's frame. */
+  private parts = new Map<Poly, THREE.Mesh>();
+  /** It has fallen apart onto the board. */
+  private fallen = false;
   private faceCanvas = document.createElement('canvas');
   private faceTex: THREE.CanvasTexture;
   private faceSig = '';
@@ -192,8 +202,7 @@ export class SliceScene {
     board.castShadow = true;
     this.scene.add(board);
 
-    this.skin = makeSliceMaterial(true);
-    this.flesh = makeSliceMaterial(false);
+    this.skin = makeSliceMaterial();
     this.faceCanvas.width = this.faceCanvas.height = FACE_PX;
     this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
@@ -219,14 +228,15 @@ export class SliceScene {
 
     this.setFruit(this.fruit);
 
-    // Compile the pieces' shaders now, not on the frame the fruit falls apart.
-    const warm = new THREE.Mesh(new THREE.SphereGeometry(0.01, 4, 3), this.flesh.mat);
+    // Compile the shaders now (pieces, and their shadows), not on the frame of the first cut.
+    const warm = new THREE.Mesh(new THREE.SphereGeometry(0.01, 4, 3), makeSliceMaterial(this.skin.uniforms).mat);
     warm.castShadow = true;
     warm.geometry.setAttribute('aRest', warm.geometry.attributes.position.clone());
     this.scene.add(warm);
     this.renderer.compile(this.scene, this.camera);
     this.scene.remove(warm);
     warm.geometry.dispose();
+    (warm.material as THREE.Material).dispose();
   }
 
   // ——— the fruit ———
@@ -235,7 +245,8 @@ export class SliceScene {
   setFruit(fruit: SliceFruit, lift = 0) {
     this.fruit = fruit;
     dressSlice(this.skin.mat, this.skin.uniforms, fruit);
-    dressSlice(this.flesh.mat, this.flesh.uniforms, fruit);
+    this.clearParts();
+    this.fallen = false;
     this.dropMat.color.set(fruit.juice);
     const [rx, ry, rz] = fruit.radii;
     const g = wholeGeometry(fruit.shape, fruit.radii);
@@ -250,6 +261,7 @@ export class SliceScene {
     this.spin.yaw = this.spin.pitch = 0;
     this.skin.uniforms.uCutCount.value = 0;
     this.whole.visible = true;
+    this.root.scale.set(1, 1, 1);
     this.lift = lift;
     this.tremble = 0;
     this.squash.snap(0);
@@ -260,9 +272,16 @@ export class SliceScene {
       disposeExtra(e);
     }
     this.extras = buildExtras(fruit);
-    for (const e of this.extras) this.root.add(e.obj);
+    for (const e of this.extras) {
+      // Floating, the blob is its only shadow; extras cast once they fall.
+      e.obj.traverse((o) => (o.castShadow = false));
+      this.root.add(e.obj);
+    }
     this.faceSig = '';
     this.shadowsDirty = true;
+    // Compile anything new (a fruit's leaves and scales) now, while it drops
+    // in, rather than on the frame of the first cut. Cheap when nothing is new.
+    this.renderer.compile(this.scene, this.camera);
   }
 
   get radius() {
@@ -279,7 +298,7 @@ export class SliceScene {
    * null if it missed the fruit.
    */
   cut(ax: number, ay: number, bx: number, by: number): { added: number; at: THREE.Vector3; dir: THREE.Vector3 } | null {
-    if (!this.whole.visible || this.cuts >= MAX_CUTS) return null;
+    if (this.fallen || this.cuts >= MAX_CUTS) return null;
     if (Math.hypot(bx - ax, by - ay) < 8) return null;
     const ra = this.rayFrom(ax, ay).ray.direction.clone();
     const rb = this.rayFrom(bx, by).ray.direction.clone();
@@ -287,8 +306,8 @@ export class SliceScene {
     // The plane through your eye and the line you drew.
     const n = new THREE.Vector3().crossVectors(ra, rb).normalize();
     const world = new THREE.Plane().setFromNormalAndCoplanarPoint(n, this.camera.position);
-    this.whole.updateMatrixWorld(true);
-    const local = world.clone().applyMatrix4(tmpM.copy(this.whole.matrixWorld).invert());
+    this.root.updateMatrixWorld(true);
+    const local = world.clone().applyMatrix4(tmpM.copy(this.root.matrixWorld).invert());
     const added = this.cutLocal([local.normal.x, local.normal.y, local.normal.z], -local.constant);
     if (added === null) return null;
 
@@ -299,24 +318,58 @@ export class SliceScene {
     this.splash(at, n, dir);
     this.squash.impulse(-2.2);
     this.sway.impulse(rand(-1, 1) * 1.6);
-    this.shadowsDirty = true;
     return { added, at, dir };
   }
 
   /** Cut along a plane n·p = d in the fruit's own space. Returns how many pieces it added, or null if it missed. */
   cutLocal(n: V3, d: number) {
-    if (!this.whole.visible || this.cuts >= MAX_CUTS) return null;
-    const res = cutAll(this.pieces, { n, d }, this.minVolume);
+    if (this.fallen || this.cuts >= MAX_CUTS) return null;
+    const res = cutAll(this.pieces, { n, d }, this.minVolume, this.cuts);
     if (!res.split) return null;
     const added = res.pieces.length - this.pieces.length;
     this.pieces = res.pieces;
+    this.syncParts();
     const u = this.skin.uniforms;
     u.uCuts.value[this.cuts].set(n[0], n[1], n[2], d);
     u.uGlow.value[this.cuts] = 1;
     this.cuts++;
     u.uCutCount.value = this.cuts;
-    this.shadowsDirty = true;
     return added;
+  }
+
+  /** Draw the fruit as its pieces: keep the meshes of pieces that weren't cut, make ones for the new. */
+  private syncParts() {
+    this.whole.visible = false;
+    const keep = new Set(this.pieces);
+    for (const [p, m] of this.parts) {
+      if (keep.has(p)) continue;
+      this.root.remove(m);
+      disposeMesh(m);
+      this.parts.delete(p);
+    }
+    for (const p of this.pieces) if (!this.parts.has(p)) this.parts.set(p, this.makePart(p));
+  }
+
+  private makePart(p: Poly) {
+    const { centre, volume } = massProps(p);
+    const { mat, uniforms } = makeSliceMaterial(this.skin.uniforms);
+    mat.roughness = this.skin.mat.roughness;
+    mat.clearcoat = this.skin.mat.clearcoat;
+    uniforms.uFaceOn.value = 1;
+    uniforms.uCutMask.value = cutMask(p);
+    const mesh = new THREE.Mesh(pieceGeometry(p, centre, this.fruit), mat);
+    mesh.position.set(...centre);
+    mesh.userData = { centre, volume, u: uniforms };
+    this.root.add(mesh);
+    return mesh;
+  }
+
+  private clearParts() {
+    for (const m of this.parts.values()) {
+      this.root.remove(m);
+      disposeMesh(m);
+    }
+    this.parts.clear();
   }
 
   /**
@@ -370,15 +423,14 @@ export class SliceScene {
     }
   }
 
-  /** It falls apart: every piece becomes a body that drops onto the board. */
+  /** It falls apart: every piece becomes a body that drops onto the board (the same meshes, no rebuilding). */
   fallApart() {
-    this.whole.updateMatrixWorld(true);
-    const m = this.whole.matrixWorld;
+    if (!this.parts.size) this.syncParts();
+    this.root.updateMatrixWorld(true);
+    const m = this.root.matrixWorld;
     const wq = new THREE.Quaternion();
-    const ws = new THREE.Vector3();
-    const wp = new THREE.Vector3();
-    m.decompose(wp, wq, ws);
-    const total = this.pieces.reduce((s, p) => s + massProps(p).volume, 0);
+    m.decompose(new THREE.Vector3(), wq, new THREE.Vector3());
+    const total = this.pieces.reduce((s, p) => s + this.parts.get(p)!.userData.volume, 0);
     this.clearChunks();
     // Each stem, leaf or scale goes with the piece it's sitting on.
     const home = this.extras.map((e) => {
@@ -394,11 +446,11 @@ export class SliceScene {
       return best;
     });
     this.pieces.forEach((p, pi) => {
-      const { volume, centre } = massProps(p);
-      const geo = pieceGeometry(p, centre, this.fruit);
-      const mesh = new THREE.Mesh(geo, this.flesh.mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      const mesh = this.parts.get(p)!;
+      const { centre, volume, u } = mesh.userData as { centre: V3; volume: number; u: SliceUniforms };
+      // Fallen pieces: no face, no seams.
+      u.uFaceOn.value = 0;
+      u.uCutMask.value = 0;
       const c = new THREE.Vector3(...centre);
       const pos = c.clone().applyMatrix4(m);
       const pts = contactCorners(p).map((v) => new THREE.Vector3(v[0] - centre[0], v[1] - centre[1], v[2] - centre[2]));
@@ -414,12 +466,16 @@ export class SliceScene {
       const out = c.clone().applyQuaternion(wq).setY(0).normalize();
       const vel = out.multiplyScalar(rand(0.3, 0.9)).add(new THREE.Vector3(0, rand(0.2, 1), 0));
       const w = new THREE.Vector3(rand(-1.5, 1.5), rand(-0.8, 0.8), rand(-1.5, 1.5));
+      this.root.remove(mesh);
       mesh.position.copy(pos);
       mesh.quaternion.copy(wq);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       this.extras.forEach((e, ei) => {
         if (home[ei] !== pi) return;
         // Same axes as the fruit, so only its place shifts: relative to this piece's middle.
         e.obj.position.sub(c);
+        e.obj.traverse((o) => (o.castShadow = true));
         mesh.add(e.obj);
       });
       this.chunkGroup.add(mesh);
@@ -441,7 +497,9 @@ export class SliceScene {
         delay: 0,
       });
     });
+    this.parts.clear();
     this.whole.visible = false;
+    this.fallen = true;
     this.shadowsDirty = true;
   }
 
@@ -465,7 +523,7 @@ export class SliceScene {
   private clearChunks() {
     for (const c of this.chunks) {
       this.chunkGroup.remove(c.mesh);
-      c.mesh.geometry.dispose();
+      disposeMesh(c.mesh);
     }
     // Their extras went with them.
     for (const e of this.extras) if (e.obj.parent !== this.root) e.obj.removeFromParent();
@@ -548,7 +606,7 @@ export class SliceScene {
     // The blob shadow: softer and wider the higher it floats.
     const hgt = Math.max(0, y - BOARD.h);
     const sz = this.radius * (1.9 + hgt * 0.12);
-    this.blob.visible = this.whole.visible;
+    this.blob.visible = !this.fallen;
     this.blob.scale.set(sz * 1.15, sz * 0.8, 1);
     this.blob.position.set(shiver + 0.55, BOARD.h + 0.005, -0.25);
     (this.blob.material as THREE.MeshBasicMaterial).opacity = clamp(0.62 - hgt * 0.035, 0.15, 0.6);
@@ -717,7 +775,7 @@ export class SliceScene {
       if (before > 0.5 && c.scale <= 0.5) this.events.gone?.(c.pos, c.size, i);
       if (c.scale <= 0) {
         this.chunkGroup.remove(c.mesh);
-        c.mesh.geometry.dispose();
+        disposeMesh(c.mesh);
         this.chunks.splice(i, 1);
       }
     }
@@ -735,14 +793,14 @@ export class SliceScene {
 
   /** Is this screen point over the whole fruit? (Exact, against its ellipsoid.) */
   overFruit(sx: number, sy: number, slack = 1.04) {
-    if (!this.whole.visible) return false;
-    this.whole.updateMatrixWorld(true);
-    const inv = tmpM.copy(this.whole.matrixWorld).invert();
-    const r = this.rayFrom(sx, sy).ray.clone().applyMatrix4(inv);
+    if (this.fallen) return false;
+    this.root.updateMatrixWorld(true);
+    const inv = tmpM.copy(this.root.matrixWorld).invert();
+    const r = tmpRay.copy(this.rayFrom(sx, sy).ray).applyMatrix4(inv);
     const [rx, ry, rz] = this.fruit.radii;
-    const s = new THREE.Vector3(1 / (rx * slack), 1 / (ry * slack), 1 / (rz * slack));
-    const o = r.origin.clone().multiply(s);
-    const d = r.direction.clone().multiply(s);
+    const s = tmpS.set(1 / (rx * slack), 1 / (ry * slack), 1 / (rz * slack));
+    const o = tmpO.copy(r.origin).multiply(s);
+    const d = tmpD.copy(r.direction).multiply(s);
     const a = d.dot(d);
     const b = 2 * o.dot(d);
     const c = o.dot(o) - 1;
@@ -785,7 +843,7 @@ export class SliceScene {
   }
 
   render() {
-    if (this.whole.visible) this.drawFace();
+    if (!this.fallen) this.drawFace();
     // Once the pieces have come to rest their shadows stay put: each piece
     // is a draw call, and Safari makes those costly.
     const moving = this.chunks.some((c) => !c.settled);
@@ -829,26 +887,45 @@ function wholeGeometry(shape: Shape, radii: V3) {
 
 /** One piece as a mesh: skin faces shaded round, cut faces flat; positions about its centre of mass. */
 function pieceGeometry(p: Poly, centre: V3, fruit: SliceFruit) {
-  const pos: number[] = [];
-  const rest: number[] = [];
-  const nrm: number[] = [];
+  let tris = 0;
+  for (const f of p.faces) tris += f.pts.length - 2;
+  const pos = new Float32Array(tris * 9);
+  const rest = new Float32Array(tris * 9);
+  const nrm = new Float32Array(tris * 9);
+  let k = 0;
   for (const f of p.faces) {
-    const fn = faceNormal(f.pts);
+    const fn = f.cut ? faceNormal(f.pts) : null;
+    // Each corner's normal once per face, not once per triangle.
+    const ns = f.cut ? null : f.pts.map((v) => skinNormal(fruit.shape, fruit.radii, v));
     for (let i = 1; i + 1 < f.pts.length; i++) {
-      for (const v of [f.pts[0], f.pts[i], f.pts[i + 1]]) {
-        pos.push(v[0] - centre[0], v[1] - centre[1], v[2] - centre[2]);
-        rest.push(v[0], v[1], v[2]);
-        if (f.cut) nrm.push(fn[0], fn[1], fn[2]);
-        else nrm.push(...skinNormal(fruit.shape, fruit.radii, v));
+      for (const j of [0, i, i + 1]) {
+        const v = f.pts[j];
+        const n = fn ?? ns![j];
+        pos[k] = v[0] - centre[0];
+        pos[k + 1] = v[1] - centre[1];
+        pos[k + 2] = v[2] - centre[2];
+        rest[k] = v[0];
+        rest[k + 1] = v[1];
+        rest[k + 2] = v[2];
+        nrm[k] = n[0];
+        nrm[k + 1] = n[1];
+        nrm[k + 2] = n[2];
+        k += 3;
       }
     }
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('aRest', new THREE.Float32BufferAttribute(rest, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aRest', new THREE.BufferAttribute(rest, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   g.computeBoundingSphere();
   return g;
+}
+
+/** Free a piece's mesh: its geometry and its own material (its extras keep theirs). */
+function disposeMesh(m: THREE.Mesh) {
+  m.geometry.dispose();
+  (m.material as THREE.Material).dispose();
 }
 
 /**
