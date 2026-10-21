@@ -116,15 +116,15 @@ export const material = {
     // In the last few bands the notes climb a little and come quicker to the ear.
     const step = Math.round(rand(0, 4.4) + k * 3);
     const f = scale(step);
-    audio.tone({ freq: f, attack: 0.025 - k * 0.012, decay: 1.0 - k * 0.3, gain: 0.36 + k * 0.1, pan, lowpass: 900 + k * 500, reverb: 0.4 });
+    audio.tone({ freq: f, attack: 0.025 - k * 0.012, decay: 1.0 - k * 0.3, gain: 0.54 + k * 0.15, pan, lowpass: 900 + k * 500, reverb: 0.4 });
     // The octave above, so it carries on a phone speaker.
-    audio.tone({ freq: f * 2, attack: 0.03, decay: 0.55, gain: 0.09 + k * 0.05, pan, lowpass: 1400, reverb: 0.4 });
+    audio.tone({ freq: f * 2, attack: 0.03, decay: 0.55, gain: 0.135 + k * 0.075, pan, lowpass: 1400, reverb: 0.4 });
     // A soft pat as it settles on the skin.
-    audio.tone({ freq: 100, to: 75, glide: 0.12, attack: 0.015, decay: 0.15, gain: 0.09, pan, lowpass: 300 });
+    audio.tone({ freq: 100, to: 75, glide: 0.12, attack: 0.015, decay: 0.15, gain: 0.135, pan, lowpass: 300 });
     if (k > 0) {
       // Near the end it tightens: a firm round pluck and a low hum swelling under it.
-      audio.pluck({ freq: f, sustain: 0.6, brightness: 0.12, bend: 1.01, gain: 0.27 * k, pan, lowpass: 900, reverb: 0.3 });
-      audio.tone({ freq: f / 2, attack: 0.08, decay: 1.1, gain: 0.16 * k, pan, lowpass: 300 });
+      audio.pluck({ freq: f, sustain: 0.6, brightness: 0.12, bend: 1.01, gain: 0.405 * k, pan, lowpass: 900, reverb: 0.3 });
+      audio.tone({ freq: f / 2, attack: 0.08, decay: 1.1, gain: 0.24 * k, pan, lowpass: 300 });
     }
   },
   /**
