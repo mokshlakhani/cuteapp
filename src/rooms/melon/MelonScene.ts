@@ -7,6 +7,7 @@ import { fruitPalette } from '../../design/fruitPalette';
 import { MELON_A, MELON_R, MelonShape } from './shape';
 import { dressSkin, makeMelonMaterial, type MelonUniforms } from './melonMaterial';
 import { POP_FRUITS, type PopFruit } from './fruits';
+import { buildExtras } from '../slice/extras';
 import { BandMesh } from './bands3d';
 import { Explosion, type ExplosionEvents } from './explosion';
 
@@ -57,7 +58,9 @@ export class MelonScene {
   private shardSkin: { mat: THREE.MeshPhysicalMaterial; uniforms: MelonUniforms };
   private bands: BandMesh[] = [];
   private bandMats = new Map<string, THREE.Material>();
+  /** What grows from its stem end (+x) and its other end (−x). */
   private stem = new THREE.Group();
+  private tail = new THREE.Group();
   private faceCanvas = document.createElement('canvas');
   private faceTex: THREE.CanvasTexture;
   /** The face last drawn into the texture (see Face.signature). */
@@ -187,7 +190,7 @@ export class MelonScene {
   /** Put a different fruit on the table (a fresh one: call before resetMelon). */
   setFruit(fruit: PopFruit) {
     this.fruit = fruit;
-    this.shape.setFruit(fruit.aspect, fruit.profile);
+    this.shape.setFruit(fruit.aspect, fruit.look.shape);
     dressSkin(this.skinMat, this.uniforms, fruit);
     dressSkin(this.shardSkin.mat, this.shardSkin.uniforms, fruit);
     this.explosion.setFruit(fruit);
@@ -196,73 +199,34 @@ export class MelonScene {
     this.refresh();
   }
 
-  /** What grows from the end: a curly vine, a stub, a leafy nub, a crown, a pumpkin stalk, or nothing. */
+  /**
+   * What grows from its ends: the very stem, leaf, calyx or tips the fruit
+   * has in slice (slice/extras.ts), sized to this fruit and turned to lie
+   * along it — the stem end at +x. (Only the ones at its ends: a dragon
+   * fruit's scales all over would float off it once the bands pinch.)
+   */
   private buildStem() {
-    for (const c of [...this.stem.children]) {
-      this.stem.remove(c);
-      c.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
-    }
-    const kind = this.fruit.stem;
-    const brown = new THREE.MeshStandardMaterial({ color: '#8C7051', roughness: 0.6 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: '#7CC86E', roughness: 0.5 });
-    const parts: THREE.Mesh[] = [];
-    const leaf = (x: number, y: number, z: number, s: number, rot: [number, number, number]) => {
-      const g = new THREE.SphereGeometry(1, 16, 10);
-      g.scale(0.32 * s, 0.05 * s, 0.16 * s);
-      const m = new THREE.Mesh(g, leafMat);
-      m.position.set(x, y, z);
-      m.rotation.set(...rot);
-      parts.push(m);
-    };
-    if (kind === 'vine') {
-      const curve = new THREE.QuadraticBezierCurve3(
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0.28, 0.02, 0),
-        new THREE.Vector3(0.34, 0.24, 0.05),
-      );
-      parts.push(new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.055, 8, false), brown));
-      leaf(0.22, 0.1, -0.16, 1, [0.4, 0.6, 0.2]);
-    } else if (kind === 'nub' || kind === 'leafy') {
-      const g = new THREE.CylinderGeometry(0.06, 0.09, 0.16, 10);
-      g.rotateZ(-Math.PI / 2);
-      g.translate(0.05, 0, 0);
-      parts.push(new THREE.Mesh(g, kind === 'leafy' ? leafMat : brown));
-      if (kind === 'leafy') leaf(0.16, 0.16, 0.05, 1.3, [0.2, 0.3, 0.9]);
-    } else if (kind === 'crown') {
-      // A pomegranate's crown: a short neck opening into pointed sepals.
-      const skin = new THREE.MeshStandardMaterial({ color: this.fruit.skin.accent, roughness: 0.55 });
-      const neck = new THREE.CylinderGeometry(0.2, 0.26, 0.24, 14);
-      neck.rotateZ(-Math.PI / 2);
-      neck.translate(0.08, 0, 0);
-      parts.push(new THREE.Mesh(neck, skin));
-      for (let k = 0; k < 6; k++) {
-        const a = (k / 6) * Math.PI * 2;
-        const g = new THREE.ConeGeometry(0.07, 0.24, 6);
-        g.translate(0, 0.12, 0);
-        const m = new THREE.Mesh(g, skin);
-        m.position.set(0.2, Math.cos(a) * 0.18, Math.sin(a) * 0.18);
-        // Splayed outward, like a little crown.
-        m.lookAt(m.position.clone().add(new THREE.Vector3(0.6, Math.cos(a), Math.sin(a))));
-        m.rotateX(Math.PI / 2);
-        parts.push(m);
+    for (const g of [this.stem, this.tail]) {
+      for (const c of [...g.children]) {
+        g.remove(c);
+        c.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
       }
-    } else if (kind === 'pumpkin') {
-      const curve = new THREE.QuadraticBezierCurve3(
-        new THREE.Vector3(-0.05, 0, 0),
-        new THREE.Vector3(0.3, 0, 0),
-        new THREE.Vector3(0.42, 0.2, 0.04),
-      );
-      const stalk = new THREE.Mesh(
-        new THREE.TubeGeometry(curve, 12, 0.13, 7, false),
-        new THREE.MeshStandardMaterial({ color: '#6F8A3A', roughness: 0.75 }),
-      );
-      parts.push(stalk);
     }
-    for (const m of parts) {
-      m.castShadow = true;
-      this.stem.add(m);
+    const look = this.fruit.look;
+    const ry = look.radii[1];
+    const k = MELON_R / Math.max(look.radii[0], look.radii[2]);
+    for (const e of buildExtras(look)) {
+      const end = e.at[1] > ry * 0.97 ? 1 : e.at[1] < -ry * 0.97 ? -1 : 0;
+      if (!end) continue;
+      // Into a frame at that end, turned so the fruit's core (its y) runs along x.
+      const frame = new THREE.Group();
+      frame.rotation.z = -Math.PI / 2;
+      frame.scale.setScalar(k);
+      e.obj.position.y -= end * ry;
+      frame.add(e.obj);
+      (end > 0 ? this.stem : this.tail).add(frame);
     }
-    if (!this.stem.parent) this.root.add(this.stem);
+    if (!this.stem.parent) this.root.add(this.stem, this.tail);
   }
 
   bandMat(color: string) {
@@ -418,7 +382,6 @@ export class MelonScene {
       this.slope[i] = (b - a) / ((Math.min(PROFILE - 1, i + 1) - Math.max(0, i - 1)) * step);
     }
     const L = MELON_A * s.lengthScale;
-    const ribs = this.fruit.ribs;
     const { rest, pos, nrm } = this;
     for (let k = 0; k < rest.length; k += 3) {
       const xn = rest[k];
@@ -432,17 +395,7 @@ export class MelonScene {
         dy = 1;
         dz = 0;
       }
-      let r = this.surfaceAt(xn);
-      // Ribs (pumpkin, cantaloupe): shallow grooves running end to end, round between.
-      let tang = 0;
-      if (ribs) {
-        const phi = Math.atan2(dz, dy);
-        const c = Math.max(0.04, Math.abs(Math.cos((phi * ribs.n) / 2)));
-        const f = 1 - ribs.depth * (1 - Math.pow(c, 0.6));
-        const dc = (-ribs.n / 2) * Math.sin((phi * ribs.n) / 2) * Math.sign(Math.cos((phi * ribs.n) / 2));
-        tang = (ribs.depth * 0.6 * Math.pow(c, -0.4) * dc) / f;
-        r *= f;
-      }
+      const r = this.surfaceAt(xn);
       pos[k] = xn * L;
       pos[k + 1] = dy * r;
       pos[k + 2] = dz * r;
@@ -452,13 +405,10 @@ export class MelonScene {
         nrm[k + 2] = 0;
       } else {
         const g = -this.slopeAt(xn) / L;
-        // Tipped sideways across a rib, toward its groove.
-        const ny = dy + tang * dz;
-        const nz = dz - tang * dy;
-        const n = Math.hypot(g, ny, nz);
+        const n = Math.hypot(g, dy, dz);
         nrm[k] = g / n;
-        nrm[k + 1] = ny / n;
-        nrm[k + 2] = nz / n;
+        nrm[k + 1] = dy / n;
+        nrm[k + 2] = dz / n;
       }
     }
     this.geo.attributes.position.needsUpdate = true;
@@ -472,7 +422,8 @@ export class MelonScene {
     this.root.position.set(shiver, H * (1 - q) + this.lift, 0);
     this.root.scale.set(1 + q * 0.45, 1 - q, 1 + q * 0.45);
     this.root.rotation.x = s.sway.value * 0.035;
-    this.stem.position.set(L * 0.985, 0, 0);
+    this.stem.position.set(L * 0.99, 0, 0);
+    this.tail.position.set(-L * 0.99, 0, 0);
     this.uniforms.uCrack.value = this.crack;
     if (this.crack > 0) {
       // Either side of the band pile, on the straining bulge.

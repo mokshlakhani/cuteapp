@@ -8,6 +8,8 @@ import { WrapRoom } from '../rooms/wrap/WrapRoom';
 import { wrapPreview } from '../rooms/wrap/preview';
 import { PourRoom } from '../rooms/pour/PourRoom';
 import { pourPreview } from '../rooms/pour/preview';
+import { SliceRoom } from '../rooms/slice/SliceRoom';
+import { slicePreview } from '../rooms/slice/preview';
 
 /**
  * The room registry. Adding a toy = adding one entry here with a Scene
@@ -19,4 +21,5 @@ export const ROOMS: RoomInfo[] = [
   { id: 'jelly', name: 'jelly', tint: roomTint.jelly, awake: true, create: (nav) => new JellyRoom(nav), preview: jellyPreview },
   { id: 'wrap', name: 'bubbles', tint: roomTint.wrap, awake: true, create: (nav) => new WrapRoom(nav), preview: wrapPreview },
   { id: 'pour', name: 'pour', tint: roomTint.pour, awake: true, create: (nav) => new PourRoom(nav), preview: pourPreview },
+  { id: 'slice', name: 'slice', tint: roomTint.slice, awake: true, create: (nav) => new SliceRoom(nav), preview: slicePreview },
 ];

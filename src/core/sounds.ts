@@ -116,15 +116,15 @@ export const material = {
     // In the last few bands the notes climb a little and come quicker to the ear.
     const step = Math.round(rand(0, 4.4) + k * 3);
     const f = scale(step);
-    audio.tone({ freq: f, attack: 0.025 - k * 0.012, decay: 1.0 - k * 0.3, gain: 0.26 + k * 0.08, pan, lowpass: 900 + k * 500, reverb: 0.4 });
+    audio.tone({ freq: f, attack: 0.025 - k * 0.012, decay: 1.0 - k * 0.3, gain: 0.36 + k * 0.1, pan, lowpass: 900 + k * 500, reverb: 0.4 });
     // The octave above, so it carries on a phone speaker.
-    audio.tone({ freq: f * 2, attack: 0.03, decay: 0.55, gain: 0.06 + k * 0.04, pan, lowpass: 1400, reverb: 0.4 });
+    audio.tone({ freq: f * 2, attack: 0.03, decay: 0.55, gain: 0.09 + k * 0.05, pan, lowpass: 1400, reverb: 0.4 });
     // A soft pat as it settles on the skin.
-    audio.tone({ freq: 100, to: 75, glide: 0.12, attack: 0.015, decay: 0.15, gain: 0.06, pan, lowpass: 300 });
+    audio.tone({ freq: 100, to: 75, glide: 0.12, attack: 0.015, decay: 0.15, gain: 0.09, pan, lowpass: 300 });
     if (k > 0) {
       // Near the end it tightens: a firm round pluck and a low hum swelling under it.
-      audio.pluck({ freq: f, sustain: 0.6, brightness: 0.12, bend: 1.01, gain: 0.2 * k, pan, lowpass: 900, reverb: 0.3 });
-      audio.tone({ freq: f / 2, attack: 0.08, decay: 1.1, gain: 0.12 * k, pan, lowpass: 300 });
+      audio.pluck({ freq: f, sustain: 0.6, brightness: 0.12, bend: 1.01, gain: 0.27 * k, pan, lowpass: 900, reverb: 0.3 });
+      audio.tone({ freq: f / 2, attack: 0.08, decay: 1.1, gain: 0.16 * k, pan, lowpass: 300 });
     }
   },
   /**
@@ -474,5 +474,25 @@ export const material = {
     audio.noise({ dur: 0.1, gain: 0.07, filter: 'highpass', freq: 1800, to: 5200, q: 0.7, pan, attack: 0.01 });
     audio.tone({ freq: scale(16 + Math.floor(rand(0, 2))), decay: 0.18, gain: 0.03, pan, reverb: 0.35, delay: 0.02 });
     audio.tone({ freq: scale(7), to: scale(5), glide: 0.1, decay: 0.12, gain: 0.05, pan, delay: 0.05 });
+  },
+  /**
+   * A knife through a whole fruit: an airy swish, a crisp juicy crunch, and a
+   * soft note that climbs with how many pieces there are now. `added` is how
+   * many pieces this cut made (a cut through many rings brighter).
+   */
+  chop(added: number, pieces: number, pan = 0) {
+    if (!gate('chop', 60)) return;
+    const k = clamp((added - 1) / 6, 0, 1);
+    audio.noise({ dur: 0.16, attack: 0.02, gain: 0.05, filter: 'bandpass', freq: 1400, to: 4200, q: 0.6, pan, reverb: 0.15 });
+    audio.noise({ dur: 0.05, gain: 0.07 + k * 0.03, filter: 'highpass', freq: 2600, q: 0.8, pan, delay: 0.06 });
+    audio.noise({ dur: 0.07, gain: 0.05, filter: 'lowpass', freq: 900, to: 300, pan, delay: 0.065 });
+    const n = 7 + Math.min(10, Math.round(Math.sqrt(pieces) * 2));
+    audio.tone({ freq: scale(n), decay: 0.4 + k * 0.3, gain: 0.04 + k * 0.02, pan, reverb: 0.5, delay: 0.07 });
+    if (added > 2) audio.tone({ freq: scale(n + 2), decay: 0.5, gain: 0.025 + k * 0.02, pan, reverb: 0.55, delay: 0.13 });
+  },
+  /** One star filling in after a fruit is scored; `i` (0..2) climbs. */
+  star(i: number, pan = 0) {
+    audio.tone({ freq: scale(12 + i * 2), decay: 0.55, gain: 0.045, pan: pan + (i - 1) * 0.15, reverb: 0.6 });
+    audio.tone({ freq: scale(17 + i * 2), decay: 0.3, gain: 0.02, pan: pan + (i - 1) * 0.15, reverb: 0.6, delay: 0.03 });
   },
 };

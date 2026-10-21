@@ -101,7 +101,7 @@ export const roomTint = {
   jelly: pastel.peach,
   wrap: pastel.sky,
   pour: pastel.lilac,
-  soon3: pastel.peach,
+  slice: pastel.pink,
 } as const;
 
 export const type = {

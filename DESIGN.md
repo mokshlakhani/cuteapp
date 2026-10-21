@@ -21,7 +21,10 @@ rest is a short list of rules.
    jelly pieces) resets itself gently or with one tap.
    _The one exception is **pour**, which keeps a streak of perfect pours and
    your best — quietly, in the top bar's centre, with no penalty for a miss
-   beyond the streak starting over._
+   beyond the streak starting over. **Slice** is the other: each fruit asks
+   for a number of pieces in a number of cuts and is scored one to three
+   stars, and your level is kept — but every fruit falls apart and earns at
+   least a star, so nothing is ever failed._
 4. **Feel over features.** When in doubt, make an existing interaction 20%
    more satisfying instead of adding something.
 5. **Everything is alive.** Toys breathe, blink, wobble and look at your
@@ -168,7 +171,7 @@ scene stays clean.
 
 ## 12. 3D rooms follow the same rules
 
-Some toys (**pop** and **jelly**) are rendered in 3D with three.js. They must still
+Some toys (**pop**, **jelly** and **slice**) are rendered in 3D with three.js. They must still
 look like they came from the same shelf:
 
 - **Same chrome.** Back + sound in the top bar, one bottom dock built from
@@ -180,13 +183,18 @@ look like they came from the same shelf:
   app's warm cocoa shadow tone, never grey or black.
 - **Same camera language.** A calm, raised view of an object on a table —
   from above for things you handle flat (jelly, ≈74° down), a three-quarter
-  view for things with a shape to show (pop, ≈23° down). Big moments may
+  view for things with a shape to show (pop, ≈23° down; slice, ≈13° down
+  at a fruit floating over its board). Big moments may
   swoop the camera (the pop dips low over the mess), then it eases back.
 - **Same faces.** Faces are drawn with `render/face.ts` into a texture and
   painted inside the jelly, so expressions match every other toy.
 - **Same fruit colours.** All fruit colours come from
   `design/fruitPalette.ts` — the watermelon in **pop** and in **jelly** is
   the same watermelon.
+- **Same fruits.** **Pop** and **slice** use the same eight fruits, built
+  the same way: one outline per fruit (`slice/fruits.ts`), one skin and
+  insides shader (`render/fruitShader.ts`), and the same stems, leaves and
+  tips (`slice/extras.ts`). Pop only adds how each one bursts.
 
 ## 13. Adding a room
 

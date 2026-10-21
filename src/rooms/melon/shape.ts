@@ -2,6 +2,7 @@ import { Spring } from '../../design/motion';
 import { pastel, springs } from '../../design/tokens';
 import { clamp, gauss, lerp, rand, randInt, TAU } from '../../core/math';
 import { Face } from '../../render/face';
+import { profile, ROUND, type Shape } from '../slice/polyhedron';
 
 /**
  * The watermelon's shape: a long melon lying on its side, and the rubber
@@ -112,7 +113,8 @@ export class MelonShape {
   grooveX = 0;
   /** Length relative to the watermelon (round fruits are shorter), and its outline. */
   aspect = 1;
-  profile: 'ellipse' | 'lemon' = 'ellipse';
+  /** Its outline along its length (the same as the fruit's in slice; its stem end is +x). */
+  outline: Shape = ROUND;
   private nextIdle = rand(3, 6);
   /** Radius along the melon (fraction of MELON_R), and scratch tables. */
   private readonly prof = new Float32Array(WN + 1);
@@ -275,17 +277,13 @@ export class MelonShape {
 
   /** The unsqueezed outline: radius at `x` as a fraction of the full radius. */
   private base(x: number) {
-    if (this.profile === 'lemon') {
-      // Full in the middle, drawn out to a little point at each end.
-      return Math.pow(Math.max(0, 1 - Math.pow(Math.abs(x), 2.6)), 0.75);
-    }
-    return Math.sqrt(Math.max(0, 1 - x * x));
+    return profile(this.outline, x);
   }
 
   /** Become a different fruit's shape (takes effect from the next reset). */
-  setFruit(aspect: number, profile: 'ellipse' | 'lemon') {
+  setFruit(aspect: number, outline: Shape) {
     this.aspect = aspect;
-    this.profile = profile;
+    this.outline = outline;
     this.build();
   }
 
