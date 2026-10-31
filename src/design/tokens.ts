@@ -48,6 +48,9 @@ export const pastel = {
   sky: '#C3DAEC',
   lilac: '#D9CCEC',
   berry: '#E39490', // desaturated red
+  aqua: '#BFE3E4',
+  clay: '#E3C7B4',
+  honey: '#F3D48F',
 } as const;
 
 export type PastelName = keyof typeof pastel;
@@ -102,6 +105,9 @@ export const roomTint = {
   wrap: pastel.sky,
   pour: pastel.lilac,
   slice: pastel.pink,
+  soap: pastel.aqua,
+  stack: pastel.clay,
+  peel: pastel.honey,
 } as const;
 
 export const type = {

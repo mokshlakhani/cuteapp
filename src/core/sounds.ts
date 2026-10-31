@@ -490,6 +490,83 @@ export const material = {
     audio.tone({ freq: scale(n), decay: 0.4 + k * 0.3, gain: 0.04 + k * 0.02, pan, reverb: 0.5, delay: 0.07 });
     if (added > 2) audio.tone({ freq: scale(n + 2), decay: 0.5, gain: 0.025 + k * 0.02, pan, reverb: 0.55, delay: 0.13 });
   },
+  // ——— soap family ———
+
+  /** A breath into the wand: soft air, a shade higher as the bubble grows. size 0..1. */
+  soapBlow(size: number, pan = 0) {
+    if (!gate('soapBlow', 90)) return;
+    const k = clamp(size, 0, 1);
+    audio.noise({ dur: 0.26, attack: 0.06, gain: 0.03 + k * 0.012, filter: 'bandpass', freq: lerp(420, 900, k), to: lerp(500, 1050, k), q: 1.1, pan, reverb: 0.2 });
+  },
+  /** The bubble's note, a soft round blip that climbs as it grows. step 0..14. */
+  soapRise(step: number, pan = 0) {
+    const f = scale(8 + step);
+    audio.tone({ freq: f * 0.94, to: f, glide: 0.05, attack: 0.012, decay: 0.16, gain: 0.03, pan, reverb: 0.45 });
+  },
+  /** The bubble reaching its ring: one clear glassy ding. */
+  soapRing(pan = 0) {
+    audio.tone({ freq: scale(22), decay: 0.5, gain: 0.05, pan, reverb: 0.6 });
+    audio.tone({ freq: scale(27), decay: 0.28, gain: 0.018, pan, reverb: 0.6, delay: 0.015 });
+  },
+  /** Past the ring, the film stretched thin: a small nervous sing. strain 0..1. */
+  soapStrain(strain: number, pan = 0) {
+    if (!gate('soapStrain', 110)) return;
+    const k = clamp(strain, 0, 1);
+    const f = lerp(700, 1300, k);
+    audio.tone({ freq: f, to: f * 1.06, glide: 0.1, attack: 0.03, decay: 0.12, gain: 0.012 + k * 0.016, pan, vibrato: { rate: 16, depth: 12 + k * 26 }, reverb: 0.3 });
+  },
+  /** A bubble pinching off the wand: a wet little bloop with a soft thump under it. size 0..1. */
+  soapFree(size: number, pan = 0) {
+    const k = clamp(size, 0, 1);
+    const f = scale(Math.round(lerp(13, 8, k)));
+    audio.tone({ freq: f * 0.62, to: f * 1.5, glide: 0.09, attack: 0.006, decay: 0.2, gain: 0.1, pan, reverb: 0.45 });
+    audio.tone({ freq: f * 2, to: f * 2.5, glide: 0.06, attack: 0.004, decay: 0.09, gain: 0.025, pan, reverb: 0.5, delay: 0.05 });
+    audio.tone({ freq: lerp(190, 120, k), to: lerp(120, 80, k), glide: 0.08, decay: 0.1, gain: 0.05, pan, lowpass: 500 });
+    audio.noise({ dur: 0.05, attack: 0.002, gain: 0.018, filter: 'bandpass', freq: 2400, to: 1200, q: 1.4, pan });
+  },
+  /** Right on the ring: a little run of bells, one step higher for each in a row. */
+  soapChime(streak: number, pan = 0) {
+    const base = 15 + (Math.max(0, streak - 1) % 6);
+    [0, 2, 3, 5].forEach((step, i) => {
+      audio.tone({ freq: scale(base + step), decay: 0.6, gain: 0.04, pan, reverb: 0.65, delay: 0.05 + i * 0.075 });
+      audio.tone({ freq: scale(base + step + 5), decay: 0.3, gain: 0.012, pan, reverb: 0.65, delay: 0.06 + i * 0.075 });
+    });
+    audio.noise({ dur: 0.4, attack: 0.08, gain: 0.012, filter: 'highpass', freq: 6500, pan, reverb: 0.7, delay: 0.05 });
+  },
+  /** A soap bubble going: a crisp wet snap, a plip of water, and fine spray. size 0..1. */
+  soapPop(size: number, pan = 0) {
+    if (!gate('soapPop', 30)) return;
+    const k = clamp(size, 0, 1);
+    const f = scale(Math.round(lerp(18, 11, k) + rand(-1, 1)));
+    audio.noise({ dur: 0.01, attack: 0.0005, gain: 0.16, filter: 'highpass', freq: 4200, q: 0.7, pan });
+    audio.tone({ freq: f * 2.2, to: f * 0.8, glide: 0.035, attack: 0.001, decay: 0.07, gain: 0.09, pan, reverb: 0.3 });
+    audio.tone({ freq: f * 0.8, to: f * 1.5, glide: 0.06, attack: 0.002, decay: 0.1, gain: 0.04, pan, reverb: 0.4, delay: 0.03 });
+    audio.noise({ dur: 0.16, attack: 0.002, gain: 0.03 + k * 0.03, filter: 'bandpass', freq: 3400, to: 900, q: 0.9, pan, reverb: 0.35 });
+    for (let i = 0; i < 3; i++) audio.tone({ freq: scale(20 + i * 2 + rand(0, 2)), decay: 0.04, gain: 0.012, pan: pan + rand(-0.3, 0.3), reverb: 0.4, delay: 0.05 + i * rand(0.02, 0.04) });
+  },
+
+  /** One stone set on another: a dry, warm clack. strength 0..1. */
+  stoneClack(strength: number, pan = 0) {
+    if (!gate('stoneClack', 50)) return;
+    const k = clamp(strength, 0, 1);
+    const f = scale(Math.round(lerp(10, 5, k) + rand(-1, 1)));
+    audio.noise({ dur: 0.022, attack: 0.001, gain: 0.08 + k * 0.1, filter: 'bandpass', freq: 2100 - k * 700, q: 1.3, pan, reverb: 0.15 });
+    audio.tone({ freq: f, to: f * 0.92, glide: 0.05, decay: 0.09, gain: 0.05 + k * 0.05, pan, type: 'triangle', lowpass: 2000, reverb: 0.2 });
+    audio.tone({ freq: 130, to: 90, glide: 0.06, decay: 0.08, gain: 0.05 + k * 0.1, pan, lowpass: 400 });
+  },
+
+  /** A knife under the skin: a soft wet scrape. pace 0..1.4 (past 1 it's rushing, a little brighter). */
+  peelScrape(pace: number, pan = 0) {
+    if (!gate('peelScrape', 80)) return;
+    const k = clamp(pace, 0, 1.4);
+    audio.noise({ dur: 0.1, attack: 0.012, gain: 0.018 + k * 0.03, filter: 'bandpass', freq: lerp(1500, 3400, k / 1.4), q: 1.6, pan });
+  },
+  /** The strip snapping: a small soft tick and a drop of air. */
+  peelSnap(pan = 0) {
+    audio.noise({ dur: 0.03, attack: 0.001, gain: 0.08, filter: 'bandpass', freq: 2400, q: 1, pan });
+    audio.tone({ freq: scale(9), to: scale(6), glide: 0.1, decay: 0.16, gain: 0.05, pan, type: 'triangle', reverb: 0.3 });
+  },
+
   /** One star filling in after a fruit is scored; `i` (0..2) climbs. */
   star(i: number, pan = 0) {
     audio.tone({ freq: scale(12 + i * 2), decay: 0.55, gain: 0.045, pan: pan + (i - 1) * 0.15, reverb: 0.6 });

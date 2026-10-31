@@ -11,7 +11,7 @@ import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { el, Hint } from '../../ui/components';
-import { reducedMotion } from '../../render/camera';
+import { OrderHud, OrderToast, Rising } from '../../ui/order';
 import { getSliceScene, type SliceScene } from './SliceScene';
 import { fruitFor } from './fruits';
 import { loadProgress, orderFor, saveProgress, starsFor, verdict, type Order, type Progress } from './game';
@@ -48,9 +48,6 @@ const TURN_TICK = 0.3;
 /** How far (px) a stroke off the fruit moves before it's judged a cut or a turn. */
 const DECIDE = 12;
 
-const STAR =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.6c.4 0 .7.2.9.6l2.1 4.3 4.7.7c.9.1 1.2 1.2.6 1.8l-3.4 3.3.8 4.7c.2.9-.8 1.5-1.5 1.1L12 17.9l-4.2 2.2c-.8.4-1.7-.2-1.5-1.1l.8-4.7-3.4-3.3c-.6-.6-.3-1.7.6-1.8l4.7-.7 2.1-4.3c.2-.4.5-.6.9-.6Z"/></svg>';
-
 /**
  * Room: slice. A fruit floats over a wooden board, turning slowly, and asks
  * for an order: "exactly 8 pieces, in 3 cuts". Swipe across it and the knife cuts
@@ -85,48 +82,22 @@ export class SliceRoom implements Scene {
   /** The stage behind the fruit is painted (a still: no need to repaint it each frame). */
   private painted = false;
   private paintedTheme: unknown = null;
-  private resultStars = 0;
-  private starsShown = 0;
   private firstLand = false;
 
-  private countBox: HTMLElement;
-  private countNum: HTMLElement;
-  private goal: HTMLElement;
-  private pips: HTMLElement;
-  private toast: HTMLElement;
-  private toastTitle: HTMLElement;
-  private toastSub: HTMLElement;
-  private toastStars: HTMLElement;
+  private hud = new OrderHud();
+  private toast = new OrderToast();
+  private plus = new Rising();
   private tag: HTMLElement;
   private tagName: HTMLElement;
   private trailSvg: SVGSVGElement;
   private trailPath: SVGPathElement;
-  private plus: HTMLElement;
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-slice');
     this.order = orderFor();
 
-    this.countNum = el('span', 'slice-count-num', {}, ['1']);
-    this.countBox = el('div', 'slice-count', {}, [this.countNum]);
-    this.goal = el('span', 'slice-goal');
-    this.pips = el('div', 'slice-pips', { 'aria-hidden': 'true' });
-    const hud = el('div', 'slice-hud', { role: 'status', 'aria-live': 'polite' }, [this.countBox, this.goal, this.pips]);
-
-    this.toastTitle = el('span', 'slice-toast-title');
-    this.toastSub = el('span', 'slice-toast-sub');
-    this.toastStars = el('div', 'slice-stars', { 'aria-hidden': 'true' });
-    for (let i = 0; i < 3; i++) {
-      const s = el('span', 'slice-star');
-      s.innerHTML = STAR;
-      this.toastStars.append(s);
-    }
-    this.toast = el('div', 'slice-toast', { 'aria-live': 'polite' }, [this.toastStars, this.toastTitle, this.toastSub]);
-
-    this.tagName = el('span', 'slice-tag-name');
-    this.tag = el('div', 'slice-tag', {}, [this.tagName]);
-
-    this.plus = el('div', 'slice-plus', { 'aria-hidden': 'true' });
+    this.tagName = el('span', 'order-tag-name');
+    this.tag = el('div', 'order-tag', {}, [this.tagName]);
 
     const NS = 'http://www.w3.org/2000/svg';
     this.trailSvg = document.createElementNS(NS, 'svg');
@@ -135,7 +106,7 @@ export class SliceRoom implements Scene {
     this.trailPath = document.createElementNS(NS, 'path');
     this.trailSvg.append(this.trailPath);
 
-    this.ui.append(this.trailSvg, hud, this.toast, this.plus, this.tag, this.hint.root, this.turnHint.root);
+    this.ui.append(this.trailSvg, this.hud.root, this.toast.root, this.plus.root, this.tag, this.hint.root, this.turnHint.root);
 
     this.s = getSliceScene();
     this.view = this.s.canvas;
@@ -200,37 +171,13 @@ export class SliceRoom implements Scene {
     this.tagName.textContent = fruit.name;
     this.tag.classList.remove('is-leaving');
     this.syncHud(false);
-    this.showToast(`exactly ${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'} or fewer`, 0);
+    this.toast.show(`exactly ${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'} or fewer`);
   }
 
   private syncHud(bump: boolean) {
     const n = this.s.pieces.length;
-    this.countNum.textContent = String(n);
-    this.goal.textContent = `of ${this.order.target} pieces`;
-    this.countBox.classList.toggle('is-done', n === this.order.target);
-    this.countBox.classList.toggle('is-over', n > this.order.target);
-    if (bump && !reducedMotion) {
-      this.countBox.classList.remove('is-up');
-      void this.countBox.offsetWidth;
-      this.countBox.classList.add('is-up');
-    }
-    const used = this.s.cutCount;
-    if (this.pips.childElementCount !== this.order.cuts) {
-      this.pips.replaceChildren(...Array.from({ length: this.order.cuts }, () => el('span', 'slice-pip')));
-    }
-    [...this.pips.children].forEach((p, i) => p.classList.toggle('is-used', i < used));
-  }
-
-  private showToast(title: string, sub: string, stars: number) {
-    this.toastTitle.textContent = title;
-    this.toastSub.textContent = sub;
-    this.toast.classList.toggle('has-stars', stars > 0);
-    [...this.toastStars.children].forEach((s) => s.classList.remove('is-on'));
-    this.toast.classList.add('is-shown');
-  }
-
-  private hideToast() {
-    this.toast.classList.remove('is-shown');
+    this.hud.set(n, `of ${this.order.target} pieces`, n === this.order.target, n > this.order.target, bump);
+    this.hud.setPips(this.order.cuts, this.s.cutCount);
   }
 
   // ——— input ———
@@ -350,7 +297,7 @@ export class SliceRoom implements Scene {
         material.boing(panFor((ax + bx) / 2, this.w));
         haptics.play('soft');
         this.s.sway.impulse(1.2);
-        this.showPlus('too thin', this.s.screenFruit);
+        this.plus.show('too thin', this.s.screenFruit);
         return true;
       }
       return false;
@@ -361,9 +308,9 @@ export class SliceRoom implements Scene {
     material.chop(n - before, n, pan);
     haptics.play('snap');
     this.s.face.set(n - before > 2 ? 'squeeze' : 'surprised', 0.8);
-    this.hideToast();
+    this.toast.hide();
     this.syncHud(true);
-    this.showPlus(`+${n - before}`, this.s.toScreen(res.at));
+    this.plus.show(`+${n - before}`, this.s.toScreen(res.at));
     if (!settings.value.seenHints.includes(this.id)) {
       settings.markHintSeen(this.id);
       this.hint.hide();
@@ -374,16 +321,6 @@ export class SliceRoom implements Scene {
     const t = this.order.target;
     if (n >= t || this.s.cutCount >= this.order.cuts) this.beginHold(n === t);
     return true;
-  }
-
-  /** "+3" rising from where the cut went through. */
-  private showPlus(text: string, p: { x: number; y: number }) {
-    this.plus.textContent = text;
-    this.plus.style.left = `${Math.round(p.x)}px`;
-    this.plus.style.top = `${Math.round(p.y)}px`;
-    this.plus.classList.remove('is-up');
-    void this.plus.offsetWidth;
-    this.plus.classList.add('is-up');
   }
 
   private beginHold(reached: boolean) {
@@ -410,11 +347,10 @@ export class SliceRoom implements Scene {
   private showResult() {
     const pieces = this.s.pieces.length;
     const t = this.order.target;
-    this.resultStars = starsFor(pieces, t);
-    this.starsShown = 0;
+    const stars = starsFor(pieces, t);
     const [title, sub] = verdict(pieces, t);
-    this.showToast(title, sub, this.resultStars);
-    this.progress = { stars: this.progress.stars + this.resultStars };
+    this.toast.show(title, sub, stars);
+    this.progress = { stars: this.progress.stars + stars };
     saveProgress(this.progress);
     this.phase = 'result';
     this.phaseT = 0;
@@ -423,7 +359,7 @@ export class SliceRoom implements Scene {
   private beginClear() {
     this.phase = 'clear';
     this.phaseT = 0;
-    this.hideToast();
+    this.toast.hide();
     this.s.beginClear();
   }
 
@@ -464,16 +400,7 @@ export class SliceRoom implements Scene {
         break;
       }
       case 'result': {
-        // The stars fill in one after another.
-        const due = Math.min(this.resultStars, Math.floor((this.phaseT - 0.15) / 0.28) + 1);
-        while (this.starsShown < due && this.phaseT > 0.15) {
-          const star = this.toastStars.children[this.starsShown];
-          star.classList.add('is-on');
-          material.star(this.starsShown, 0);
-          haptics.play(this.starsShown === 2 ? 'soft' : 'tick');
-          this.starsShown++;
-          if (this.starsShown === 3) material.tada();
-        }
+        this.toast.reveal(this.phaseT);
         if (this.phaseT > 3.4) this.beginClear();
         break;
       }

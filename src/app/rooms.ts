@@ -10,6 +10,12 @@ import { PourRoom } from '../rooms/pour/PourRoom';
 import { pourPreview } from '../rooms/pour/preview';
 import { SliceRoom } from '../rooms/slice/SliceRoom';
 import { slicePreview } from '../rooms/slice/preview';
+import { PeelRoom } from '../rooms/peel/PeelRoom';
+import { peelPreview } from '../rooms/peel/preview';
+import { SoapRoom } from '../rooms/soap/SoapRoom';
+import { soapPreview } from '../rooms/soap/preview';
+import { StackRoom } from '../rooms/stack/StackRoom';
+import { stackPreview } from '../rooms/stack/preview';
 
 /**
  * The room registry. Adding a toy = adding one entry here with a Scene
@@ -22,4 +28,7 @@ export const ROOMS: RoomInfo[] = [
   { id: 'wrap', name: 'bubbles', tint: roomTint.wrap, awake: true, create: (nav) => new WrapRoom(nav), preview: wrapPreview },
   { id: 'pour', name: 'pour', tint: roomTint.pour, awake: true, create: (nav) => new PourRoom(nav), preview: pourPreview },
   { id: 'slice', name: 'slice', tint: roomTint.slice, awake: true, create: (nav) => new SliceRoom(nav), preview: slicePreview },
+  { id: 'peel', name: 'peel', tint: roomTint.peel, awake: true, create: (nav) => new PeelRoom(nav), preview: peelPreview },
+  { id: 'soap', name: 'soap', tint: roomTint.soap, awake: true, create: (nav) => new SoapRoom(nav), preview: soapPreview },
+  { id: 'stack', name: 'stack', tint: roomTint.stack, awake: true, create: (nav) => new StackRoom(nav), preview: stackPreview },
 ];

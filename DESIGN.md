@@ -25,7 +25,10 @@ rest is a short list of rules.
    for exactly so many pieces in at most so many cuts, and is scored one to
    three stars (three for exact, two for one off), and your stars are kept —
    but every fruit falls apart and earns at least a star, so nothing is ever
-   failed._
+   failed. **Peel** keeps the same deal: an ever-changing width of strip, one
+   to three stars, and at least one star for trying. **Soap** has no score at
+   all: only a word beside each bubble. **Stack** has no goal: only your high
+   score, quietly at the top, to beat if you feel like it._
 4. **Feel over features.** When in doubt, make an existing interaction 20%
    more satisfying instead of adding something.
 5. **Everything is alive.** Toys breathe, blink, wobble and look at your
@@ -172,7 +175,7 @@ scene stays clean.
 
 ## 12. 3D rooms follow the same rules
 
-Some toys (**pop**, **jelly** and **slice**) are rendered in 3D with three.js. They must still
+Some toys (**pop**, **jelly**, **slice**, **soap**, **stack** and **peel**) are rendered in 3D with three.js. They must still
 look like they came from the same shelf:
 
 - **Same chrome.** Back + sound in the top bar, one bottom dock built from
@@ -195,7 +198,21 @@ look like they came from the same shelf:
 - **Same fruits.** **Pop** and **slice** use the same eight fruits, built
   the same way: one outline per fruit (`slice/fruits.ts`), one skin and
   insides shader (`render/fruitShader.ts`), and the same stems, leaves and
-  tips (`slice/extras.ts`). Pop only adds how each one bursts.
+  tips (`slice/extras.ts`). Pop only adds how each one bursts. **Peel** uses
+  them too, all but the dragon fruit, whose scales are real leaves.
+- **Same chrome.** Rooms with orders or a number share theirs (`ui/order.ts`):
+  the toast that fills in the stars, the count at the top, and the little words
+  that rise off the toy. Soap uses only the words, right beside its bubble.
+- **Fixed views.** A room's view keeps its size. Stack climbs instead of
+  pulling back: past the top of the screen it rises one stone per stone set.
+- **One rule per toy.** What breaks a peel is pace against the strip's width,
+  and nothing random. Make such rules plain enough to explain in a sentence.
+- **One rule of thumb for the shelf.** Only pop, jelly and slice show live 3D
+  on their home cards. Every other card paints a cached sprite on the stage:
+  each extra WebGL card costs the whole home screen frames on an iPhone.
+- **Rules that can't glitch.** Stack has no physics engine: the tower is exactly
+  what `stack/game.ts` says, and anything that tips off rolls away and shrinks,
+  so there are never jittery piles.
 
 ## 13. Adding a room
 
@@ -205,6 +222,7 @@ look like they came from the same shelf:
 2. Speak in `material.*` sounds and `haptics.play(word)`; if you need a new
    sound, add it to `sounds.ts` (in the shared scale) rather than the room.
 3. Add a tiny live `Preview` for the home card.
-4. Register it in `src/app/rooms.ts` (flip one of the sleeping `soon` slots
-   to `awake: true`). Navigation, transition, top bar, sound settings and
-   haptics come for free.
+4. Register it in `src/app/rooms.ts`. Navigation, transition, top bar, sound
+   settings and haptics come for free. The shelf (`.shelf` in `app.css`) is
+   three to a row with the last two sharing theirs: a ninth card needs a look
+   at that grid.

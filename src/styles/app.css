@@ -646,26 +646,29 @@ svg {
 
 .shelf {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  /* As wide as fits, but never so tall it runs under Safari's toolbar: two
-     rows of cards (1.25 × their width) and the wide card come to ~1.73 × the
-     shelf's width, below the header and the padding. */
-  --shelf-fit: calc((100dvh - var(--safe-top) - var(--safe-bottom) - 200px) / 1.73);
+  /* Three to a row, with the last two sharing theirs. */
+  grid-template-columns: repeat(6, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 12px;
+  /* As wide as fits, but never so tall it runs under Safari's toolbar: three
+     rows of cards come to ~1.3 × the shelf's width, below the header and the
+     padding. */
+  --shelf-fit: calc((100dvh - var(--safe-top) - var(--safe-bottom) - 200px) / 1.3);
   width: min(100%, 440px, var(--shelf-fit));
 }
 
 .card {
   position: relative;
+  grid-column: span 2;
   aspect-ratio: 0.8;
   border-radius: var(--r-lg);
   background: transparent;
 }
 
-/* An odd card out at the end spans the row: a wide, shorter card. */
-.card:last-child:nth-child(odd) {
-  grid-column: 1 / -1;
-  aspect-ratio: 2.1;
+/* The last two share a row: wider cards, as tall as the rest. */
+.card:nth-last-child(-n + 2) {
+  grid-column: span 3;
+  aspect-ratio: auto;
 }
 
 /* A 3D toy's own canvas, shown on its card once home has settled (see HomeScene.draw). */
@@ -686,11 +689,11 @@ svg {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 12px;
+  bottom: 9px;
   text-align: center;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 18px;
+  font-size: 16px;
   color: var(--ink);
   transition: transform 420ms var(--ease-overshoot);
 }
@@ -1090,14 +1093,14 @@ svg {
   }
 }
 
-/* ——— slice: pieces so far, the order, the knives left, how it went ——— */
+/* ——— orders (slice, soap, stack, peel): the count, the order, what's left, how it went ——— */
 
-.room-slice {
-  --slice-gold: #f3d27a;
-  --slice-coral: #f4a291;
+.scene-ui {
+  --order-gold: #f3d27a;
+  --order-coral: #f4a291;
 }
 
-.slice-hud {
+.order-hud {
   position: absolute;
   top: calc(var(--safe-top) + 14px);
   left: 50%;
@@ -1108,13 +1111,13 @@ svg {
   pointer-events: none;
 }
 
-.slice-count {
+.order-count {
   height: 54px;
   display: flex;
   align-items: flex-end;
 }
 
-.slice-count-num {
+.order-count-num {
   display: block;
   font-family: var(--font-display);
   font-weight: 600;
@@ -1126,27 +1129,27 @@ svg {
   transition: color var(--d-base) var(--ease-out);
 }
 
-.slice-count.is-done .slice-count-num {
-  color: var(--slice-gold);
+.order-count.is-done .order-count-num {
+  color: var(--order-gold);
 }
 
 /* Past the order: a soft coral, not an alarm. */
-.slice-count.is-over .slice-count-num {
-  color: var(--slice-coral);
+.order-count.is-over .order-count-num {
+  color: var(--order-coral);
 }
 
-.slice-count.is-up .slice-count-num {
-  animation: slice-count-up 420ms var(--ease-overshoot) both;
+.order-count.is-up .order-count-num {
+  animation: order-count-up 420ms var(--ease-overshoot) both;
 }
 
-@keyframes slice-count-up {
+@keyframes order-count-up {
   from {
     transform: translateY(40%) scale(0.9);
     opacity: 0.3;
   }
 }
 
-.slice-goal {
+.order-goal {
   margin-top: 4px;
   font-size: 13px;
   font-weight: 700;
@@ -1155,13 +1158,13 @@ svg {
 }
 
 /* One small blade per cut in the order; a used one fades to an outline. */
-.slice-pips {
+.order-pips {
   display: flex;
   gap: 6px;
   margin-top: 9px;
 }
 
-.slice-pip {
+.order-pip {
   width: 16px;
   height: 6px;
   border-radius: 3px;
@@ -1172,13 +1175,13 @@ svg {
     transform 420ms var(--ease-overshoot);
 }
 
-.slice-pip.is-used {
+.order-pip.is-used {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--ink-faint);
   transform: scaleX(0.8);
 }
 
-.slice-toast {
+.order-toast {
   position: absolute;
   top: calc(var(--safe-top) + 126px);
   left: 50%;
@@ -1196,12 +1199,12 @@ svg {
     opacity var(--d-base) var(--ease-out);
 }
 
-.slice-toast.is-shown {
+.order-toast.is-shown {
   opacity: 1;
   transform: translate(-50%, 0);
 }
 
-.slice-toast-title {
+.order-toast-title {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 26px;
@@ -1209,23 +1212,23 @@ svg {
   color: var(--ink);
 }
 
-.slice-toast-sub {
+.order-toast-sub {
   font-size: 14px;
   font-weight: 700;
   color: var(--ink-soft);
 }
 
-.slice-stars {
+.order-stars {
   display: none;
   gap: 6px;
   margin-bottom: 6px;
 }
 
-.slice-toast.has-stars .slice-stars {
+.order-toast.has-stars .order-stars {
   display: flex;
 }
 
-.slice-star svg {
+.order-star svg {
   display: block;
   width: 30px;
   height: 30px;
@@ -1238,27 +1241,28 @@ svg {
     stroke 200ms var(--ease-out);
 }
 
-.slice-star:nth-child(2) svg {
+.order-star:nth-child(2) svg {
   width: 36px;
   height: 36px;
   margin-top: -6px;
 }
 
-.slice-star.is-on svg {
-  fill: var(--slice-gold);
-  stroke: var(--slice-gold);
-  animation: slice-star-in 520ms var(--ease-overshoot) both;
+.order-star.is-on svg {
+  fill: var(--order-gold);
+  stroke: var(--order-gold);
+  animation: order-star-in 520ms var(--ease-overshoot) both;
 }
 
-@keyframes slice-star-in {
+@keyframes order-star-in {
   from {
     transform: scale(0.4) rotate(-20deg);
   }
 }
 
 /* "+3", rising off the cut. */
-.slice-plus {
+.order-plus {
   position: absolute;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 22px;
@@ -1269,11 +1273,11 @@ svg {
   transform: translate(-50%, -50%);
 }
 
-.slice-plus.is-up {
-  animation: slice-plus 900ms var(--ease-out) both;
+.order-plus.is-up {
+  animation: order-plus 900ms var(--ease-out) both;
 }
 
-@keyframes slice-plus {
+@keyframes order-plus {
   0% {
     opacity: 0;
     transform: translate(-50%, -30%) scale(0.7);
@@ -1289,7 +1293,7 @@ svg {
 }
 
 /* The fruit's name and the level, under the board. */
-.slice-tag {
+.order-tag {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -1304,7 +1308,7 @@ svg {
     transform 600ms var(--ease-out);
 }
 
-.slice-tag-name {
+.order-tag-name {
   font-family: var(--font-display);
   font-weight: 500;
   font-size: 15px;
@@ -1312,9 +1316,96 @@ svg {
   color: var(--ink-soft);
 }
 
-.slice-tag.is-leaving {
+.order-tag.is-leaving {
   opacity: 0;
   transform: translate(-50%, 4px);
+}
+
+/* ——— soap: the size to blow to ——— */
+
+.soap-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border: 2.5px dashed rgba(255, 244, 247, 0.72);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity var(--d-calm) var(--ease-out),
+    border-color var(--d-base) var(--ease-out);
+}
+
+.soap-ring.is-shown {
+  opacity: 1;
+}
+
+.soap-ring.is-near {
+  border-color: var(--order-gold);
+}
+
+.soap-ring.is-new {
+  animation: soap-ring-in 320ms var(--ease-out) both;
+}
+
+@keyframes soap-ring-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.room-soap .order-plus.is-up {
+  animation-duration: 1500ms;
+}
+
+/* ——— peel: the circle to follow, and how far round the fruit it's come ——— */
+
+.peel-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--d-calm) var(--ease-out);
+}
+
+.peel-ring.is-shown {
+  opacity: 1;
+}
+
+.peel-ring circle {
+  fill: none;
+}
+
+.peel-track {
+  stroke: rgba(255, 244, 247, 0.34);
+  stroke-width: 0.7;
+  stroke-dasharray: 0.7 2.4;
+  stroke-linecap: round;
+}
+
+.peel-arc {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-dasharray: 0 1;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke var(--d-base) var(--ease-out);
+}
+
+.peel-ring.is-back .peel-arc {
+  transform: rotate(-90deg) scaleY(-1);
+}
+
+.peel-ring.is-tight .peel-arc {
+  stroke: var(--order-coral);
+}
+
+.peel-ring.is-done .peel-arc {
+  stroke: var(--order-gold);
 }
 
 /* The knife's trail: a pale ribbon behind the finger. */
@@ -1332,14 +1423,17 @@ svg {
 }
 
 /* No dock here: the hint sits low, under the fruit's name. */
-.room-slice .hint {
+.room-slice .hint,
+.room-soap .hint,
+.room-stack .hint,
+.room-peel .hint {
   bottom: calc(var(--safe-bottom) + 22px);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .slice-count.is-up .slice-count-num,
-  .slice-star.is-on svg,
-  .slice-plus.is-up {
+  .order-count.is-up .order-count-num,
+  .order-star.is-on svg,
+  .order-plus.is-up {
     animation-duration: 1ms;
   }
 }

@@ -5,6 +5,7 @@ import { clamp, lerp, rand } from '../../core/math';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { Face, drawFace } from '../../render/face';
+import { blobTexture, woodTexture } from '../../render/table';
 import { SLICE_FRUITS, type SliceFruit } from './fruits';
 import { MAX_CUTS, dressSlice, makeSliceMaterial, type SliceUniforms } from './material';
 import { corners, cutAll, cutMask, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3 } from './polyhedron';
@@ -855,7 +856,7 @@ export class SliceScene {
 }
 
 /** The whole fruit, smooth: its outline turned round the core, shaded by the skin's true normals. */
-function wholeGeometry(shape: Shape, radii: V3) {
+export function wholeGeometry(shape: Shape, radii: V3) {
   const { lat, lon } = WHOLE;
   const pos: number[] = [];
   const nrm: number[] = [];
@@ -940,48 +941,10 @@ function contactCorners(p: Poly): V3[] {
   return [...cut, ...skin.filter((_, i) => i % step === 0)];
 }
 
-/** A soft round shadow, warm like every shadow in the app. */
-function blobTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, 'rgba(110, 66, 40, 0.55)');
-  grad.addColorStop(0.45, 'rgba(110, 66, 40, 0.3)');
-  grad.addColorStop(1, 'rgba(110, 66, 40, 0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
 const smooth01 = (x: number) => {
   const t = clamp(x, 0, 1);
   return t * t * (3 - 2 * t);
 };
-
-/** Pale, soft wood: long grain and a few darker streaks. */
-function woodTexture() {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 344;
-  const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#E2B886';
-  ctx.fillRect(0, 0, c.width, c.height);
-  for (let i = 0; i < 90; i++) {
-    const y = Math.random() * c.height;
-    ctx.strokeStyle = `rgba(${Math.random() < 0.5 ? '170,112,62' : '250,214,168'},${rand(0.08, 0.22)})`;
-    ctx.lineWidth = rand(0.6, 2.6);
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    for (let x = 0; x <= c.width; x += 32) ctx.lineTo(x, y + Math.sin(x * 0.01 + i) * rand(1, 4));
-    ctx.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 
 let instance: SliceScene | null = null;
 /** The room's table (the home card runs a small one of its own). */
