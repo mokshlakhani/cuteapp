@@ -117,7 +117,7 @@ export function pourPreview(): Preview {
       const t = theme.current;
       // Small enough that the tallest pourer, held above the glass, still fits the card.
       const gW = Math.min(w * 0.27, h * 0.27);
-      const floor = y + h * 0.72;
+      const floor = y + h * 0.86;
       const home = glassShape(x + w / 2, floor, gW);
       // Sliding in from the left and off to the right, leaning as it goes.
       let off = 0;

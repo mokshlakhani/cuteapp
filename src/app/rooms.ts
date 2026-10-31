@@ -23,12 +23,12 @@ import { stackPreview } from '../rooms/stack/preview';
  * (navigation, transitions, chrome, sound, haptics) is inherited.
  */
 export const ROOMS: RoomInfo[] = [
-  { id: 'melon', name: 'pop', tint: roomTint.melon, awake: true, create: (nav) => new MelonRoom(nav), preview: melonPreview },
-  { id: 'jelly', name: 'jelly', tint: roomTint.jelly, awake: true, create: (nav) => new JellyRoom(nav), preview: jellyPreview },
-  { id: 'wrap', name: 'bubbles', tint: roomTint.wrap, awake: true, create: (nav) => new WrapRoom(nav), preview: wrapPreview },
-  { id: 'pour', name: 'pour', tint: roomTint.pour, awake: true, create: (nav) => new PourRoom(nav), preview: pourPreview },
-  { id: 'slice', name: 'slice', tint: roomTint.slice, awake: true, create: (nav) => new SliceRoom(nav), preview: slicePreview },
-  { id: 'peel', name: 'peel', tint: roomTint.peel, awake: true, create: (nav) => new PeelRoom(nav), preview: peelPreview },
-  { id: 'soap', name: 'soap', tint: roomTint.soap, awake: true, create: (nav) => new SoapRoom(nav), preview: soapPreview },
-  { id: 'stack', name: 'stack', tint: roomTint.stack, awake: true, create: (nav) => new StackRoom(nav), preview: stackPreview },
+  { id: 'melon', name: 'pop', blurb: 'tap till the fruit bursts', tint: roomTint.melon, awake: true, create: (nav) => new MelonRoom(nav), preview: melonPreview },
+  { id: 'jelly', name: 'jelly', blurb: 'slice and squish the jelly', tint: roomTint.jelly, awake: true, create: (nav) => new JellyRoom(nav), preview: jellyPreview },
+  { id: 'wrap', name: 'bubbles', blurb: 'pop the bubble wrap', tint: roomTint.wrap, awake: true, create: (nav) => new WrapRoom(nav), preview: wrapPreview },
+  { id: 'pour', name: 'pour', blurb: 'fill it to the line', tint: roomTint.pour, awake: true, create: (nav) => new PourRoom(nav), preview: pourPreview },
+  { id: 'slice', name: 'slice', blurb: 'cut the exact pieces', tint: roomTint.slice, awake: true, create: (nav) => new SliceRoom(nav), preview: slicePreview },
+  { id: 'peel', name: 'peel', blurb: 'peel it in one strip', tint: roomTint.peel, awake: true, create: (nav) => new PeelRoom(nav), preview: peelPreview },
+  { id: 'soap', name: 'soap', blurb: 'blow it to the ring', tint: roomTint.soap, awake: true, create: (nav) => new SoapRoom(nav), preview: soapPreview },
+  { id: 'stack', name: 'stack', blurb: 'build the tallest tower', tint: roomTint.stack, awake: true, create: (nav) => new StackRoom(nav), preview: stackPreview },
 ];

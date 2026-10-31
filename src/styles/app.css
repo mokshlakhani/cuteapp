@@ -15,8 +15,10 @@
   --ink-faint: #c9a5d1;
   --shadow-rgb: 48, 18, 58;
   --accent: #a9d39a;
-  --font-display: 'Fredoka', 'Nunito', ui-rounded, system-ui, sans-serif;
+  --font-display: 'Lilita One', 'Nunito', ui-rounded, system-ui, sans-serif;
   --font-text: 'Nunito', ui-rounded, system-ui, sans-serif;
+  --logo-edge: #c24a86;
+  --logo-deep: #4a2356;
   --r-sm: 14px;
   --r-md: 20px;
   --r-lg: 28px;
@@ -86,6 +88,8 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-text);
+  /* Lilita One has one weight: never let the browser fake a bolder one. */
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
@@ -224,8 +228,7 @@ svg {
     background-color var(--d-base) var(--ease-out);
 }
 
-.btn.is-pressed,
-.card.is-pressed .card-label {
+.btn.is-pressed {
   transform: scale(0.9);
   transition-duration: 90ms;
   transition-timing-function: var(--ease-out);
@@ -609,7 +612,7 @@ svg {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: calc(var(--safe-top) + 64px) 20px calc(var(--safe-bottom) + 28px);
+  padding: calc(var(--safe-top) + 12px) 14px calc(var(--safe-bottom) + 22px);
   pointer-events: none;
 }
 
@@ -623,61 +626,64 @@ svg {
 }
 
 .home-header {
-  text-align: center;
-  margin-bottom: 26px;
-}
-
-.home-greeting {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--ink-soft);
-  letter-spacing: 0.02em;
+  width: 100%;
+  max-width: 460px;
+  /* Clear of the sound button, top right. */
+  padding: 0 66px 0 6px;
+  margin-bottom: 16px;
 }
 
 .home-title {
   margin: 0;
   font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 36px;
-  letter-spacing: -0.01em;
+  font-weight: 400;
+  font-size: 44px;
+  line-height: 1;
+  white-space: nowrap;
   color: var(--ink);
+  text-shadow:
+    0 3px 0 var(--logo-edge),
+    0 6px 0 var(--logo-deep);
 }
 
 .shelf {
   display: grid;
-  /* Three to a row, with the last two sharing theirs. */
-  grid-template-columns: repeat(6, 1fr);
-  grid-auto-rows: 1fr;
-  gap: 12px;
-  /* As wide as fits, but never so tall it runs under Safari's toolbar: three
-     rows of cards come to ~1.3 × the shelf's width, below the header and the
-     padding. */
-  --shelf-fit: calc((100dvh - var(--safe-top) - var(--safe-bottom) - 200px) / 1.3);
-  width: min(100%, 440px, var(--shelf-fit));
+  /* Two across and four down: every tile the same size (ROOM_ROWS in tokens.ts). */
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  /* Rows leave room for each tile's chunky edge. */
+  gap: 14px 11px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 460px;
+  max-height: 780px;
+  padding-bottom: 6px;
 }
 
 .card {
+  /* The plate's height: PLATE in HomeScene.ts. */
+  --plate: 50px;
   position: relative;
-  grid-column: span 2;
-  aspect-ratio: 0.8;
   border-radius: var(--r-lg);
   background: transparent;
 }
 
-/* The last two share a row: wider cards, as tall as the rest. */
-.card:nth-last-child(-n + 2) {
-  grid-column: span 3;
-  aspect-ratio: auto;
+/* What sinks into the edge when a tile's pressed (see HomeScene.drawCard). */
+.card-face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
 /* A 3D toy's own canvas, shown on its card once home has settled (see HomeScene.draw). */
 .card-toy {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
   width: 100%;
-  height: 100%;
-  border-radius: inherit;
+  height: calc(100% - var(--plate));
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
   pointer-events: none;
 }
 
@@ -685,17 +691,103 @@ svg {
   visibility: hidden;
 }
 
-.card-label {
+.card-plate {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 9px;
+  bottom: 0;
+  height: var(--plate);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 8px;
+  text-align: center;
+  color: #fff;
+}
+
+.card-label {
+  font-family: var(--font-display);
+  font-size: 23px;
+  line-height: 1.05;
+}
+
+.card-blurb {
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.card-score {
+  position: absolute;
+  right: 9px;
+  top: 9px;
+  padding: 2px 9px 3px;
+  border-radius: 999px;
+  background: var(--tile-edge);
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: #fff;
+}
+
+.card-score:empty {
+  display: none;
+}
+
+/* A game's name, big, for a moment as you walk in. */
+.room-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
   text-align: center;
   font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 16px;
+  font-size: 64px;
+  line-height: 1;
   color: var(--ink);
-  transition: transform 420ms var(--ease-overshoot);
+  text-shadow:
+    0 4px 0 var(--logo-edge),
+    0 8px 0 var(--logo-deep);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 9;
+}
+
+.room-title.is-up {
+  animation: room-title 1500ms var(--ease-out) 240ms both;
+}
+
+@keyframes room-title-still {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  16%,
+  72% {
+    opacity: 1;
+  }
+}
+
+@keyframes room-title {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  16% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  26% {
+    transform: scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
 }
 
 .sleepers {
@@ -725,20 +817,14 @@ svg {
 
 /* Short phones: tighten the shelf so everything fits without scrolling. */
 @media (max-height: 700px) {
-  .home {
-    padding-top: calc(var(--safe-top) + 56px);
+  .home-title {
+    font-size: 34px;
   }
   .home-header {
-    margin-bottom: 16px;
-  }
-  .home-title {
-    font-size: 30px;
+    margin-bottom: 10px;
   }
   .shelf {
-    width: min(100%, 360px, var(--shelf-fit));
-  }
-  .sleepers {
-    width: min(100%, 360px);
+    gap: 12px 9px;
   }
 }
 
@@ -1437,5 +1523,8 @@ svg {
   .order-star.is-on svg,
   .order-plus.is-up {
     animation-duration: 1ms;
+  }
+  .room-title.is-up {
+    animation-name: room-title-still;
   }
 }

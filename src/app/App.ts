@@ -30,6 +30,7 @@ export class App implements RoomNav {
   readonly stage: Stage;
   private input: InputRouter;
   private layer: HTMLDivElement;
+  private roomTitle = el('div', 'room-title', { 'aria-live': 'polite' });
   /** 3D rooms' own canvases, between the stage and the grain (see Scene.view). */
   private world: HTMLDivElement;
   private topbar: TopBar;
@@ -54,7 +55,7 @@ export class App implements RoomNav {
     this.layer = el('div', 'ui-layer');
     host.append(this.layer);
     this.topbar = new TopBar(() => this.home());
-    host.append(this.topbar.root);
+    host.append(this.topbar.root, this.roomTitle);
 
     this.input = new InputRouter(this.stage.canvas);
     const unlock = () => {
@@ -144,10 +145,22 @@ export class App implements RoomNav {
     requestAnimationFrame(() => to.ui.classList.add('is-active'));
     this.topbar.showBack(to.id !== 'home');
     this.topbar.menu.toggle(false);
+    this.announce(to);
     this.current = to;
     this.transition = { from, to, t: 0, ox: origin.x, oy: origin.y, forward };
     uiSound.whoosh(forward);
     haptics.play('tick');
+  }
+
+  /** A game's name, big, for a moment as you walk in: no doubt what you're playing. */
+  private announce(to: Scene) {
+    const t = this.roomTitle;
+    t.classList.remove('is-up');
+    const name = this.rooms.find((r) => r.id === to.id)?.name;
+    if (!name) return;
+    t.textContent = name;
+    void t.offsetWidth;
+    t.classList.add('is-up');
   }
 
   start() {

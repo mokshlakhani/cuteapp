@@ -7,11 +7,11 @@ import { Sheet, type Bubble } from './Sheet';
 import { drawSheet, FILMS } from './draw';
 
 /** Seconds between quiet pops, and how slowly each bubble gives. */
-const EVERY: [number, number] = [3.5, 5.5];
+const EVERY: [number, number] = [1.8, 2.8];
 const SLOW_PRESS = 1.1;
 
 /**
- * A little patch of bubble wrap for the home card. Every few seconds one
+ * A little patch of bubble wrap for the home card. Every couple of seconds one
  * bubble slowly sinks in and softly gives, all by itself, without a sound.
  * Poke it and one pops for you, with sound; pop them all and it quietly puffs
  * back up.
@@ -86,7 +86,7 @@ export function wrapPreview(): Preview {
         sheet = make(pw, ph);
         key = k;
       }
-      sheet.moveTo(x + (w - sheet.W) / 2, y + h * 0.47 - sheet.H / 2);
+      sheet.moveTo(x + (w - sheet.W) / 2, y + h * 0.5 - sheet.H / 2);
       drawSheet(ctx, theme.current, FILMS[0], sheet);
     },
     poke() {

@@ -6,7 +6,7 @@ import { SLICE_FRUITS } from './fruits';
 import { norm, type V3 } from './polyhedron';
 
 /** Seconds between its quiet cuts. */
-const EVERY: [number, number] = [5.5, 8];
+const EVERY: [number, number] = [3, 4.5];
 
 /**
  * The home card: a fruit of its own floating over the board and turning
@@ -31,7 +31,7 @@ export function slicePreview(): Preview {
     if (key === size) return;
     size = key;
     // Above the label, with room round it so the fruit never touches the card's edge.
-    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), 0, h * 0.7, 1.2);
+    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.13, h * 0.83, 1.2);
   };
 
   return {

@@ -2,26 +2,30 @@ import type { Preview, RoomInfo, RoomNav, Scene } from '../../app/scene';
 import type { Pointer } from '../../core/input';
 import type { Insets } from '../../render/stage';
 import { theme } from '../../design/theme';
-import { duration, roomTint, radius, type, type Theme } from '../../design/tokens';
+import { duration, roomTint, radius, tile, type, type Theme } from '../../design/tokens';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { mix, rgba } from '../../core/color';
-import { rand, TAU } from '../../core/math';
+import { clamp, rand, TAU } from '../../core/math';
 import { material } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
 import { contactShadow, paintBackdrop, roundRect, gloss, shade } from '../../render/paint';
 import { Face, drawFace } from '../../render/face';
 import { el, tactile } from '../../ui/components';
+import { bestFor } from './scores';
 
 interface Card {
   info: RoomInfo;
   node: HTMLElement;
+  /** Everything that sinks when the tile's pressed. */
+  top: HTMLElement;
+  score: HTMLElement;
   preview: Preview;
   /** The card without its toy, painted once (see paintFrame). */
   frame: HTMLCanvasElement;
   /** What the frame was last painted for (size, theme). */
   frameKey: string;
-  /** The press scale it was last shown at, once home has settled (see draw). */
+  /** The press it was last shown at, once home has settled (see draw). */
   shownScale: number;
   press: Spring;
   rect: { x: number; y: number; w: number; h: number };
@@ -31,22 +35,22 @@ interface Card {
   nextZ: number;
 }
 
-/** Room round a card's frame for its soft shadow, and round a sleeper for its z's (px). */
-const FRAME_PAD = 12;
+/** Room round a card's frame for its corners, and round a sleeper for its z's (px). */
+const FRAME_PAD = 2;
 const SLEEPER_PAD = 36;
-
-function greeting() {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 12) return 'good morning';
-  if (h >= 12 && h < 17) return 'good afternoon';
-  if (h >= 17 && h < 22) return 'good evening';
-  return 'hello, night owl';
-}
+/** How deep a tile's chunky edge is, and so how far it sinks when pressed (px). */
+const EDGE = 6;
+/** How far the press spring goes, for the whole sink. */
+const PRESS = 0.05;
+/** The plate along a tile's foot, with its name on (px; `--plate` in app.css). */
+const PLATE = 50;
 
 /**
- * Home: a quiet shelf of toys. Each awake toy is shown alive on its card —
- * you see what it does before you touch it. Sleeping spots hint that more
- * toys will move in later, without a single "coming soon" banner.
+ * Home: the game's front page. Each game is a chunky tile in its own colour,
+ * all the same size, that sinks into its edge like a real button: its toy
+ * alive on top, and a plate along its foot saying what it's called and what
+ * you do, with your best in the corner. Sleeping spots hint that more toys will move in later,
+ * without a single "coming soon" banner.
  */
 export class HomeScene implements Scene {
   readonly id = 'home';
@@ -56,7 +60,6 @@ export class HomeScene implements Scene {
   private w = 0;
   private h = 0;
   private time = 0;
-  private greet: HTMLElement;
   private blobs = new Map<string, HTMLCanvasElement>();
   /** When the cards may show their own canvases (see draw). */
   private liveFrom = Infinity;
@@ -72,9 +75,8 @@ export class HomeScene implements Scene {
     rooms: RoomInfo[],
   ) {
     this.ui = el('div', 'home');
-    this.greet = el('p', 'home-greeting', {}, [greeting()]);
     const title = el('h1', 'home-title', {}, ['soft spot']);
-    const header = el('header', 'home-header', {}, [this.greet, title]);
+    const header = el('header', 'home-header', {}, [title]);
     const shelf = el('div', 'shelf');
     const sleepers = el('div', 'sleepers');
     for (const info of rooms) {
@@ -82,12 +84,20 @@ export class HomeScene implements Scene {
       const node = el(
         awake ? 'button' : 'div',
         awake ? 'card' : 'sleeper',
-        awake ? { type: 'button', 'aria-label': `open ${info.name}` } : { 'aria-hidden': 'true' },
+        awake ? { type: 'button', 'aria-label': `open ${info.name}: ${info.blurb}` } : { 'aria-hidden': 'true' },
       );
-      node.append(el('span', awake ? 'card-label' : 'sleeper-label', {}, [awake ? info.name : 'soon']));
+      const colours = tile[info.id];
+      if (colours) node.style.setProperty('--tile-edge', colours.edge);
+      const top = el('span', 'card-face');
+      const score = el('span', 'card-score');
+      if (awake) top.append(el('span', 'card-plate', {}, [el('span', 'card-label', {}, [info.name]), el('span', 'card-blurb', {}, [info.blurb])]), score);
+      else top.append(el('span', 'sleeper-label', {}, ['soon']));
+      node.append(top);
       const card: Card = {
         info,
         node,
+        top,
+        score,
         preview: info.preview(),
         frame: document.createElement('canvas'),
         frameKey: '',
@@ -100,7 +110,7 @@ export class HomeScene implements Scene {
       const toy = card.preview.canvas;
       if (toy) {
         toy.classList.add('card-toy', 'is-hidden');
-        node.prepend(toy);
+        top.prepend(toy);
       }
       if (!awake) {
         card.face = new Face();
@@ -108,7 +118,7 @@ export class HomeScene implements Scene {
         card.wiggle = new Spring(0, springs.wobbly);
       }
       const press = () => {
-        card.press.target = 0.95;
+        card.press.target = 1 - PRESS;
       };
       node.addEventListener('pointerdown', press);
       const unpress = () => {
@@ -121,7 +131,6 @@ export class HomeScene implements Scene {
         node,
         () => {
           card.press.target = 1;
-          card.press.impulse(0.6);
           if (awake) {
             card.preview.poke();
             const r = node.getBoundingClientRect();
@@ -162,7 +171,7 @@ export class HomeScene implements Scene {
   }
 
   enter() {
-    this.greet.textContent = greeting();
+    this.showScores();
     requestAnimationFrame(() => this.measure());
     // The cards show their own canvases once home has finished blooming in.
     this.liveFrom = performance.now() + duration.room + 60;
@@ -170,6 +179,25 @@ export class HomeScene implements Scene {
 
   leave() {
     this.liveFrom = Infinity;
+  }
+
+  /** Your bests, fresh each time you come back. */
+  private showScores() {
+    for (const c of this.cards) {
+      const best = bestFor(c.info.id);
+      c.score.textContent = best === null ? '' : `best ${best}`;
+    }
+  }
+
+  /** How far a card has sunk into its edge (px). */
+  private sink(c: Card) {
+    return (clamp((1 - c.press.value) / PRESS, -0.25, 1.2) * EDGE * 100 | 0) / 100;
+  }
+
+  /** Where a card's toy goes: all of it above the plate. */
+  private toyRect(c: Card) {
+    const { x, y, w, h } = c.rect;
+    return { x, y, w, h: h - PLATE };
   }
 
   pointerDown(_p: Pointer) {}
@@ -221,11 +249,12 @@ export class HomeScene implements Scene {
     // 3D toys render themselves, pressed with their card.
     let pressing = false;
     for (const c of this.cards) {
-      const s = Math.round(c.press.value * 1000) / 1000;
-      if (s !== 1 || s !== c.shownScale) pressing = true;
-      if (c.preview.render && s !== c.shownScale) toyScale(c, s);
+      const s = this.sink(c);
+      if (s !== 0 || s !== c.shownScale) pressing = true;
+      if (s !== c.shownScale) faceSink(c, s);
       c.shownScale = s;
-      if (c.preview.render && c.rect.w) c.preview.render(c.rect.w, c.rect.h);
+      const toy = this.toyRect(c);
+      if (c.preview.render && toy.w) c.preview.render(toy.w, toy.h);
     }
     if (pressing || this.stageKey !== key) {
       // Everything, with the pressed card at its pressed size.
@@ -249,8 +278,13 @@ export class HomeScene implements Scene {
         ctx.rect(px, py, pw, ph);
         ctx.clip();
         ctx.drawImage(this.still, px * dpr, py * dpr, pw * dpr, ph * dpr, px, py, pw, ph);
-        if (c.info.awake) c.preview.draw(ctx, x, y, w, h);
-        else this.drawSleeper(ctx, t, c, x, y);
+        const toy = this.toyRect(c);
+        if (c.info.awake) {
+          ctx.beginPath();
+          ctx.rect(toy.x, toy.y, toy.w, toy.h);
+          ctx.clip();
+          c.preview.draw(ctx, toy.x, toy.y, toy.w, toy.h);
+        } else this.drawSleeper(ctx, t, c, x, y);
         ctx.restore();
       }
     }
@@ -268,6 +302,7 @@ export class HomeScene implements Scene {
       const { x, y, w, h } = c.rect;
       if (!w || !c.info.awake) continue;
       this.paintFrame(t, c);
+      this.drawEdge(g, t, c);
       g.drawImage(c.frame, x - FRAME_PAD, y - FRAME_PAD, w + FRAME_PAD * 2, h + FRAME_PAD * 2);
     }
   }
@@ -277,36 +312,51 @@ export class HomeScene implements Scene {
     this.settled = on;
     for (const c of this.cards) {
       c.preview.canvas?.classList.toggle('is-hidden', !on);
-      c.shownScale = 1;
-      if (c.preview.canvas) toyScale(c, 1);
+      c.shownScale = 0;
+      faceSink(c, 0);
     }
   }
 
   /**
-   * One card at its pressed size: its frame and its toy, or a sleeper. A toy
-   * showing its own canvas is left out unless `all`. The toy is clipped to
-   * the card's rectangle: a rounded clip is costly in Safari, and the toys
-   * keep clear of the corners.
+   * One card, sunk as far as it's pressed: its edge stays where it is, and its
+   * frame and toy go down into it. A toy showing its own canvas is left out
+   * unless `all`. The toy is clipped to the card's rectangle: a rounded clip
+   * is costly in Safari, and the toys keep clear of the corners.
    */
   private drawCard(ctx: CanvasRenderingContext2D, t: Theme, c: Card, all: boolean) {
     const { x, y, w, h } = c.rect;
     if (!w) return;
-    const s = c.press.value;
+    if (!c.info.awake) {
+      this.drawSleeper(ctx, t, c, x, y);
+      return;
+    }
+    this.drawEdge(ctx, t, c);
     ctx.save();
-    ctx.translate(x + w / 2, y + h / 2);
-    ctx.scale(s, s);
-    ctx.translate(-(x + w / 2), -(y + h / 2));
-    if (c.info.awake) {
-      this.paintFrame(t, c);
-      ctx.drawImage(c.frame, x - FRAME_PAD, y - FRAME_PAD, w + FRAME_PAD * 2, h + FRAME_PAD * 2);
-      if (all || !c.preview.render) {
-        ctx.beginPath();
-        ctx.rect(x, y, w, h);
-        ctx.clip();
-        c.preview.draw(ctx, x, y, w, h);
-      }
-    } else this.drawSleeper(ctx, t, c, x, y);
+    ctx.translate(0, this.sink(c));
+    this.paintFrame(t, c);
+    ctx.drawImage(c.frame, x - FRAME_PAD, y - FRAME_PAD, w + FRAME_PAD * 2, h + FRAME_PAD * 2);
+    if (all || !c.preview.render) {
+      const toy = this.toyRect(c);
+      ctx.beginPath();
+      ctx.rect(toy.x, toy.y, toy.w, toy.h);
+      ctx.clip();
+      c.preview.draw(ctx, toy.x, toy.y, toy.w, toy.h);
+    }
     ctx.restore();
+  }
+
+  /** The dusk theme dims the tiles with the rest of the world. */
+  private colours(t: Theme, c: Card) {
+    const k = tile[c.info.id] ?? { face: t.surface, edge: t.surfaceSunk };
+    return t.light ? k : { face: mix(k.face, t.bg, 0.22), edge: mix(k.edge, t.bg, 0.22) };
+  }
+
+  /** The chunky edge a tile sits on and sinks into. */
+  private drawEdge(ctx: CanvasRenderingContext2D, t: Theme, c: Card) {
+    const { x, y, w, h } = c.rect;
+    roundRect(ctx, x, y + EDGE, w, h, radius.lg);
+    ctx.fillStyle = this.colours(t, c).edge;
+    ctx.fill();
   }
 
   /** Size a card's own canvas to w×h CSS px, clear it, and hand back its context in CSS px. */
@@ -337,36 +387,22 @@ export class HomeScene implements Scene {
     this.drawFrame(g, t, c, w, h);
   }
 
-  /** A card without its toy: soft shadow, body, the little floor, a lit top edge. */
+  /** A tile's top without its toy: one flat colour, lit along its upper edge, on its plate. */
   private drawFrame(ctx: CanvasRenderingContext2D, t: Theme, c: Card, w: number, h: number) {
     const r = radius.lg;
-    // Soft layered shadow (warm, never grey).
-    for (let i = 3; i >= 1; i--) {
-      roundRect(ctx, -i * 1.5, i * 3, w + i * 3, h + i * 2, r + i * 2);
-      ctx.fillStyle = `rgba(${t.shadowRgb},${0.035 * t.shadowStrength})`;
-      ctx.fill();
-    }
-    const tintAmt = t.light ? 0.32 : 0.16;
     roundRect(ctx, 0, 0, w, h, r);
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, mix(t.surface, c.info.tint, tintAmt * 0.6));
-    g.addColorStop(1, mix(t.surface, c.info.tint, tintAmt));
-    ctx.fillStyle = g;
+    ctx.fillStyle = this.colours(t, c).face;
     ctx.fill();
-    // A little floor inside the card, matching the room it opens.
     ctx.save();
     roundRect(ctx, 0, 0, w, h, r);
     ctx.clip();
-    ctx.fillStyle = mix(t.surface, c.info.tint, tintAmt * 1.5);
-    ctx.fillRect(0, h * 0.74, w, h * 0.26);
-    ctx.fillStyle = t.floorEdge;
-    ctx.fillRect(0, h * 0.74 - 1, w, 1.5);
-    ctx.restore();
-    // Top edge highlight: the card feels soft and raised.
-    roundRect(ctx, 0.5, 0.5, w - 1, h - 1, r);
-    ctx.strokeStyle = rgba('#ffffff', t.light ? 0.7 : 0.08);
-    ctx.lineWidth = 1;
+    ctx.fillStyle = mix(this.colours(t, c).face, this.colours(t, c).edge, 0.72);
+    ctx.fillRect(0, h - PLATE, w, PLATE);
+    roundRect(ctx, 0, 2, w, h + r, r);
+    ctx.strokeStyle = rgba('#ffffff', t.light ? 0.3 : 0.16);
+    ctx.lineWidth = 2;
     ctx.stroke();
+    ctx.restore();
   }
 
   /** The sleeper's round body, shaded and glossed, painted once and reused. */
@@ -428,8 +464,7 @@ export class HomeScene implements Scene {
   }
 }
 
-/** Press a 3D toy's own canvas with its card. */
-function toyScale(c: Card, s: number) {
-  const toy = c.preview.canvas;
-  if (toy) toy.style.transform = s === 1 ? '' : `scale(${s})`;
+/** Sink a card's own layer (its toy's canvas, its words) with its tile. */
+function faceSink(c: Card, y: number) {
+  c.top.style.transform = y ? `translateY(${y}px)` : '';
 }

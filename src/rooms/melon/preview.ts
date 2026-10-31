@@ -5,7 +5,7 @@ import { MelonScene } from './MelonScene';
 import { anyPopFruit } from './fruits';
 
 /** Seconds between its little contented moments. */
-const EVERY: [number, number] = [5, 7.5];
+const EVERY: [number, number] = [2.6, 3.6];
 
 /**
  * The home card: a fruit of its own (a different one each time the app
@@ -25,7 +25,7 @@ export function melonPreview(): Preview {
     size = key;
     // Framed as if the free band were a strip above the label, which pulls
     // the camera back so the melon sits comfortably inside the card.
-    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.3, h * 0.54);
+    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.41, h * 0.65);
   };
 
   return {
@@ -36,7 +36,7 @@ export function melonPreview(): Preview {
       next -= dt;
       if (next <= 0 && !reducedMotion) {
         next = rand(...EVERY);
-        scene.shape.squash.impulse(rand(1.6, 2.2));
+        scene.shape.squash.impulse(rand(2.4, 3));
         scene.shape.sway.impulse(rand(-0.4, 0.4));
         scene.shape.face.set('happy', 1.8);
       }

@@ -110,8 +110,23 @@ export const roomTint = {
   peel: pastel.honey,
 } as const;
 
+/** Rows on the shelf, two tiles to a row: every tile the same size. */
+export const ROOM_ROWS = 4;
+
+/** Each game's tile on the shelf, and the chunky edge under it: deep enough for white titles. */
+export const tile: Record<string, { face: string; edge: string }> = {
+  melon: { face: '#C8465C', edge: '#8E2A41' },
+  jelly: { face: '#178C8C', edge: '#0E5F63' },
+  wrap: { face: '#5A5BD0', edge: '#3C3B98' },
+  pour: { face: '#2B84BE', edge: '#1B5B8A' },
+  slice: { face: '#C77A12', edge: '#8F520A' },
+  peel: { face: '#C95A2B', edge: '#923B18' },
+  soap: { face: '#C24A86', edge: '#8A2E60' },
+  stack: { face: '#3E9150', edge: '#276437' },
+};
+
 export const type = {
-  display: `'Fredoka', 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif`,
+  display: `'Lilita One', 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif`,
   text: `'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif`,
   size: { title: 34, heading: 20, label: 15, caption: 13 },
   weight: { regular: 500, medium: 600, bold: 700 },

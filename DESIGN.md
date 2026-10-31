@@ -14,7 +14,12 @@ rest is a short list of rules.
 1. **The toy is the star.** Chrome is small, soft and quiet. While playing,
    the screen shows the toy, a floor, and at most a back button, a sound
    button and one dock.
-2. **Show, don't tell.** Home cards show each toy _alive_. Hints are one line,
+2. **Show, don't tell.** Home tiles show each toy _alive_, on a chunky tile in
+   the game's own deep colour that sinks into its edge when pressed. Every
+   tile is the same size, with a plate saying what the game's called and what
+   you do, and your best in the corner if it keeps one. A game's name stands
+   big for a moment as you walk in. Display type is Lilita One everywhere,
+   text is Nunito. Hints are one line,
    appear once, and leave as soon as you've done the thing.
 3. **No pressure.** No scores, timers, coins, lives, streaks, badges or
    progress bars. Nothing can be failed. Every "ending" (a burst, a pile of
@@ -60,7 +65,7 @@ and used for its home card and transition rim. Melon = sage, jelly = pink.
 
 ## 3. Type
 
-- **Display:** Fredoka 500/600 — titles and card names. Rounded, friendly.
+- **Display:** Lilita One — titles, tile names and scores. Chunky, one weight.
 - **Text:** Nunito 600/700 — hints, toggles, small labels.
 - All lowercase, short words: _soft spot_, _pop_, _jelly_, _fresh start_.
 - Fonts are bundled locally (no network needed on device).
@@ -224,6 +229,6 @@ look like they came from the same shelf:
    sound, add it to `sounds.ts` (in the shared scale) rather than the room.
 3. Add a tiny live `Preview` for the home card.
 4. Register it in `src/app/rooms.ts`. Navigation, transition, top bar, sound
-   settings and haptics come for free. The shelf (`.shelf` in `app.css`) is
-   three to a row with the last two sharing theirs: a ninth card needs a look
-   at that grid.
+   settings and haptics come for free. Give it a `blurb` there. The shelf (`.shelf` in `app.css`) is
+   two across and four down: a ninth game needs a look at that grid, a `tile`
+   colour in `tokens.ts`, and an entry in `home/scores.ts` if it keeps a best.

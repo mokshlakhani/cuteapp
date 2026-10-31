@@ -1,6 +1,6 @@
 import type { Preview } from '../../app/scene';
-import { rand, TAU } from '../../core/math';
-import { Spring } from '../../design/motion';
+import { clamp, rand, TAU } from '../../core/math';
+import { ease, Spring } from '../../design/motion';
 import { fruitPalette as F } from '../../design/fruitPalette';
 import { springs } from '../../design/tokens';
 import { theme } from '../../design/theme';
@@ -8,18 +8,25 @@ import { reducedMotion } from '../../render/camera';
 import { drawFace, Face } from '../../render/face';
 import { contactShadow, gloss, shade } from '../../render/paint';
 
-const EVERY: [number, number] = [5, 8];
+/** Seconds: the strip coming away, hanging there, falling off, and the pause before the next. */
+const CURL = 3.6;
+const HANG = 2;
+const FALL = 1.5;
+const PAUSE = 0.8;
+const LOOP = CURL + HANG + FALL + PAUSE;
+/** A little longer than the strip, as a share of the orange's radius. */
+const STRIP = 3.6;
 
 /**
- * The home card: an orange with its top peeled and a curl of peel hanging
- * from it, breathing. Painted once to a sprite: the shelf can't afford more
- * live 3D. Now and then the curl sways a little.
+ * The home card: an orange with its top peeled, breathing. A curl of peel
+ * slowly comes away from it, hangs a while, drops off, and the next begins.
+ * Painted once to a sprite: the shelf can't afford more live 3D.
  */
 export function peelPreview(): Preview {
   const face = new Face();
   const swing = new Spring(0, springs.gentle);
   let time = rand(0, 20);
-  let next = rand(2, 4);
+  let clock = reducedMotion ? CURL : rand(0, CURL);
   let sprite: HTMLCanvasElement | null = null;
   let key = '';
 
@@ -62,9 +69,10 @@ export function peelPreview(): Preview {
       time += dt;
       face.update(dt);
       swing.update(dt);
-      next -= dt;
-      if (next <= 0 && !reducedMotion) {
-        next = rand(...EVERY);
+      if (reducedMotion) return;
+      const was = clock;
+      clock = (clock + dt) % LOOP;
+      if (was < CURL && clock >= CURL) {
         swing.impulse(rand(0.8, 1.2));
         face.set('happy', 1.5);
       }
@@ -73,13 +81,19 @@ export function peelPreview(): Preview {
       const R = Math.min(w * 0.27, h * 0.25);
       const cx = x + w / 2 - R * 0.14;
       const bob = reducedMotion ? 0 : Math.sin(time * 1.1) * R * 0.02;
-      const cy = y + h * 0.38 + bob;
-      contactShadow(ctx, theme.current, cx + R * 0.1, y + h * 0.72, R * 1.1, R * 0.17, 0.26);
+      const cy = y + h * 0.5 + bob;
+      contactShadow(ctx, theme.current, cx + R * 0.1, y + h * 0.5 + R * 1.16, R * 1.1, R * 0.17, 0.26);
       // The curl of peel, hanging from the cut.
       const sway = swing.value * R * 0.07;
       const px = cx + R * 0.86;
       const py = cy - R * 0.22;
+      const off = clamp((clock - CURL - HANG) / FALL, 0, 1);
+      const shown = ease.inOutSine(clamp(clock / CURL, 0, 1));
+      ctx.save();
       ctx.lineCap = 'round';
+      ctx.setLineDash([shown * R * STRIP, R * STRIP * 2]);
+      ctx.translate(0, ease.inOutCubic(off) * R * 0.9);
+      ctx.globalAlpha = shown > 0 ? 1 - off : 0;
       for (const [col, wd] of [
         [F.orange.peel, 0.17],
         [F.orange.pith, 0.08],
@@ -93,6 +107,7 @@ export function peelPreview(): Preview {
         ctx.bezierCurveTo(px + R * 0.46 + sway * 1.4, py + R * 1, px + R * 0.3 + sway * 1.5, py + R * 1.28, px + R * 0.14 + sway * 1.6, py + R * 1.3);
         ctx.stroke();
       }
+      ctx.restore();
       const s = paint(Math.round(R));
       const d = R * 2.2 * (Math.ceil(Math.round(R) * 2.2) / (Math.round(R) * 2.2));
       ctx.drawImage(s, cx - d / 2, cy - d / 2, d, d);

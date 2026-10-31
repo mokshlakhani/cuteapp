@@ -1,13 +1,20 @@
 import type { Preview } from '../../app/scene';
-import { rand } from '../../core/math';
-import { Spring } from '../../design/motion';
+import { clamp, rand } from '../../core/math';
+import { ease, Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
 import { contactShadow, gloss } from '../../render/paint';
 import { theme } from '../../design/theme';
 import { drawFace, Face } from '../../render/face';
 
-const EVERY: [number, number] = [5, 8];
+/** Seconds: the top stone coming down, sitting, lifting away, and the pause before it's back. */
+const DROP = 1.7;
+const SIT = 3.4;
+const LIFT = 1.5;
+const PAUSE = 0.7;
+const LOOP = DROP + SIT + LIFT + PAUSE;
+/** How far over the cairn the top stone comes from, as a share of the toy's size. */
+const FROM = 0.42;
 
 /** The little cairn on the card: three stones, each [half width, half height, colour, x offset]. */
 const STONES: [number, number, string, string, number][] = [
@@ -17,16 +24,17 @@ const STONES: [number, number, string, string, number][] = [
 ];
 
 /**
- * The home card: a small cairn on a board, breathing, the top stone dozing.
- * Every so often the tower gives a slow, tiny sway. Painted once to a sprite:
- * the shelf can't afford more live 3D.
+ * The home card: a small cairn on a board, breathing. Its top stone, dozing,
+ * is slowly set down on it, and the tower gives a tiny sway; after a while it
+ * lifts away to come round again. Painted once to a sprite: the shelf can't
+ * afford more live 3D.
  */
 export function stackPreview(): Preview {
   const face = new Face();
   face.base = 'sleepy';
   const sway = new Spring(0, springs.gentle);
   let time = rand(0, 20);
-  let next = rand(2, 4);
+  let clock = reducedMotion ? DROP : rand(0, DROP);
   const sprites = new Map<string, HTMLCanvasElement>();
 
   /** One stone, soft and shaded, at this size. */
@@ -69,31 +77,40 @@ export function stackPreview(): Preview {
       time += dt;
       face.update(dt);
       sway.update(dt);
-      next -= dt;
-      if (next <= 0 && !reducedMotion) {
-        next = rand(...EVERY);
+      if (reducedMotion) return;
+      const was = clock;
+      clock = (clock + dt) % LOOP;
+      if (was < DROP && clock >= DROP) {
         sway.impulse(rand(0.5, 0.8) * (Math.random() < 0.5 ? -1 : 1));
+        face.set('happy', 1.5);
       }
     },
     draw(ctx, x, y, w, h) {
       const u = Math.min(w * 0.76, h * 0.74);
       const cx = x + w / 2;
-      const floor = y + h * 0.7;
+      const floor = y + h * 0.8;
       contactShadow(ctx, theme.current, cx + u * 0.02, floor, u * 0.5, u * 0.07, 0.3);
       const breathe = reducedMotion ? 0 : Math.sin(time * 1.1) * 0.006;
+      const coming = ease.inOutCubic(clamp(clock / DROP, 0, 1));
+      const going = ease.inOutCubic(clamp((clock - DROP - SIT) / LIFT, 0, 1));
       let py = floor;
       STONES.forEach(([a, b, , , off], i) => {
         const H = b * u;
         const lift = 1 + breathe;
         py -= H * lift;
         const sx = cx + off * u + sway.value * 0.02 * u * i * i;
-        ctx.drawImage(stone(i, Math.round(u)), sx - a * u, py - H, a * u * 2, H * 2);
-        if (i === 2) {
-          ctx.save();
-          ctx.translate(sx, py);
+        ctx.save();
+        const top = i === 2;
+        // Gone before it reaches the top of the card.
+        const above = 1 - coming + going;
+        if (top) ctx.globalAlpha = clamp((1 - above) / 0.5, 0, 1);
+        const sy = top ? py - above * FROM * u : py;
+        ctx.drawImage(stone(i, Math.round(u)), sx - a * u, sy - H, a * u * 2, H * 2);
+        if (top) {
+          ctx.translate(sx, sy);
           drawFace(ctx, face, a * u * 1.2, { ink: '#3A2B33', blush: '#F2A08C' });
-          ctx.restore();
         }
+        ctx.restore();
         py -= H * lift;
       });
     },

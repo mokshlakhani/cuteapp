@@ -1,24 +1,30 @@
 import type { Preview } from '../../app/scene';
-import { rand, TAU } from '../../core/math';
-import { Spring } from '../../design/motion';
+import { clamp, lerp, rand, TAU } from '../../core/math';
+import { ease, Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
 import { drawFace, Face } from '../../render/face';
 import { gloss } from '../../render/paint';
 
-/** Seconds between its slow little swells. */
-const EVERY: [number, number] = [4.5, 7];
+/** Seconds: blowing up, resting on the ring, floating off, and the pause before the next. */
+const GROW = 3.4;
+const HOLD = 1.4;
+const RISE = 3.2;
+const PAUSE = 0.8;
+const LOOP = GROW + HOLD + RISE + PAUSE;
+/** The size it starts at, as a share of its full size. */
+const SMALL = 0.34;
 
 /**
- * The home card: one soap bubble resting on its wand, breathing slowly, with
- * now and then a slow swell and a smile. It's painted on the 2D stage from a
+ * The home card: a soap bubble slowly blowing up on its wand, smiling, then
+ * floating away so the next can begin. It's painted on the 2D stage from a
  * sprite: the shelf can't afford more live 3D, and a bubble's easy to paint.
  */
 export function soapPreview(): Preview {
   const face = new Face();
   const wob = new Spring(0, springs.gentle);
   let time = rand(0, 20);
-  let next = rand(2, 3.5);
+  let clock = reducedMotion ? GROW : rand(0, GROW);
   let sprite: HTMLCanvasElement | null = null;
   let key = '';
 
@@ -65,9 +71,10 @@ export function soapPreview(): Preview {
       time += dt;
       face.update(dt);
       wob.update(dt);
-      next -= dt;
-      if (next <= 0 && !reducedMotion) {
-        next = rand(...EVERY);
+      if (reducedMotion) return;
+      const was = clock;
+      clock = (clock + dt) % LOOP;
+      if (was < GROW && clock >= GROW) {
         wob.impulse(1.1);
         face.set('happy', 1.6);
       }
@@ -77,9 +84,12 @@ export function soapPreview(): Preview {
       const breathe = reducedMotion ? 0 : Math.sin(time * 1.1) * 0.012;
       const q = breathe + wob.value * 0.06;
       const cx = x + w / 2;
-      const ringY = y + h * 0.56;
-      const r = R * (1 + q);
-      const cy = ringY - r * 0.92;
+      // The full bubble and the wand under it, together in the middle of the card.
+      const ringY = y + h / 2 + R * 0.68;
+      const r = R * lerp(SMALL, 1, ease.inOutSine(clamp(clock / GROW, 0, 1))) * (1 + q);
+      const up = clamp((clock - GROW - HOLD) / RISE, 0, 1);
+      const cy = ringY - r * 0.92 - ease.inOutSine(up) * h * 0.62;
+      const bx = cx + Math.sin(up * TAU) * R * 0.12;
       // The wand: its stem and the ring's far side, under the bubble.
       ctx.lineCap = 'round';
       ctx.strokeStyle = '#F2A9BC';
@@ -93,9 +103,10 @@ export function soapPreview(): Preview {
       ctx.stroke();
       const s = paint(Math.round(R));
       const d = r * 2.3;
-      ctx.drawImage(s, cx - d / 2, cy - d / 2, d, d);
       ctx.save();
-      ctx.translate(cx, cy + r * 0.02);
+      ctx.globalAlpha = clamp(clock / 0.5, 0, 1) * clamp((1 - up) / 0.45, 0, 1);
+      ctx.drawImage(s, bx - d / 2, cy - d / 2, d, d);
+      ctx.translate(bx, cy + r * 0.02);
       drawFace(ctx, face, r * 0.98, { ink: '#3A2340', blush: '#FF9AAE' });
       ctx.restore();
       // The ring's near side, over it.

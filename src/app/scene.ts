@@ -47,6 +47,8 @@ export interface Preview {
 export interface RoomInfo {
   id: string;
   name: string;
+  /** What you do in it, in a few words, for its tile. */
+  blurb: string;
   tint: string;
   /** False for rooms that are still asleep (coming later). */
   awake: boolean;
