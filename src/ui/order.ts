@@ -89,18 +89,23 @@ export class OrderHud {
 /** A little word rising off the toy. */
 export class Rising {
   readonly root = el('div', 'order-plus', { 'aria-hidden': 'true' });
+  /** How far its middle stays from the sides, so it's always all on screen. */
+  private left = 0;
+  private right = Infinity;
 
   show(text: string, p: { x: number; y: number }) {
     this.root.textContent = text;
-    this.move(p);
     this.root.classList.remove('is-up');
-    void this.root.offsetWidth;
+    const edge = this.root.offsetWidth / 2 + 10;
+    this.left = edge;
+    this.right = (this.root.parentElement?.clientWidth ?? Infinity) - edge;
+    this.move(p);
     this.root.classList.add('is-up');
   }
 
-  /** Keep it beside something that's moving. */
+  /** Keep it beside something that's moving: smoothly, off the main layout. */
   move(p: { x: number; y: number }) {
-    this.root.style.left = `${Math.round(p.x)}px`;
-    this.root.style.top = `${Math.round(p.y)}px`;
+    const x = Math.max(this.left, Math.min(this.right, p.x));
+    this.root.style.translate = `${x.toFixed(1)}px ${p.y.toFixed(1)}px`;
   }
 }

@@ -93,8 +93,9 @@ vec3 interfere(float d, float nv) {
 
 // A little thing from the sheet, seen along a reflected ray.
 vec4 thingIn(vec3 r, vec2 at, float size, float index) {
-  if (index < 0.0) return vec4(0.0);
-  vec2 p = (r.xy / (max(r.z, 0.0) + 0.45) - at) / size;
+  // Rays leaving behind the bubble see nothing, or each thing would ghost at the rim.
+  if (index < 0.0 || r.z < 0.0) return vec4(0.0);
+  vec2 p = (r.xy / (r.z + 0.45) - at) / size;
   if (max(abs(p.x), abs(p.y)) > 1.0) return vec4(0.0);
   vec2 cell = vec2(mod(index, 5.0), 1.0 - floor(index / 5.0));
   return texture2D(uThings, (cell + p * 0.5 + 0.5) / vec2(5.0, 2.0));
@@ -117,7 +118,7 @@ void main() {
   float a = 0.012 + 0.2 * rim;
   // A little thing caught on the near wall, and another, smaller, on the far one.
   vec4 one = thingIn(r, vec2(-0.5, 0.62), 0.34, uThing.x);
-  vec4 two = thingIn(vec3(-r.xy, r.z), vec2(-0.74, 0.62), -0.24, uThing.y);
+  vec4 two = thingIn(vec3(-r.xy, r.z), vec2(-0.62, 1.0), -0.24, uThing.y);
   rgb += mix(one.rgb, one.rgb * (0.5 + near), 0.3) * one.a * 0.72;
   rgb += mix(two.rgb, two.rgb * (0.5 + far), 0.4) * two.a * 0.5;
   a = max(a, max(one.a * 0.55, two.a * 0.34));
@@ -490,7 +491,9 @@ export class SoapScene {
         live.r = r;
         live.pos.set(shiver, RING.y + (this.seat(r) - RING.y) * this.dome, 0);
         live.mesh.position.copy(live.pos);
-        live.mesh.scale.set(r, r * this.dome, r);
+        // It starts as wide as the ring, never wider.
+        const wide = lerp(RING.r, r, this.dome);
+        live.mesh.scale.set(wide, r * this.dome, wide);
         const u = live.mat.uniforms;
         u.uTime.value = t;
         u.uWob.value = 0.35 + this.strain * 1.5;
@@ -539,6 +542,7 @@ export class SoapScene {
   }
 
   private stepDrops(dt: number) {
+    if (!this.drops.length && !this.dropMesh.count) return;
     for (const p of this.drops) {
       p.life -= dt;
       p.vel.y -= 5 * dt;

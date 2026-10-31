@@ -26,6 +26,8 @@ const INTRO = { lift: 9, time: 1.1 };
 const DEAD = 28;
 /** How far the first stroke must go before the way round is decided. */
 const DECIDE = 0.1;
+/** A single step further round than this is a swipe across the fruit, not a circle. */
+const LEAP = 1.6;
 /** How quickly the fruit catches up with the finger: taken out of touch's unevenness. */
 const FOLLOW = 26;
 /** A soft scrape, and a tick, every so far round. */
@@ -111,13 +113,18 @@ export class PeelRoom implements Scene {
     this.w = w;
     this.h = h;
     this.s.resize(w, h, window.devicePixelRatio || 1, safe.top + 112, h - safe.bottom - 64);
+    this.placeRing();
+    this.tag.style.top = `${Math.round(Math.min(this.s.boardFront.y + 18, h - 70))}px`;
+    this.painted = false;
+  }
+
+  /** The ring sits round the fruit, whichever fruit it is. */
+  private placeRing() {
     const f = this.s.screenFruit;
-    const r = Math.min(f.r * 1.45, w / 2 - 14);
+    const r = Math.min(f.r * 1.45, this.w / 2 - 14);
     const d = Math.round(r * 2);
     this.ring.style.width = this.ring.style.height = `${d}px`;
     this.ring.style.transform = `translate(${Math.round(f.x - r)}px, ${Math.round(f.y - r)}px)`;
-    this.tag.style.top = `${Math.round(Math.min(this.s.boardFront.y + 18, h - 70))}px`;
-    this.painted = false;
   }
 
   enter() {
@@ -144,6 +151,7 @@ export class PeelRoom implements Scene {
     const pool = FRUITS.filter((f) => f !== this.fruit);
     this.fruit = pool[Math.floor(Math.random() * pool.length) % pool.length];
     this.s.setFruit(this.fruit, this.order.turns, INTRO.lift);
+    this.placeRing();
     this.s.face.base = 'calm';
     this.s.face.set('happy', 1.4);
     this.phase = 'intro';
@@ -173,11 +181,9 @@ export class PeelRoom implements Scene {
   }
 
   pointerDown(p: Pointer) {
-    if (this.phase === 'result') {
-      if (this.phaseT > 0.9) this.beginClear();
-      return;
-    }
-    if (this.finger !== null || (this.phase !== 'play' && this.phase !== 'intro')) return;
+    if (this.phase === 'result' && this.phaseT > 0.9) this.beginClear();
+    // Any time at all: a finger already down takes up the next fruit when it's ready.
+    if (this.finger !== null) return;
     this.finger = p.id;
     this.angle = this.angleOf(p);
   }
@@ -189,6 +195,7 @@ export class PeelRoom implements Scene {
     this.angle = a;
     if (a === null || last === null || this.phase !== 'play') return;
     const d = angleDelta(a, last);
+    if (Math.abs(d) > LEAP) return;
     // The first stroke picks the way round; after that, backing up does nothing.
     if (this.dir === 0) {
       this.lean += d;

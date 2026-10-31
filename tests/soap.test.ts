@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { burstAt, callFor, filmFor, NEAR, offBy, orderFor, OVER, PUFF, radiusOf, rateAt, SIZE, THINGS, type Film, type Order, type Pace } from '../src/rooms/soap/game';
+import { burstAt, callFor, filmFor, loadBest, NEAR, offBy, orderFor, OVER, PUFF, radiusOf, rateAt, Run, saveBest, SIZE, THINGS, type Film, type Order, type Pace } from '../src/rooms/soap/game';
 
 const PACES: Pace[] = ['slow', 'steady', 'brisk', 'gusty'];
 
@@ -65,14 +65,15 @@ describe('the breath', () => {
 });
 
 describe('popping by itself', () => {
-  it('goes exactly 12% past the ring, at every size', () => {
+  it('goes exactly 8% past the ring, at every size', () => {
+    expect(OVER).toBe(0.08);
     for (let s = SIZE.min; s <= SIZE.max; s += 0.01) expect(radiusOf(burstAt(s)) / radiusOf(s)).toBeCloseTo(1 + OVER, 9);
   });
 
   it('leaves a fair moment to let go, big bubble or small, at a steady breath', () => {
     for (const target of [SIZE.min, 0.5, SIZE.max]) {
-      expect(window('steady', target)).toBeGreaterThan(0.4);
-      expect(window('brisk', target)).toBeGreaterThan(0.25);
+      expect(window('steady', target)).toBeGreaterThan(0.3);
+      expect(window('brisk', target)).toBeGreaterThan(0.2);
     }
   });
 
@@ -96,7 +97,8 @@ describe('the word beside the bubble', () => {
 
   it('otherwise says which way it missed', () => {
     expect(callFor(0.3, 0.5)).toBe('a bit small');
-    expect(callFor(0.62, 0.5)).toBe('a bit big');
+    expect(callFor(0.58, 0.5)).toBe('a bit big');
+    expect(0.58).toBeLessThan(burstAt(0.5));
   });
 
   it('a bit big never reaches the size that would have popped', () => {
@@ -152,6 +154,46 @@ describe('every film its own', () => {
       expect(b.kind).not.toBe(a.kind);
       expect(b.things[0]).not.toBe(b.things[1]);
     }
+  });
+});
+
+describe('a run of bubbles', () => {
+  it('counts every bubble, and a first run sets the high score quietly', () => {
+    const r = new Run();
+    expect([r.add(), r.add(), r.add()]).toEqual([false, false, false]);
+    expect(r).toMatchObject({ count: 3, best: 3 });
+  });
+
+  it('a pop starts the count again and leaves the high score standing', () => {
+    const r = new Run(5);
+    r.add();
+    r.add();
+    r.end();
+    expect(r).toMatchObject({ count: 0, best: 5 });
+  });
+
+  it('matching the high score is not beating it, and it only says so once a run', () => {
+    const r = new Run(2);
+    expect([r.add(), r.add(), r.add(), r.add()]).toEqual([false, false, true, false]);
+    expect(r.best).toBe(4);
+    r.end();
+    for (let i = 0; i < 4; i++) expect(r.add()).toBe(false);
+    expect(r.add()).toBe(true);
+  });
+
+  it('keeps the high score, and comes up clean from anything odd', () => {
+    const store = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
+    expect(loadBest()).toBe(0);
+    saveBest(9);
+    expect(loadBest()).toBe(9);
+    for (const bad of ['{', '{"best":-3}', '{"best":"x"}', 'null']) {
+      store.set('softspot.soap.v1', bad);
+      expect(loadBest()).toBe(0);
+    }
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+    expect(loadBest()).toBe(0);
+    expect(() => saveBest(3)).not.toThrow();
   });
 });
 

@@ -146,15 +146,16 @@ export class StackRoom implements Scene {
       if (this.phaseT > OVER.rewind + 0.5) this.beginRun();
       return;
     }
-    if (this.finger === null && this.phase === 'ready') {
+    // A finger that's early, while a stone settles, takes the next one as it comes.
+    if (this.finger === null && (this.phase === 'ready' || this.phase === 'settle')) {
       this.finger = p.id;
       haptics.play('tick');
-      this.s.face.set('wide', 0.4);
+      if (this.phase === 'ready') this.s.face.set('wide', 0.4);
     }
   }
 
   pointerMove(p: Pointer) {
-    if (p.id !== this.finger) return;
+    if (p.id !== this.finger || this.phase !== 'ready') return;
     this.aim = clamp(this.aim + (p.x - p.prevX) * this.s.unitsPerPx, -REACH, REACH);
     if (Math.abs(p.x - p.startX) > 6) this.hint.hide();
   }
@@ -184,7 +185,7 @@ export class StackRoom implements Scene {
         this.stepDrop(dt);
         break;
       case 'settle':
-        if (this.phaseT > SETTLE && !this.s.busy) this.afterSettle();
+        if (this.phaseT > SETTLE) this.nextStone();
         break;
       case 'over':
         if (this.phaseT > OVER.rewind) this.s.rewind();
@@ -283,10 +284,6 @@ export class StackRoom implements Scene {
     }
     if (passed) this.beaten = true;
     this.plus.show(wobbly ? 'wobbly!' : String(n), at);
-  }
-
-  private afterSettle() {
-    this.nextStone();
   }
 
   private showResult() {

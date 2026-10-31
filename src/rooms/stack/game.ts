@@ -9,6 +9,8 @@
  * a stone tips, and try to beat your own high score.
  */
 
+import { bestStore } from '../../core/best';
+
 export interface Stone {
   /** Half its width and half its height. */
   a: number;
@@ -151,21 +153,4 @@ export function verdict(height: number, best: number, beaten: boolean): [string,
   return [n, `your best is ${best}`];
 }
 
-const KEY = 'softspot.stack.v1';
-
-export function loadBest() {
-  try {
-    const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return Number.isFinite(p.best) && p.best >= 0 ? Math.floor(p.best) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function saveBest(best: number) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify({ best }));
-  } catch {
-    /* private mode etc. */
-  }
-}
+export const { load: loadBest, save: saveBest } = bestStore('softspot.stack.v1');

@@ -1262,6 +1262,8 @@ svg {
 /* "+3", rising off the cut. */
 .order-plus {
   position: absolute;
+  left: 0;
+  top: 0;
   white-space: nowrap;
   font-family: var(--font-display);
   font-weight: 600;

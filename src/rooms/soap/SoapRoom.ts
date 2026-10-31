@@ -11,9 +11,9 @@ import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
-import { Rising } from '../../ui/order';
+import { OrderHud, Rising } from '../../ui/order';
 import { getSoapScene, type Bubble, type SoapScene } from './SoapScene';
-import { burstAt, callFor, NEAR, offBy, OVER, orderFor, PUFF, rateAt, type Order } from './game';
+import { burstAt, callFor, loadBest, NEAR, offBy, OVER, orderFor, PUFF, rateAt, Run, saveBest, type Order } from './game';
 
 type Phase = 'ready' | 'blow';
 
@@ -29,10 +29,11 @@ const STEPS = 14;
  * how big to blow. Hold anywhere and a bubble swells out of the wand, its note
  * climbing, with a ding as it reaches the ring. Let go and it pinches off and
  * floats up off the screen, and the next ring is ready at once: there's never
- * a wait. A word beside the bubble says how it went, and that's all: no scores. Go 12%
- * past the ring and it pops by itself. Every bubble is a different size and
- * has a different film. Tap one that's floating to pop it, just because.
- * Nothing can be failed.
+ * a wait. A word beside the bubble says how it went. Go 8% past the ring and
+ * it pops by itself, which ends your run: the number at the top is how many
+ * bubbles you've let go in a row, under your high score. Every bubble is a
+ * different size and has a different film. Tap one that's floating to pop it,
+ * just because.
  */
 export class SoapRoom implements Scene {
   readonly id = 'soap';
@@ -64,13 +65,16 @@ export class SoapRoom implements Scene {
   private near = false;
   private streak = 0;
 
+  private run = new Run(loadBest());
+
+  private hud = new OrderHud();
   private plus = new Rising();
   private ring = el('div', 'soap-ring', { 'aria-hidden': 'true' });
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-soap');
     this.order = orderFor();
-    this.ui.append(this.ring, this.plus.root, this.hint.root);
+    this.ui.append(this.hud.root, this.ring, this.plus.root, this.hint.root);
     this.s = getSoapScene();
     this.view = this.s.canvas;
     this.s.events = {
@@ -90,6 +94,8 @@ export class SoapRoom implements Scene {
   }
 
   enter() {
+    this.run.end();
+    this.syncHud(false);
     this.beginOrder();
     if (!settings.value.seenHints.includes(this.id)) this.hint.show(1400);
     this.painted = false;
@@ -98,6 +104,9 @@ export class SoapRoom implements Scene {
   leave() {
     this.hint.hide();
     this.finger = null;
+    // The room keeps running through the transition: a breath must end here.
+    this.phase = 'ready';
+    this.ring.classList.remove('is-near');
     this.s.clearAll();
     this.worded = null;
   }
@@ -113,6 +122,10 @@ export class SoapRoom implements Scene {
     this.ring.classList.remove('is-near', 'is-new');
     void this.ring.offsetWidth;
     this.ring.classList.add('is-shown', 'is-new');
+  }
+
+  private syncHud(bump: boolean) {
+    this.hud.set(this.run.count, `high score ${this.run.best}`, false, false, bump);
   }
 
   private placeRing() {
@@ -164,7 +177,10 @@ export class SoapRoom implements Scene {
     const pan = panFor(this.w / 2, this.w);
     const perfect = Math.abs(offBy(this.size, target)) <= NEAR.exact;
     const beside = this.s.besideLive;
-    this.plus.show(callFor(this.size, target), beside);
+    const beat = this.run.add();
+    saveBest(this.run.best);
+    this.syncHud(true);
+    this.plus.show(beat ? 'new high score!' : callFor(this.size, target), beside);
     const at = this.s.liveAt;
     this.worded = this.s.release();
     this.wordX = beside.x - at.x;
@@ -172,6 +188,7 @@ export class SoapRoom implements Scene {
     material.soapFree(this.size, pan);
     this.streak = perfect ? this.streak + 1 : 0;
     if (perfect) material.soapChime(this.streak, pan);
+    if (beat) material.sparkle(0);
     haptics.play(perfect ? 'soft' : 'tap');
     settings.markHintSeen(this.id);
     this.beginOrder();
@@ -230,6 +247,8 @@ export class SoapRoom implements Scene {
     if (this.size >= burstAt(target)) {
       this.finger = null;
       this.streak = 0;
+      this.run.end();
+      this.syncHud(false);
       this.plus.show('too big', this.s.besideLive);
       this.s.burstLive();
       this.worded = null;

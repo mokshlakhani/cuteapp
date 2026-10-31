@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { clamp, damp, rand, smoothstep } from '../../core/math';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
+import { reducedMotion } from '../../render/camera';
 import { Face, drawFace } from '../../render/face';
 import { blobTexture, lightTable, tableRenderer, woodTexture } from '../../render/table';
 import { wholeGeometry } from '../slice/SliceScene';
@@ -69,6 +70,8 @@ interface Strip {
   out: number;
   width: number;
   still: boolean;
+  /** Too many on the board: this one's thinning away. */
+  going: boolean;
 }
 
 const tmpA = new THREE.Vector3();
@@ -77,6 +80,7 @@ const tmpN = new THREE.Vector3();
 const tmpM = new THREE.Vector3();
 const tmpMat = new THREE.Matrix4();
 const tmpP = new THREE.Vector3();
+const tmpC = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpX = new THREE.Quaternion();
 const AX_Y = new THREE.Vector3(0, 1, 0);
@@ -282,10 +286,11 @@ export class PeelScene {
     mesh.frustumCulled = false;
     this.scene.add(mesh);
     const from = Math.floor(sFrom * this.sections);
-    this.strips.push({ mesh, pos, nrm, from, to: from, free: 0, fall: 0, vel: 0, at: new THREE.Vector3(), out: 0.72 + (this.strips.length % 4) * 0.3, width: 1, still: false });
-    if (this.strips.length > MOST_STRIPS) {
-      const old = this.strips.shift()!;
-      this.freeStrip(old);
+    this.strips.push({ mesh, pos, nrm, from, to: from, free: 0, fall: 0, vel: 0, at: new THREE.Vector3(), out: 0.72 + (this.strips.length % 4) * 0.3, width: 1, still: false, going: false });
+    const kept = this.strips.filter((s) => !s.going);
+    if (kept.length > MOST_STRIPS) {
+      kept[0].going = true;
+      kept[0].still = false;
     }
   }
 
@@ -314,6 +319,8 @@ export class PeelScene {
   }
 
   private letGo(st: Strip) {
+    // Right up to the cut, so no skin goes missing between this strip and the next.
+    st.to = this.cutSection;
     this.cutPoint(tmpA);
     st.at.copy(tmpA);
     st.free = 0.001;
@@ -348,7 +355,7 @@ export class PeelScene {
   }
 
   private placeCamera() {
-    const e = THREE.MathUtils.degToRad(ELEV + Math.sin(this.time * 0.23) * 0.5);
+    const e = THREE.MathUtils.degToRad(ELEV + (reducedMotion ? 0 : Math.sin(this.time * 0.23) * 0.5));
     const cam = this.camera;
     cam.position.set(0, LOOK_Y + Math.sin(e) * this.dist, Math.cos(e) * this.dist);
     cam.lookAt(0, LOOK_Y, 0);
@@ -426,11 +433,13 @@ export class PeelScene {
     this.root.updateMatrixWorld(true);
     const R = Math.max(...this.fruit.radii);
     this.blob.scale.set(R * 2.5, R * 1.6, 1);
+    // No fruit over the board, no shadow on it.
+    (this.blob.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - clamp(this.lift / 5, 0, 1));
 
     // The knife rests against the cut.
     this.cutPoint(tmpA);
     const away = this.rest * this.rest;
-    this.knife.position.set(tmpA.x + away * 2.4 + shake, tmpA.y + 0.06 + away * 0.9, tmpA.z);
+    this.knife.position.set(tmpA.x + away * 3.4 + shake, tmpA.y + 0.06 + away * 0.9, tmpA.z);
     this.knife.rotation.set(0.2, -0.5, 0.42 + Math.sin(t * 2.2) * 0.012);
     this.knife.visible = this.rest < 0.995;
 
@@ -439,6 +448,8 @@ export class PeelScene {
       if (st.free === 0) st.to = cut;
       this.stepStrip(st, dt);
     }
+    const spent = this.strips.findIndex((st) => st.going && st.width <= 0);
+    if (spent >= 0) this.freeStrip(this.strips.splice(spent, 1)[0]);
     this.stepDrops(dt);
     this.placeCamera();
   }
@@ -448,6 +459,7 @@ export class PeelScene {
   }
 
   private stepStrip(st: Strip, dt: number) {
+    if (this.clearing || st.going) st.width = Math.max(0, st.width - dt * 2.4);
     if (st.to <= st.from) {
       st.mesh.visible = false;
       return;
@@ -458,7 +470,6 @@ export class PeelScene {
       st.vel += 13 * dt;
       st.fall += st.vel * dt;
     }
-    if (this.clearing) st.width = Math.max(0, st.width - dt * 2.4);
     if (st.still) return;
 
     const n = this.sections;
@@ -466,7 +477,7 @@ export class PeelScene {
     const f = this.fruit;
     const radii = f.radii as V3;
     const m = this.root.matrixWorld;
-    const c = st.free > 0 ? st.at : this.cutPoint(tmpP);
+    const c = st.free > 0 ? st.at : this.cutPoint(tmpC);
     // Outward from the fruit's core, flat: the way the strip hangs away.
     const ox = c.x - this.root.position.x;
     const oz = c.z;
@@ -548,7 +559,7 @@ export class PeelScene {
     st.nrm.needsUpdate = true;
     st.mesh.geometry.setDrawRange(st.from * 6, (st.to - st.from) * 6);
     // Down in its coil and thin no more: nothing left to move or upload.
-    if (settled && !this.clearing) st.still = true;
+    if (settled && !this.clearing && !st.going) st.still = true;
   }
 
   // ——— picking ———

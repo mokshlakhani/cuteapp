@@ -26,9 +26,10 @@ rest is a short list of rules.
    three stars (three for exact, two for one off), and your stars are kept —
    but every fruit falls apart and earns at least a star, so nothing is ever
    failed. **Peel** keeps the same deal: an ever-changing width of strip, one
-   to three stars, and at least one star for trying. **Soap** has no score at
-   all: only a word beside each bubble. **Stack** has no goal: only your high
-   score, quietly at the top, to beat if you feel like it._
+   to three stars, and at least one star for trying. **Soap** counts the
+   bubbles you let go in a row until one pops, under your high score. **Stack**
+   has no goal: only your high score, quietly at the top, to beat if you feel
+   like it._
 4. **Feel over features.** When in doubt, make an existing interaction 20%
    more satisfying instead of adding something.
 5. **Everything is alive.** Toys breathe, blink, wobble and look at your
@@ -202,7 +203,7 @@ look like they came from the same shelf:
   them too, all but the dragon fruit, whose scales are real leaves.
 - **Same chrome.** Rooms with orders or a number share theirs (`ui/order.ts`):
   the toast that fills in the stars, the count at the top, and the little words
-  that rise off the toy. Soap uses only the words, right beside its bubble.
+  that rise off the toy. Soap's words stay right beside its bubble.
 - **Fixed views.** A room's view keeps its size. Stack climbs instead of
   pulling back: past the top of the screen it rises one stone per stone set.
 - **One rule per toy.** What breaks a peel is pace against the strip's width,

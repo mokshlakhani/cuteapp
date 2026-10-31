@@ -2,9 +2,12 @@
  * The rules of the soap room, kept free of three.js so they can be tested.
  * Bubble after bubble, each with a size to blow it to. Sizes run from 0 (a
  * bubble just out of the wand) to 1 (as big as they come). Hold to blow, let
- * go at the ring. Grow it more than 12% past the ring and it pops by itself.
- * There's no score: a word beside the bubble says how it went, and that's all.
+ * go at the ring. Grow it more than 8% past the ring and it pops by itself.
+ * A word beside the bubble says how it went. Every bubble let go before it
+ * pops adds to a run, and a pop ends the run: your longest is your high score.
  */
+
+import { bestStore } from '../../core/best';
 
 export type Pace = 'slow' | 'steady' | 'brisk' | 'gusty';
 
@@ -22,7 +25,7 @@ export const RADIUS = { min: 0.68, max: 1.86 };
 /** Let go before this and it's only a puff. */
 export const PUFF = 0.05;
 /** Grown this far past the ring (a share of its radius), it pops by itself. */
-export const OVER = 0.12;
+export const OVER = 0.08;
 /** How near the ring counts as perfect, and as close: shares of its radius. */
 export const NEAR = { exact: 0.025, close: 0.07 };
 
@@ -33,7 +36,7 @@ const sizeOf = (radius: number) => (radius - RADIUS.min) / (RADIUS.max - RADIUS.
 
 /**
  * How fast a bubble grows (size per second), `t` seconds into a breath. Bigger
- * bubbles grow faster, so the 12% is about as long a moment at any size.
+ * bubbles grow faster, so the margin past the ring is about as long a moment at any size.
  */
 export function rateAt(pace: Pace, t: number, size: number) {
   const k = radiusOf(size) / radiusOf(0.6);
@@ -72,6 +75,36 @@ export function callFor(size: number, target: number) {
   if (Math.abs(off) <= NEAR.close) return 'so close';
   return off < 0 ? 'a bit small' : 'a bit big';
 }
+
+/** Bubbles in a row, and the high score they're after. */
+export class Run {
+  count = 0;
+  private from: number;
+  private beaten = false;
+
+  constructor(public best = 0) {
+    this.from = best;
+  }
+
+  /** One more bubble. True the moment it beats a high score that was there to beat. */
+  add() {
+    this.count++;
+    if (this.count <= this.best) return false;
+    this.best = this.count;
+    const first = !this.beaten && this.from > 0;
+    this.beaten = true;
+    return first;
+  }
+
+  /** It popped: back to nothing, and the high score stands. */
+  end() {
+    this.count = 0;
+    this.from = this.best;
+    this.beaten = false;
+  }
+}
+
+export const { load: loadBest, save: saveBest } = bestStore('softspot.soap.v1');
 
 /** How one bubble's film is laid down: no two look alike. */
 export interface Film {

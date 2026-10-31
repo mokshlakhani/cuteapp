@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { clamp, damp, rand } from '../../core/math';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
+import { reducedMotion } from '../../render/camera';
 import { Face, drawFace } from '../../render/face';
 import { blobTexture, lightTable, tableRenderer, woodTexture } from '../../render/table';
 import { swayAt, TABLE_Y, type Placed, type Stone } from './game';
@@ -15,8 +16,8 @@ import { swayAt, TABLE_Y, type Placed, type Stone } from './game';
  * of the tower in frame, and glides back down when the run ends. The stones
  * are soft lumpy superellipsoids with mottled, speckled colour running
  * through them. The one in your hand has a live face; set down, they doze.
- * Tumbling stones aren't a physics pile: each rolls off on its own arc and
- * shrinks away, so the table always stays clean.
+ * Tumbling stones aren't a physics pile: each rolls off on its own arc, bounces
+ * on the board and shrinks away or falls past it, so the table stays clean.
  */
 
 const FACE_PX = 196;
@@ -138,6 +139,7 @@ export class StackScene {
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMat());
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = BOARD.h + 0.006;
+    (this.shadow.material as THREE.MeshBasicMaterial).opacity = 0;
     this.scene.add(this.shadow);
     this.heldShadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMat());
     this.heldShadow.rotation.x = -Math.PI / 2;
@@ -175,7 +177,11 @@ export class StackScene {
   /** Start a fresh tower: the old one shrinks away where it stands. */
   reset() {
     for (const p of this.tower) this.sinkAway(p);
-    for (const p of this.falling) if (p.bounced) p.scale = Math.min(p.scale, 0.3);
+    // Whatever's still in the air goes where it is, so nothing falls into the next tower.
+    for (const p of this.falling) {
+      if (p.bounced) p.scale = Math.min(p.scale, 0.3);
+      else if (!p.sink) this.sinkInAir(p);
+    }
     if (this.held) this.free(this.held);
     this.tower = [];
     this.placedAt = [];
@@ -185,9 +191,13 @@ export class StackScene {
   }
 
   private sinkAway(p: Piece) {
+    this.sinkInAir(p);
+    this.falling.push(p);
+  }
+
+  private sinkInAir(p: Piece) {
     p.sink = true;
     p.scale = 1;
-    this.falling.push(p);
   }
 
   /** The run's over: glide back down to the foot of the tower. */
@@ -228,7 +238,8 @@ export class StackScene {
     p.mesh.scale.setScalar(1);
     this.tower[level] = p;
     this.shake.impulse((Math.random() < 0.5 ? -1 : 1) * impact);
-    p.mesh.position.set(placed.x, placed.y, 0);
+    // Where it really is, sway and all, in case it's knocked straight off.
+    p.mesh.position.set(placed.x + swayAt(level, this.time, this.sway), placed.y, 0);
     this.faceSig = '';
   }
 
@@ -241,9 +252,11 @@ export class StackScene {
 
   /** The stones from `from` up tip off, to this side, from the top down. */
   tumble(from: number, side: number) {
+    // A tall tower's collapse runs quicker, so none is left hanging when the next run starts.
+    const step = Math.min(0.07, 0.9 / (this.tower.length - from));
     for (let i = this.tower.length - 1; i >= from; i--) {
       const p = this.tower[i];
-      this.launch(p, side, (this.tower.length - 1 - i) * 0.07);
+      this.launch(p, side, (this.tower.length - 1 - i) * step);
     }
     this.tower.length = Math.min(this.tower.length, from);
   }
@@ -266,10 +279,6 @@ export class StackScene {
     p.scale = 1;
     p.mesh.scale.setScalar(1);
     this.launch(p, side, 0);
-  }
-
-  get busy() {
-    return this.falling.length > 0;
   }
 
   // ——— layout ———
@@ -300,9 +309,10 @@ export class StackScene {
   }
 
   private placeCamera() {
-    const e = THREE.MathUtils.degToRad(ELEV + Math.sin(this.time * 0.21) * 0.4);
+    const drift = reducedMotion ? 0 : 1;
+    const e = THREE.MathUtils.degToRad(ELEV + Math.sin(this.time * 0.21) * 0.4 * drift);
     const cam = this.camera;
-    cam.position.set(Math.sin(this.time * 0.15) * 0.25, this.look + Math.sin(e) * this.dist, Math.cos(e) * this.dist);
+    cam.position.set(Math.sin(this.time * 0.15) * 0.25 * drift, this.look + Math.sin(e) * this.dist, Math.cos(e) * this.dist);
     cam.lookAt(0, this.look, 0);
     cam.setViewOffset(this.w, this.h, 0, this.viewOffset, this.w, this.h);
     cam.updateProjectionMatrix();
@@ -322,7 +332,8 @@ export class StackScene {
     this.tower.forEach((p, i) => {
       const q = this.placedAt[i];
       if (!q) return;
-      const k = i / 8;
+      // Holds past a point, like the sway, so a tall tower can't lurch.
+      const k = Math.min(i, 16) / 8;
       const x = q.x + swayAt(i, t, this.sway) + this.shake.value * 0.012 * k * (1 + k * 2);
       p.mesh.position.set(x, q.y, 0);
       p.mesh.rotation.set(0, (p.stone.seed % 1) * 0.5 - 0.25, q.lean - this.shake.value * 0.003 * k);
@@ -354,9 +365,10 @@ export class StackScene {
         tmpQ.setFromAxisAngle(tmpV.copy(p.spin).divideScalar(w), w * dt);
         p.mesh.quaternion.premultiply(tmpQ);
       }
+      // Only the board stops it: past its edge a stone just falls.
       const onBoard = Math.abs(p.pos.x) < BOARD.w / 2 && Math.abs(p.pos.z) < BOARD.d / 2;
-      const floor = (onBoard ? BOARD.h : 0) + p.stone.b;
-      if (p.pos.y < floor) {
+      const floor = BOARD.h + p.stone.b;
+      if (onBoard && p.pos.y < floor && p.pos.y > BOARD.h - 0.3) {
         p.pos.y = floor;
         if (p.vel.y < -1) this.onTumble?.(-p.vel.y, p.pos);
         p.vel.y = Math.max(0, -p.vel.y * 0.34);
@@ -384,7 +396,9 @@ export class StackScene {
 
     // A soft shadow under the tower's foot, and under the stone in hand.
     const base = this.placedAt[0];
-    this.shadow.visible = this.tower.length > 0;
+    const foot = this.shadow.material as THREE.MeshBasicMaterial;
+    foot.opacity = damp(foot.opacity, this.tower.length > 0 ? 1 : 0, 12, dt);
+    this.shadow.visible = foot.opacity > 0.01;
     if (base) {
       const a = base.stone.a;
       this.shadow.position.x = base.x + 0.08;
