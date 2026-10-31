@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { burstAt, callFor, filmFor, loadBest, NEAR, offBy, orderFor, OVER, PUFF, radiusOf, rateAt, Run, saveBest, SIZE, THINGS, type Film, type Order, type Pace } from '../src/rooms/soap/game';
+import { burstAt, callFor, filmFor, loadBest, NEAR, offBy, orderFor, OVER, PUFF, radiusOf, rateAt, Run, saveBest, SIZE, THINGS, tooSmall, UNDER, type Film, type Order, type Pace } from '../src/rooms/soap/game';
 
 const PACES: Pace[] = ['slow', 'steady', 'brisk', 'gusty'];
 
@@ -82,6 +82,23 @@ describe('popping by itself', () => {
   });
 });
 
+describe('popping short of the ring', () => {
+  it('holds down to 7% short, at every size, and pops below that', () => {
+    expect(UNDER).toBe(0.07);
+    for (let s = SIZE.min; s <= SIZE.max; s += 0.01) {
+      const at = (share: number) => (radiusOf(s) * share - radiusOf(0)) / (radiusOf(1) - radiusOf(0));
+      expect(tooSmall(at(0.931), s)).toBe(false);
+      expect(tooSmall(at(0.929), s)).toBe(true);
+    }
+  });
+
+  it('a bubble that holds is never called too small, and one that pops always is', () => {
+    for (let t = SIZE.min; t <= SIZE.max; t += 0.01) {
+      for (let s = 0; s < burstAt(t); s += 0.005) expect(callFor(s, t) === 'too small').toBe(tooSmall(s, t));
+    }
+  });
+});
+
 describe('the word beside the bubble', () => {
   it('says perfect on the ring, either side', () => {
     expect(callFor(0.5, 0.5)).toBe('perfect');
@@ -96,7 +113,7 @@ describe('the word beside the bubble', () => {
   });
 
   it('otherwise says which way it missed', () => {
-    expect(callFor(0.3, 0.5)).toBe('a bit small');
+    expect(callFor(0.3, 0.5)).toBe('too small');
     expect(callFor(0.58, 0.5)).toBe('a bit big');
     expect(0.58).toBeLessThan(burstAt(0.5));
   });

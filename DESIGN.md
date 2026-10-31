@@ -27,7 +27,7 @@ rest is a short list of rules.
    but every fruit falls apart and earns at least a star, so nothing is ever
    failed. **Peel** keeps the same deal: an ever-changing width of strip, one
    to three stars, and at least one star for trying. **Soap** counts the
-   bubbles you let go in a row until one pops, under your high score. **Stack**
+   bubbles that hold in a row until one pops, under your high score. **Stack**
    has no goal: only your high score, quietly at the top, to beat if you feel
    like it._
 4. **Feel over features.** When in doubt, make an existing interaction 20%

@@ -13,7 +13,7 @@ import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
 import { OrderHud, Rising } from '../../ui/order';
 import { getSoapScene, type Bubble, type SoapScene } from './SoapScene';
-import { burstAt, callFor, loadBest, NEAR, offBy, OVER, orderFor, PUFF, rateAt, Run, saveBest, type Order } from './game';
+import { burstAt, callFor, loadBest, NEAR, offBy, OVER, orderFor, PUFF, rateAt, Run, saveBest, tooSmall, type Order } from './game';
 
 type Phase = 'ready' | 'blow';
 
@@ -29,9 +29,9 @@ const STEPS = 14;
  * how big to blow. Hold anywhere and a bubble swells out of the wand, its note
  * climbing, with a ding as it reaches the ring. Let go and it pinches off and
  * floats up off the screen, and the next ring is ready at once: there's never
- * a wait. A word beside the bubble says how it went. Go 8% past the ring and
- * it pops by itself, which ends your run: the number at the top is how many
- * bubbles you've let go in a row, under your high score. Every bubble is a
+ * a wait. A word beside the bubble says how it went. Go 8% past the ring, or
+ * let go 7% short of it, and it pops, which ends your run: the number at the
+ * top is how many bubbles have held in a row, under your high score. Every bubble is a
  * different size and has a different film. Tap one that's floating to pop it,
  * just because.
  */
@@ -174,6 +174,10 @@ export class SoapRoom implements Scene {
       return;
     }
     const target = this.order.size;
+    if (tooSmall(this.size, target)) {
+      this.popLive(callFor(this.size, target));
+      return;
+    }
     const pan = panFor(this.w / 2, this.w);
     const perfect = Math.abs(offBy(this.size, target)) <= NEAR.exact;
     const beside = this.s.besideLive;
@@ -244,16 +248,19 @@ export class SoapRoom implements Scene {
       this.ticked = this.size;
       haptics.play('tick');
     }
-    if (this.size >= burstAt(target)) {
-      this.finger = null;
-      this.streak = 0;
-      this.run.end();
-      this.syncHud(false);
-      this.plus.show('too big', this.s.besideLive);
-      this.s.burstLive();
-      this.worded = null;
-      this.beginOrder();
-    }
+    if (this.size >= burstAt(target)) this.popLive('too big');
+  }
+
+  /** It pops on the wand, and that's the run. */
+  private popLive(word: string) {
+    this.finger = null;
+    this.streak = 0;
+    this.run.end();
+    this.syncHud(false);
+    this.plus.show(word, this.s.besideLive);
+    this.s.burstLive();
+    this.worded = null;
+    this.beginOrder();
   }
 
   // ——— drawing ———

@@ -2,9 +2,10 @@
  * The rules of the soap room, kept free of three.js so they can be tested.
  * Bubble after bubble, each with a size to blow it to. Sizes run from 0 (a
  * bubble just out of the wand) to 1 (as big as they come). Hold to blow, let
- * go at the ring. Grow it more than 8% past the ring and it pops by itself.
- * A word beside the bubble says how it went. Every bubble let go before it
- * pops adds to a run, and a pop ends the run: your longest is your high score.
+ * go at the ring. Grow it more than 8% past the ring and it pops by itself;
+ * let go more than 7% short of it and it pops too. A word beside the bubble
+ * says how it went. Every bubble that holds adds to a run, and a pop ends the
+ * run: your longest is your high score.
  */
 
 import { bestStore } from '../../core/best';
@@ -26,6 +27,8 @@ export const RADIUS = { min: 0.68, max: 1.86 };
 export const PUFF = 0.05;
 /** Grown this far past the ring (a share of its radius), it pops by itself. */
 export const OVER = 0.08;
+/** Let go this far short of the ring (a share of its radius), it pops. */
+export const UNDER = 0.07;
 /** How near the ring counts as perfect, and as close: shares of its radius. */
 export const NEAR = { exact: 0.025, close: 0.07 };
 
@@ -59,6 +62,9 @@ export const burstAt = (target: number) => sizeOf(radiusOf(target) * (1 + OVER))
 /** How far past the ring it is, as a share of the ring's radius (negative: short of it). */
 export const offBy = (size: number, target: number) => radiusOf(size) / radiusOf(target) - 1;
 
+/** Let go at this size, is it too small to hold? */
+export const tooSmall = (size: number, target: number) => offBy(size, target) < -UNDER;
+
 /** A fresh bubble, never much like the last one. */
 export function orderFor(rnd = Math.random, last?: Order): Order {
   for (let tries = 0; ; tries++) {
@@ -73,7 +79,7 @@ export function callFor(size: number, target: number) {
   const off = offBy(size, target);
   if (Math.abs(off) <= NEAR.exact) return 'perfect';
   if (Math.abs(off) <= NEAR.close) return 'so close';
-  return off < 0 ? 'a bit small' : 'a bit big';
+  return off < 0 ? 'too small' : 'a bit big';
 }
 
 /** Bubbles in a row, and the high score they're after. */
