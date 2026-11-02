@@ -65,8 +65,13 @@ export function makeStone(a: number, b: number, round: number, lump: number, rnd
 
 /** The most lopsided a stone gets, as a share of its seat. */
 const LUMP = 0.28;
-/** No seat is narrower than this, so a tower of any stones can stand. */
+/** No ordinary seat is narrower than this. */
 const NARROWEST = 0.3;
+
+/** A round stone: a little seat, and its weight well off the middle. */
+const ROUND_FROM = 3;
+const ROUND_LUMP = 0.7;
+const ROUND_SEAT = 0.22;
 
 /** Stones slowly get smaller and rounder over this many, and stay that way. */
 const SETTLES = 30;
@@ -76,6 +81,11 @@ export function stoneFor(n: number, rnd = Math.random): Stone {
   if (n === 0) return { ...makeStone(1.2, 0.36, 3.2, 0, rnd), bias: 0 };
   const k = Math.min(1, n / SETTLES);
   const r = rnd();
+  if (n >= ROUND_FROM && rnd() < 0.25 + k * 0.2) {
+    const round = makeStone(0.7 + rnd() * 0.16, 0.38 + rnd() * 0.06, 2, ROUND_LUMP, rnd);
+    round.seat = ROUND_SEAT;
+    return round;
+  }
   const pebble = r < 0.2 + k * 0.25;
   const a = (pebble ? 0.72 + rnd() * 0.3 : 0.74 + rnd() * 0.56) * (1 - k * 0.14);
   const s = pebble ? makeStone(a, 0.34 + rnd() * 0.08, 2.5, LUMP, rnd) : makeStone(a, 0.28 + rnd() * 0.14, 2.7 + rnd() * 1.2, LUMP * 0.7, rnd);

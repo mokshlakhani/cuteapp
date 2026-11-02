@@ -1,10 +1,11 @@
 import { Capacitor } from '@capacitor/core';
+import { meter } from './core/perf';
 
 /**
  * Native shell niceties (iOS / Android via Capacitor). Everything here is
  * optional: on the web these calls are skipped.
  */
-export async function setupNative(onBack: () => void) {
+export async function setupNative(onBack: () => void, app: { ready: Promise<void>; rush: boolean }) {
   if (!Capacitor.isNativePlatform()) return;
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
@@ -27,6 +28,11 @@ export async function setupNative(onBack: () => void) {
   }
   try {
     const { SplashScreen } = await import('@capacitor/splash-screen');
+    // Keep the launch screen up while every room is built (a few seconds at most):
+    // then nothing is built, and no frame dropped, while you play.
+    await Promise.race([app.ready, new Promise((resolve) => setTimeout(resolve, 4000))]);
+    app.rush = false;
+    meter.note(`launch screen held ${Math.round(performance.now())}ms`);
     await SplashScreen.hide({ fadeOutDuration: 300 });
   } catch {
     /* plugin missing */

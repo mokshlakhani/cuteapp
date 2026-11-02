@@ -10,6 +10,9 @@ import { ease } from '../design/motion';
 import { lighten, rgba } from '../core/color';
 import { TopBar, el } from '../ui/components';
 import { grainImage } from '../render/paint';
+import { frames } from '../core/frames';
+import { meter } from '../core/perf';
+import { Warmer } from '../core/stages';
 import type { RoomInfo, RoomNav, Scene } from './scene';
 
 interface Transition {
@@ -38,6 +41,7 @@ export class App implements RoomNav {
   private current!: Scene;
   private transition: Transition | null = null;
   private last = 0;
+  private warmer = new Warmer();
 
   constructor(
     host: HTMLElement,
@@ -79,6 +83,7 @@ export class App implements RoomNav {
     this.topbar.showBack(false);
     this.layoutAll();
     this.input.handler = this.handler;
+    for (const r of rooms) if (r.warm) this.warmer.add(r.id, r.warm);
   }
 
   /** Pointer events go to the active scene, never during transitions. */
@@ -121,6 +126,41 @@ export class App implements RoomNav {
     return s;
   }
 
+  /** A room is likely next (its tile is pressed): if it's still being built, build it first. */
+  prepare(id: string) {
+    this.warmer.first(id);
+  }
+
+  /**
+   * Rooms are built a slice a frame while you're on the home screen (see
+   * core/stages), then each made ready to open, so opening one finds it done
+   * and the transition's first frames aren't spent building. Never in a room
+   * or during a transition.
+   */
+  private warm() {
+    const t0 = meter.start();
+    if (!this.warmer.idle) this.warmer.step();
+    else {
+      const next = this.rooms.find((r) => r.warm && !this.scenes.has(r.id));
+      if (next) this.scene(next.id);
+      else {
+        this.rush = false;
+        this.warmed();
+      }
+    }
+    meter.stop('warm', t0);
+  }
+
+  /**
+   * Resolves once every room is built and ready to open. A phone's launch
+   * screen can wait for this: while it's up, building goes as fast as it can
+   * (see start), since nobody can see a dropped frame behind it.
+   */
+  private warmed: () => void = () => {};
+  readonly ready = new Promise<void>((resolve) => (this.warmed = resolve));
+  /** Build flat out, a frame's worth at a time, instead of a slice a frame. */
+  rush = false;
+
   go(id: string, origin?: { x: number; y: number }) {
     if (this.transition || id === this.current.id) return;
     const to = this.scene(id);
@@ -152,7 +192,7 @@ export class App implements RoomNav {
     haptics.play('tick');
   }
 
-  /** A game's name, big, for a moment as you walk in: no doubt what you're playing. */
+  /** A game's name, flashed as the room opens: no doubt what you're playing, gone before you play. */
   private announce(to: Scene) {
     const t = this.roomTitle;
     t.classList.remove('is-up');
@@ -175,8 +215,11 @@ export class App implements RoomNav {
       smooth += (raw - smooth) * 0.15;
       const beat = smooth < 1 / 90 ? 1 / 120 : 1 / 60;
       const dt = Math.abs(raw - beat) < beat * 0.35 ? beat : raw;
+      frames.n++;
+      frames.fast = beat < 1 / 90;
       try {
         this.tick(dt);
+        meter.frame(now, performance.now() - now);
       } catch (e) {
         // Never let one bad frame wedge the canvas (e.g. a leaked save/clip).
         console.error(e);
@@ -198,6 +241,10 @@ export class App implements RoomNav {
       tr.from.update(dt);
     }
     this.current.update(dt);
+    if (this.rush) {
+      const t0 = performance.now();
+      while (performance.now() - t0 < 10 && this.rush) this.warm();
+    } else if (!tr && this.current.id === 'home' && frames.n > 90) this.warm();
     // In a transition both rooms are drawn on the stage, clipped and scaled.
     if (tr) this.setLive(tr.from, false);
     this.setLive(this.current, !tr);

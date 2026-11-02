@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { Staged, type Build } from '../../core/stages';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { clamp, lerp, rand } from '../../core/math';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { Face, drawFace } from '../../render/face';
-import { blobTexture, woodTexture } from '../../render/table';
+import { blobTexture, gpuReady, roomReflections, woodTexture } from '../../render/table';
 import { SLICE_FRUITS, type SliceFruit } from './fruits';
 import { MAX_CUTS, dressSlice, makeSliceMaterial, type SliceUniforms } from './material';
 import { corners, cutAll, cutMask, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3 } from './polyhedron';
@@ -107,15 +107,15 @@ export class SliceScene {
   events: SliceEvents = {};
 
   private root = new THREE.Group();
-  private whole: THREE.Mesh;
+  private whole!: THREE.Mesh;
   private wholeGeo: THREE.BufferGeometry | null = null;
-  private skin: { mat: THREE.MeshPhysicalMaterial; uniforms: SliceUniforms };
+  private skin!: { mat: THREE.MeshPhysicalMaterial; uniforms: SliceUniforms };
   /** The pieces it's been cut into, still together, each as a mesh in the fruit's frame. */
   private parts = new Map<Poly, THREE.Mesh>();
   /** It has fallen apart onto the board. */
   private fallen = false;
   private faceCanvas = document.createElement('canvas');
-  private faceTex: THREE.CanvasTexture;
+  private faceTex!: THREE.CanvasTexture;
   private faceSig = '';
   /** Stems, leaves, tips and scales: on the whole fruit, then on whichever piece they sit on. */
   private extras: Extra[] = [];
@@ -123,8 +123,8 @@ export class SliceScene {
   private chunks: Chunk[] = [];
   private chunkGroup = new THREE.Group();
   private drops: Drop[] = [];
-  private dropMesh: THREE.InstancedMesh;
-  private dropMat: THREE.MeshStandardMaterial;
+  private dropMesh!: THREE.InstancedMesh;
+  private dropMat!: THREE.MeshStandardMaterial;
   private ray = new THREE.Raycaster();
   private time = rand(0, 20);
   /** How the fruit is turned: by your finger, plus a slow drift while it's left alone. */
@@ -136,7 +136,7 @@ export class SliceScene {
   /** The smallest piece that counts: a cut that would shave off less leaves that piece whole. */
   private minVolume = 0;
   /** A soft blob shadow under the floating fruit (no shadow-map pass needed while it floats). */
-  private blob: THREE.Mesh;
+  private blob!: THREE.Mesh;
   private dist = 30;
   private viewOffset = 0;
   private w = 1;
@@ -161,10 +161,13 @@ export class SliceScene {
     this.renderer.shadowMap.type = THREE.VSMShadowMap;
     // Redrawn only while something moves (see render).
     this.renderer.shadowMap.autoUpdate = false;
+  }
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  /** The rest of the table, in slices (see core/stages). */
+  *build(): Build {
+    this.scene.environment = roomReflections(this.renderer);
     this.scene.environmentIntensity = 0.42;
+    yield;
 
     this.scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.95));
     const key = new THREE.DirectionalLight('#fff4e6', 2.3);
@@ -192,6 +195,7 @@ export class SliceScene {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
+    yield;
 
     // The cutting board: soft-cornered pale wood.
     const board = new THREE.Mesh(
@@ -202,6 +206,7 @@ export class SliceScene {
     board.receiveShadow = true;
     board.castShadow = true;
     this.scene.add(board);
+    yield;
 
     this.skin = makeSliceMaterial();
     this.faceCanvas.width = this.faceCanvas.height = FACE_PX;
@@ -227,14 +232,16 @@ export class SliceScene {
     this.dropMesh.frustumCulled = false;
     this.scene.add(this.dropMesh);
 
+    yield;
     this.setFruit(this.fruit);
+    yield;
 
-    // Compile the shaders now (pieces, and their shadows), not on the frame of the first cut.
+    // Compile and draw the shaders now (pieces, and their shadows), not on the frame of the first cut.
     const warm = new THREE.Mesh(new THREE.SphereGeometry(0.01, 4, 3), makeSliceMaterial(this.skin.uniforms).mat);
     warm.castShadow = true;
     warm.geometry.setAttribute('aRest', warm.geometry.attributes.position.clone());
     this.scene.add(warm);
-    this.renderer.compile(this.scene, this.camera);
+    yield* gpuReady(this.renderer, this.scene, this.camera);
     this.scene.remove(warm);
     warm.geometry.dispose();
     (warm.material as THREE.Material).dispose();
@@ -946,9 +953,12 @@ const smooth01 = (x: number) => {
   return t * t * (3 - 2 * t);
 };
 
-let instance: SliceScene | null = null;
-/** The room's table (the home card runs a small one of its own). */
+/** The room's table, built in slices ahead of the room (the home card runs a small one of its own). */
+export const sliceScene = new Staged(
+  () => new SliceScene(),
+  (s) => s.build(),
+);
 export function getSliceScene() {
-  return (instance ??= new SliceScene());
+  return sliceScene.get();
 }
 

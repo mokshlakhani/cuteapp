@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { Staged, type Build } from '../../core/stages';
+import { gpuReady, roomReflections } from '../../render/table';
 import { clamp, lerp, noise1 } from '../../core/math';
 import { ease } from '../../design/motion';
 import { drawFace } from '../../render/face';
@@ -36,7 +37,7 @@ export class MelonScene {
   readonly camera = new THREE.PerspectiveCamera(30, 1, 1, 400);
   readonly shape = new MelonShape();
   readonly root = new THREE.Group();
-  readonly explosion: Explosion;
+  explosion!: Explosion;
   /** Height the melon is held above its resting place (the drop-in). */
   lift = 0;
   /** After the pop there's no melon until a fresh one drops in. */
@@ -48,21 +49,21 @@ export class MelonScene {
   /** Which fruit is on the table. */
   fruit: PopFruit = POP_FRUITS[0];
 
-  private body: THREE.Mesh;
+  private body!: THREE.Mesh;
   private geo = new THREE.BufferGeometry();
-  private rest: Float32Array;
-  private pos: Float32Array;
-  private nrm: Float32Array;
-  private uniforms: MelonUniforms;
-  private skinMat: THREE.MeshPhysicalMaterial;
-  private shardSkin: { mat: THREE.MeshPhysicalMaterial; uniforms: MelonUniforms };
+  private rest!: Float32Array;
+  private pos!: Float32Array;
+  private nrm!: Float32Array;
+  private uniforms!: MelonUniforms;
+  private skinMat!: THREE.MeshPhysicalMaterial;
+  private shardSkin!: { mat: THREE.MeshPhysicalMaterial; uniforms: MelonUniforms };
   private bands: BandMesh[] = [];
   private bandMats = new Map<string, THREE.Material>();
   /** What grows from its stem end (+x) and its other end (−x). */
   private stem = new THREE.Group();
   private tail = new THREE.Group();
   private faceCanvas = document.createElement('canvas');
-  private faceTex: THREE.CanvasTexture;
+  private faceTex!: THREE.CanvasTexture;
   /** The face last drawn into the texture (see Face.signature). */
   private faceSig = '';
   private surf = new Float32Array(PROFILE);
@@ -82,6 +83,9 @@ export class MelonScene {
   private warm: { state: 'compiling' | 'shadows' | 'done'; holder: THREE.Group; frames: number } | null = null;
   private time = 0;
   private viewOffset = 0;
+  /** How far the picture is moved over and up (px), to centre it on a home card. */
+  private shiftX = 0;
+  private shiftY = 0;
   private w = 1;
   private h = 1;
 
@@ -102,10 +106,13 @@ export class MelonScene {
     this.renderer.shadowMap.type = THREE.VSMShadowMap;
     // Redrawn only while something moves (see render).
     this.renderer.shadowMap.autoUpdate = false;
+  }
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  /** The rest of the table, in slices (see core/stages). */
+  *build(): Build {
+    this.scene.environment = roomReflections(this.renderer);
     this.scene.environmentIntensity = 0.42;
+    yield;
 
     this.scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.95));
     const key = new THREE.DirectionalLight('#fff4e6', 2.3);
@@ -134,6 +141,7 @@ export class MelonScene {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
+    yield;
 
     // ——— the melon ———
     const sphere = new THREE.SphereGeometry(1, 128, 72);
@@ -147,6 +155,7 @@ export class MelonScene {
     this.geo.setAttribute('aRest', new THREE.BufferAttribute(this.rest, 3));
     this.geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 6);
     sphere.dispose();
+    yield;
 
     const skin = makeMelonMaterial(true);
     this.uniforms = skin.uniforms;
@@ -163,12 +172,15 @@ export class MelonScene {
     this.root.rotation.y = YAW;
     this.buildStem();
     this.scene.add(this.root);
+    yield;
 
     this.shardSkin = makeMelonMaterial(false);
     this.explosion = new Explosion(this.shardSkin.mat, (c) => this.bandMat(c));
     this.scene.add(this.explosion.group);
 
     this.refresh();
+    yield;
+    yield* gpuReady(this.renderer, this.scene, this.camera);
   }
 
   set events(e: ExplosionEvents) {
@@ -271,6 +283,13 @@ export class MelonScene {
     this.placeCamera();
   }
 
+  /** Move the picture left and up by this much (px). */
+  shift(x: number, y: number) {
+    this.shiftX = x;
+    this.shiftY = y;
+    this.placeCamera();
+  }
+
   private placeCamera() {
     const k = this.camK;
     // A slow, barely-there drift, so the table feels alive.
@@ -284,7 +303,7 @@ export class MelonScene {
     const sy = this.shakeAmp ? noise1(this.time * 24, 2) * this.shakeAmp : 0;
     cam.position.set(Math.sin(az) * Math.cos(elev) * d + sx, Math.sin(elev) * d + sy, Math.cos(az) * Math.cos(elev) * d);
     cam.lookAt(sx * 0.5, ty + sy * 0.5, 0);
-    cam.setViewOffset(this.w, this.h, 0, this.viewOffset * (1 - k * 0.6), this.w, this.h);
+    cam.setViewOffset(this.w, this.h, this.shiftX, this.viewOffset * (1 - k * 0.6) + this.shiftY, this.w, this.h);
     cam.updateProjectionMatrix();
   }
 
@@ -586,10 +605,13 @@ export class MelonScene {
   }
 }
 
-let instance: MelonScene | null = null;
-/** The room's melon table (the home card runs a small one of its own). */
+/** The room's melon table, built in slices ahead of the room (the home card runs a small one of its own). */
+export const melonScene = new Staged(
+  () => new MelonScene(),
+  (s) => s.build(),
+);
 export function getMelonScene() {
-  return (instance ??= new MelonScene());
+  return melonScene.get();
 }
 
 export const MELON_COLORS = fruitPalette.watermelon;

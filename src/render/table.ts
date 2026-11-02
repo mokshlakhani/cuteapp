@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildingAtOnce, type Build } from '../core/stages';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { rand } from '../core/math';
 
@@ -18,17 +19,104 @@ export function tableRenderer(canvas: HTMLCanvasElement) {
   return r;
 }
 
+/**
+ * The room's reflections, as a texture for this renderer. Making them is the
+ * heaviest single step in building a room (it compiles its own shaders), and
+ * every room's the same, so the first renderer makes them once and reads the
+ * result back; every other one gets a copy as plain data to upload.
+ */
+let baked: { data: Uint16Array; width: number; height: number } | null | undefined;
+
+export function roomReflections(renderer: THREE.WebGLRenderer): THREE.Texture {
+  if (baked === undefined) baked = bake(renderer);
+  if (baked) {
+    const t = new THREE.DataTexture(baked.data, baked.width, baked.height, THREE.RGBAFormat, THREE.HalfFloatType);
+    t.mapping = THREE.CubeUVReflectionMapping;
+    t.minFilter = t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = false;
+    t.colorSpace = THREE.LinearSRGBColorSpace;
+    t.needsUpdate = true;
+    return t;
+  }
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const texture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  return texture;
+}
+
+function bake(renderer: THREE.WebGLRenderer) {
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const target = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    const { width, height } = target;
+    const data = new Uint16Array(width * height * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, width, height, data);
+    target.dispose();
+    pmrem.dispose();
+    // A read that failed leaves it blank: then each room makes its own.
+    for (let i = 0; i < data.length; i += 997) if (data[i] !== 0) return { data, width, height };
+  } catch {
+    /* fall back below */
+  }
+  return null;
+}
+
 /** The room's reflections and the one lamp, from the upper left. */
 export function lightTable(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  pmrem.dispose();
+  scene.environment = roomReflections(renderer);
   scene.environmentIntensity = 0.42;
   scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.95));
   const key = new THREE.DirectionalLight('#fff4e6', 2.3);
   key.position.set(-9, 16, 8);
   scene.add(key, key.target);
   return key;
+}
+
+/**
+ * Get a room's picture ready on the GPU a piece at a time: its reflections
+ * uploaded, its shaders compiled (off the main thread where the browser
+ * allows), then it's drawn bit by bit, a material at a time, the lights
+ * alone first, so each buffer uploads in a slice of its own. A first frame of everything at once would compile every
+ * shader, upload every buffer and allocate the shadow maps in one go.
+ */
+export function* gpuReady(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera): Build {
+  if (scene.environment) {
+    renderer.initTexture(scene.environment);
+    yield;
+  }
+  // Shaders compile on other threads where the browser allows it.
+  if (buildingAtOnce()) renderer.compile(scene, camera);
+  else {
+    let done = false;
+    const end = () => (done = true);
+    renderer.compileAsync(scene, camera).then(end, end);
+    while (!done) yield;
+  }
+  // What's drawn, grouped by what it's drawn with (a shader is the costly part).
+  const byMaterial = new Map<THREE.Material, THREE.Object3D[]>();
+  scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!(m.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine) || !o.visible) return;
+    const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+    const list = byMaterial.get(mat);
+    if (list) list.push(o);
+    else byMaterial.set(mat, [o]);
+  });
+  const all = [...byMaterial.values()].flat();
+  for (const o of all) o.visible = false;
+  const draw = () => {
+    renderer.shadowMap.needsUpdate = true;
+    renderer.render(scene, camera);
+  };
+  draw();
+  yield;
+  for (const group of byMaterial.values()) {
+    for (const o of group) o.visible = true;
+    draw();
+    for (const o of group) o.visible = false;
+    yield;
+  }
+  for (const o of all) o.visible = true;
 }
 
 /** A soft round shadow, warm like every shadow in the app. */

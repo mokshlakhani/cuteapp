@@ -1,4 +1,6 @@
 import type { Preview, RoomInfo, RoomNav, Scene } from '../../app/scene';
+import { frames } from '../../core/frames';
+import { meter } from '../../core/perf';
 import type { Pointer } from '../../core/input';
 import type { Insets } from '../../render/stage';
 import { theme } from '../../design/theme';
@@ -33,6 +35,10 @@ interface Card {
   wiggle?: Spring;
   zs: { x: number; y: number; age: number }[];
   nextZ: number;
+  /** Which frames this toy's turn to render falls on, on a fast screen (see draw). */
+  slot: number;
+  /** Until when (ms) the toy renders every frame: it was just touched. */
+  hotUntil: number;
 }
 
 /** Room round a card's frame for its corners, and round a sleeper for its z's (px). */
@@ -106,6 +112,8 @@ export class HomeScene implements Scene {
         rect: { x: 0, y: 0, w: 0, h: 0 },
         zs: [],
         nextZ: rand(0.5, 2.5),
+        slot: this.cards.length,
+        hotUntil: 0,
       };
       const toy = card.preview.canvas;
       if (toy) {
@@ -118,6 +126,8 @@ export class HomeScene implements Scene {
         card.wiggle = new Spring(0, springs.wobbly);
       }
       const press = () => {
+        card.hotUntil = performance.now() + 2000;
+        if (awake) this.nav.prepare(info.id);
         card.press.target = 1 - PRESS;
       };
       node.addEventListener('pointerdown', press);
@@ -246,7 +256,12 @@ export class HomeScene implements Scene {
       this.paintStill(t, dpr);
       this.stageKey = '';
     }
-    // 3D toys render themselves, pressed with their card.
+    // 3D toys render themselves, pressed with their card. On a 120 Hz screen
+    // they take turns, every other frame each: they only breathe and turn
+    // slowly, so it can't be seen, and three or four live renders a frame
+    // are the heaviest thing on the shelf. A toy that's just been touched
+    // goes back to every frame.
+    const now = performance.now();
     let pressing = false;
     for (const c of this.cards) {
       const s = this.sink(c);
@@ -254,7 +269,11 @@ export class HomeScene implements Scene {
       if (s !== c.shownScale) faceSink(c, s);
       c.shownScale = s;
       const toy = this.toyRect(c);
-      if (c.preview.render && toy.w) c.preview.render(toy.w, toy.h);
+      if (c.preview.render && toy.w && (!frames.fast || now < c.hotUntil || (frames.n + c.slot) % 2 === 0)) {
+        const t0 = meter.start();
+        c.preview.render(toy.w, toy.h);
+        meter.stop('gl:' + c.info.id, t0);
+      }
     }
     if (pressing || this.stageKey !== key) {
       // Everything, with the pressed card at its pressed size.

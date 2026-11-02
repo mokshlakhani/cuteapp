@@ -65,15 +65,15 @@ describe('the breath', () => {
 });
 
 describe('popping by itself', () => {
-  it('goes exactly 8% past the ring, at every size', () => {
-    expect(OVER).toBe(0.08);
+  it('goes exactly 5% past the ring, at every size', () => {
+    expect(OVER).toBe(0.05);
     for (let s = SIZE.min; s <= SIZE.max; s += 0.01) expect(radiusOf(burstAt(s)) / radiusOf(s)).toBeCloseTo(1 + OVER, 9);
   });
 
   it('leaves a fair moment to let go, big bubble or small, at a steady breath', () => {
     for (const target of [SIZE.min, 0.5, SIZE.max]) {
-      expect(window('steady', target)).toBeGreaterThan(0.3);
-      expect(window('brisk', target)).toBeGreaterThan(0.2);
+      expect(window('steady', target)).toBeGreaterThan(0.19);
+      expect(window('brisk', target)).toBeGreaterThan(0.14);
     }
   });
 
@@ -83,12 +83,12 @@ describe('popping by itself', () => {
 });
 
 describe('popping short of the ring', () => {
-  it('holds down to 7% short, at every size, and pops below that', () => {
-    expect(UNDER).toBe(0.07);
+  it('holds down to 5% short, at every size, and pops below that', () => {
+    expect(UNDER).toBe(0.05);
     for (let s = SIZE.min; s <= SIZE.max; s += 0.01) {
       const at = (share: number) => (radiusOf(s) * share - radiusOf(0)) / (radiusOf(1) - radiusOf(0));
-      expect(tooSmall(at(0.931), s)).toBe(false);
-      expect(tooSmall(at(0.929), s)).toBe(true);
+      expect(tooSmall(at(0.951), s)).toBe(false);
+      expect(tooSmall(at(0.949), s)).toBe(true);
     }
   });
 
@@ -108,18 +108,12 @@ describe('the word beside the bubble', () => {
   });
 
   it('says so close nearby, the same either side', () => {
-    expect(callFor(0.56, 0.5)).toBe('so close');
-    expect(callFor(0.44, 0.5)).toBe('so close');
+    expect(callFor(0.53, 0.5)).toBe('so close');
+    expect(callFor(0.47, 0.5)).toBe('so close');
   });
 
-  it('otherwise says which way it missed', () => {
+  it('otherwise says it was too small', () => {
     expect(callFor(0.3, 0.5)).toBe('too small');
-    expect(callFor(0.58, 0.5)).toBe('a bit big');
-    expect(0.58).toBeLessThan(burstAt(0.5));
-  });
-
-  it('a bit big never reaches the size that would have popped', () => {
-    for (let s = SIZE.min; s <= SIZE.max; s += 0.01) expect(offBy(burstAt(s), s)).toBeGreaterThan(NEAR.close);
   });
 });
 

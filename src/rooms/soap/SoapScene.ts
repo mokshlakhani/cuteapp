@@ -3,7 +3,8 @@ import { clamp, damp, lerp, noise1, rand, TAU } from '../../core/math';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { Face, drawFace } from '../../render/face';
-import { blobTexture, lightTable, tableRenderer } from '../../render/table';
+import { Staged, type Build } from '../../core/stages';
+import { blobTexture, gpuReady, lightTable, tableRenderer } from '../../render/table';
 import { filmFor, RADIUS, radiusOf, type Film } from './game';
 import { thingsSheet } from './things';
 
@@ -177,8 +178,8 @@ export class SoapScene {
   /** 0..1: how near the bubble on the wand is to giving way. */
   strain = 0;
 
-  private film: THREE.Mesh;
-  private filmMat: THREE.ShaderMaterial;
+  private film!: THREE.Mesh;
+  private filmMat!: THREE.ShaderMaterial;
   private filmK = new Spring(1, springs.soft);
   private pool: Bubble[] = [];
   private live: Bubble | null = null;
@@ -189,11 +190,11 @@ export class SoapScene {
   private domeTarget = 0;
   private blown = 0;
   private drops: Drop[] = [];
-  private dropMesh: THREE.InstancedMesh;
+  private dropMesh!: THREE.InstancedMesh;
   private time = rand(0, 20);
   private faceCanvas = document.createElement('canvas');
-  private faceTex: THREE.CanvasTexture;
-  private restTex: THREE.CanvasTexture;
+  private faceTex!: THREE.CanvasTexture;
+  private restTex!: THREE.CanvasTexture;
   private faceSig = '';
   private dist = 30;
   private viewOffset = 0;
@@ -202,13 +203,19 @@ export class SoapScene {
 
   constructor() {
     this.renderer = tableRenderer(this.canvas);
+  }
+
+  /** The rest of the room, in slices (see core/stages). */
+  *build(): Build {
     lightTable(this.renderer, this.scene);
+    yield;
     this.faceCanvas.width = this.faceCanvas.height = FACE_PX;
     this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
     this.faceTex.colorSpace = THREE.NoColorSpace;
     this.restTex = restingFace();
 
     this.buildWand();
+    yield;
 
     const sphere = new THREE.SphereGeometry(1, 56, 40);
     const base = bubbleMaterial();
@@ -223,6 +230,7 @@ export class SoapScene {
       mesh.renderOrder = 2;
       this.scene.add(mesh);
       this.pool.push({ mesh, mat, pos: new THREE.Vector3(), vel: new THREE.Vector3(), r: 1, wob: new Spring(0, springs.wobbly), seed: rand(0, 20), age: 0, pop: 0, free: false, clip: 0 });
+      yield;
     }
 
     // The film across the ring, waiting: the same soap, flat.
@@ -239,10 +247,11 @@ export class SoapScene {
     this.dropMesh.count = 0;
     this.dropMesh.frustumCulled = false;
     this.scene.add(this.dropMesh);
+    yield;
 
-    // Compile now, not on the first press.
+    // Compile and draw once now, not on the first press.
     this.pool[0].mesh.visible = true;
-    this.renderer.compile(this.scene, this.camera);
+    yield* gpuReady(this.renderer, this.scene, this.camera);
     this.pool[0].mesh.visible = false;
   }
 
@@ -667,7 +676,11 @@ function bubbleMaterial() {
   });
 }
 
-let instance: SoapScene | null = null;
+/** The room's table, built in slices ahead of the room (see core/stages). */
+export const soapScene = new Staged(
+  () => new SoapScene(),
+  (s) => s.build(),
+);
 export function getSoapScene() {
-  return (instance ??= new SoapScene());
+  return soapScene.get();
 }

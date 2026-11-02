@@ -2,8 +2,8 @@
  * The rules of the soap room, kept free of three.js so they can be tested.
  * Bubble after bubble, each with a size to blow it to. Sizes run from 0 (a
  * bubble just out of the wand) to 1 (as big as they come). Hold to blow, let
- * go at the ring. Grow it more than 8% past the ring and it pops by itself;
- * let go more than 7% short of it and it pops too. A word beside the bubble
+ * go at the ring. Grow it more than 5% past the ring and it pops by itself;
+ * let go more than 5% short of it and it pops too. A word beside the bubble
  * says how it went. Every bubble that holds adds to a run, and a pop ends the
  * run: your longest is your high score.
  */
@@ -17,7 +17,21 @@ export interface Order {
   size: number;
   /** How the breath comes. */
   pace: Pace;
+  /** This bubble's own breath, so no rhythm carries over. */
+  feel?: Feel;
 }
+
+export interface Feel {
+  /** Quicker or slower than the pace. */
+  speed: number;
+  /** How much it surges and eases, how often, and where in that it starts. */
+  depth: number;
+  tempo: number;
+  beat: number;
+}
+
+/** No breath grows faster than this, so there's always a moment to let go. */
+const TOP_RATE = 0.48;
 
 /** Smallest and largest sizes asked for. */
 export const SIZE = { min: 0.25, max: 0.92 };
@@ -26,11 +40,11 @@ export const RADIUS = { min: 0.68, max: 1.86 };
 /** Let go before this and it's only a puff. */
 export const PUFF = 0.05;
 /** Grown this far past the ring (a share of its radius), it pops by itself. */
-export const OVER = 0.08;
+export const OVER = 0.05;
 /** Let go this far short of the ring (a share of its radius), it pops. */
-export const UNDER = 0.07;
-/** How near the ring counts as perfect, and as close: shares of its radius. */
-export const NEAR = { exact: 0.025, close: 0.07 };
+export const UNDER = 0.05;
+/** How near the ring counts as perfect: a share of its radius. */
+export const NEAR = { exact: 0.025 };
 
 const PACES: Pace[] = ['slow', 'steady', 'steady', 'brisk', 'gusty'];
 
@@ -41,18 +55,24 @@ const sizeOf = (radius: number) => (radius - RADIUS.min) / (RADIUS.max - RADIUS.
  * How fast a bubble grows (size per second), `t` seconds into a breath. Bigger
  * bubbles grow faster, so the margin past the ring is about as long a moment at any size.
  */
-export function rateAt(pace: Pace, t: number, size: number) {
+export function rateAt(pace: Pace, t: number, size: number, feel?: Feel) {
   const k = radiusOf(size) / radiusOf(0.6);
+  if (!feel) return baseRate(pace, t) * k;
+  const rate = baseRate(pace, t) * feel.speed * (1 + feel.depth * Math.sin(t * feel.tempo + feel.beat));
+  return Math.min(rate, TOP_RATE) * k;
+}
+
+function baseRate(pace: Pace, t: number) {
   switch (pace) {
     case 'slow':
-      return 0.2 * k;
+      return 0.2;
     case 'steady':
-      return 0.28 * k;
+      return 0.28;
     case 'brisk':
-      return 0.38 * k;
+      return 0.38;
     case 'gusty':
       // Swells and eases, but never stops or goes backward.
-      return 0.28 * k * (1 + 0.72 * Math.sin(t * 2.6 + 0.8));
+      return 0.28 * (1 + 0.72 * Math.sin(t * 2.6 + 0.8));
   }
 }
 
@@ -65,11 +85,14 @@ export const offBy = (size: number, target: number) => radiusOf(size) / radiusOf
 /** Let go at this size, is it too small to hold? */
 export const tooSmall = (size: number, target: number) => offBy(size, target) < -UNDER;
 
+/** A breath of its own for one bubble. */
+export const feelFor = (rnd = Math.random): Feel => ({ speed: 0.8 + rnd() * 0.42, depth: 0.12 + rnd() * 0.23, tempo: 1.4 + rnd() * 2, beat: rnd() * Math.PI * 2 });
+
 /** A fresh bubble, never much like the last one. */
 export function orderFor(rnd = Math.random, last?: Order): Order {
   for (let tries = 0; ; tries++) {
     const size = Math.round((SIZE.min + rnd() * (SIZE.max - SIZE.min)) * 100) / 100;
-    const o: Order = { size, pace: PACES[Math.floor(rnd() * PACES.length) % PACES.length] };
+    const o: Order = { size, pace: PACES[Math.floor(rnd() * PACES.length) % PACES.length], feel: feelFor(rnd) };
     if (!last || Math.abs(last.size - size) >= 0.12 || tries > 30) return o;
   }
 }
@@ -78,8 +101,7 @@ export function orderFor(rnd = Math.random, last?: Order): Order {
 export function callFor(size: number, target: number) {
   const off = offBy(size, target);
   if (Math.abs(off) <= NEAR.exact) return 'perfect';
-  if (Math.abs(off) <= NEAR.close) return 'so close';
-  return off < 0 ? 'too small' : 'a bit big';
+  return off < -UNDER ? 'too small' : 'so close';
 }
 
 /** Bubbles in a row, and the high score they're after. */

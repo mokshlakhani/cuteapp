@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { Staged, type Build } from '../../core/stages';
+import { gpuReady, roomReflections } from '../../render/table';
 import { Face, drawFace } from '../../render/face';
 import { clamp, rand } from '../../core/math';
 import { polyCentroid } from '../../core/geometry';
@@ -64,6 +65,9 @@ const TOP_VIEW_DEG = 74;
 const LIFT = 1.6;
 const MIN_VOLUME = 0.35;
 const FACE_PX = 128;
+/** How far back from the table's middle the wedge rests. */
+const WEDGE_Z = 0.4;
+
 /** How long two same-fruit pieces must be pressed together to melt (s). */
 const MERGE_TIME = 0.4;
 
@@ -73,7 +77,7 @@ export class Lab {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(30, 1, 1, 400);
   readonly knife = new Knife();
-  readonly shared: SharedUniforms;
+  shared!: SharedUniforms;
   entries: Entry[] = [];
   bounds: Bounds = { minX: -8, maxX: 8, minZ: -9, maxZ: 9 };
   firmness = 0.4;
@@ -81,8 +85,8 @@ export class Lab {
   timeScale = 1;
   paused = false;
   private showMesh = false;
-  private shadowMat: THREE.ShadowMaterial;
-  private key: THREE.DirectionalLight;
+  private shadowMat!: THREE.ShadowMaterial;
+  private key!: THREE.DirectionalLight;
   private w = 1;
   private h = 1;
   private ray = new THREE.Raycaster();
@@ -113,10 +117,13 @@ export class Lab {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.VSMShadowMap;
+  }
 
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  /** The rest of the table, in slices (see core/stages). */
+  *build(): Build {
+    this.scene.environment = roomReflections(this.renderer);
     this.scene.environmentIntensity = 0.38;
+    yield;
 
     this.scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.9));
     this.key = new THREE.DirectionalLight('#fff4e6', 2.4);
@@ -143,6 +150,7 @@ export class Lab {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
+    yield;
 
     this.scene.add(this.knife.group);
     this.knife.onCut = () => this.applyCut();
@@ -150,7 +158,10 @@ export class Lab {
     this.knife.onLand = () => this.events.land?.();
 
     this.shared = createShared();
+    yield;
     this.reset();
+    yield;
+    yield* gpuReady(this.renderer, this.scene, this.camera);
   }
 
   // ——— layout ———
@@ -192,6 +203,13 @@ export class Lab {
     }
   }
 
+  /** Move the picture left and up by this much (px), to centre it on a home card. */
+  shift(x: number, y: number) {
+    const cam = this.camera;
+    cam.setViewOffset(this.w, this.h, x, (cam.view?.offsetY ?? 0) + y, this.w, this.h);
+    cam.updateProjectionMatrix();
+  }
+
   private ndc(sx: number, sy: number) {
     return new THREE.Vector2((sx / this.w) * 2 - 1, -(sy / this.h) * 2 + 1);
   }
@@ -202,6 +220,19 @@ export class Lab {
     const p = new THREE.Vector3();
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
     return this.ray.ray.intersectPlane(plane, p) ? p : null;
+  }
+
+  /** Slide the wedge slowly back to its spot: on a home card its hops would walk it off. */
+  stayPut(dt: number) {
+    const p = this.entries[0]?.piece;
+    if (!p) return;
+    const k = Math.min(1, dt * 0.6);
+    const dx = -p.cx * k;
+    const dz = (WEDGE_Z - p.cz) * k;
+    for (let i = 0; i < p.n; i++) {
+      p.x[i] += dx;
+      p.z[i] += dz;
+    }
   }
 
   // ——— pieces ———
@@ -217,7 +248,7 @@ export class Lab {
     w.placeRest(-0.75, 0, WEDGE.height / 2 + 0.02, 0);
     // Recentre so the wedge sits in the middle of the table.
     const dx = -w.cx;
-    const dz = 0.4 - w.cz;
+    const dz = WEDGE_Z - w.cz;
     for (let i = 0; i < w.n; i++) {
       w.x[i] += dx;
       w.z[i] += dz;
@@ -683,13 +714,14 @@ export class Lab {
   }
 }
 
-let shared: Lab | null = null;
-/** The room's jelly table (the home card runs a small one of its own). */
+/** The room's jelly table, built in slices ahead of the room (the home card runs a small one of its own). */
+export const labTable = new Staged(
+  () => new Lab(),
+  (s) => s.build(),
+);
 export function getLab() {
-  if (!shared) {
-    shared = new Lab();
-    // Dev builds only: a handle for poking at the table from the console.
-    if (import.meta.env.DEV) (window as unknown as { __jellyLab: Lab }).__jellyLab = shared;
-  }
-  return shared;
+  const lab = labTable.get();
+  // Dev builds only: a handle for poking at the table from the console.
+  if (import.meta.env.DEV) (window as unknown as { __jellyLab: Lab }).__jellyLab = lab;
+  return lab;
 }

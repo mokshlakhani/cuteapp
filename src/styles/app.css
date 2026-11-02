@@ -734,7 +734,7 @@ svg {
   display: none;
 }
 
-/* A game's name, big, for a moment as you walk in. */
+/* A game's name, flashed while the room blooms open: gone before you play. */
 .room-title {
   position: absolute;
   left: 0;
@@ -754,7 +754,7 @@ svg {
 }
 
 .room-title.is-up {
-  animation: room-title 1500ms var(--ease-out) 240ms both;
+  animation: room-title 760ms var(--ease-out) both;
 }
 
 @keyframes room-title-still {

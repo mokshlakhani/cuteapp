@@ -17,7 +17,8 @@ rest is a short list of rules.
 2. **Show, don't tell.** Home tiles show each toy _alive_, on a chunky tile in
    the game's own deep colour that sinks into its edge when pressed. Every
    tile is the same size, with a plate saying what the game's called and what
-   you do, and your best in the corner if it keeps one. A game's name stands
+   you do, and your best in the corner if it keeps one. Each toy sits dead centre above
+   its plate. A game's name stands
    big for a moment as you walk in. Display type is Lilita One everywhere,
    text is Nunito. Hints are one line,
    appear once, and leave as soon as you've done the thing.

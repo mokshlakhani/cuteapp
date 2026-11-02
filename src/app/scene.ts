@@ -1,4 +1,5 @@
 import type { PointerHandler } from '../core/input';
+import type { Job } from '../core/stages';
 import type { Insets } from '../render/stage';
 
 /**
@@ -53,10 +54,14 @@ export interface RoomInfo {
   /** False for rooms that are still asleep (coming later). */
   awake: boolean;
   create?: (nav: RoomNav) => Scene;
+  /** The room's heavy part, built a slice a frame on the home screen, ahead of the room (see core/stages). */
+  warm?: Job;
   preview: () => Preview;
 }
 
 export interface RoomNav {
+  /** A room is likely next (its tile is pressed): build it now, so opening it doesn't hitch. */
+  prepare(id: string): void;
   go(id: string, origin?: { x: number; y: number }): void;
   home(origin?: { x: number; y: number }): void;
 }

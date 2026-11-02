@@ -1,6 +1,8 @@
+import { finish } from '../../core/stages';
 import type { Preview } from '../../app/scene';
 import { rand } from '../../core/math';
 import { reducedMotion } from '../../render/camera';
+import { offCentre } from '../../render/centre';
 import { Lab } from './Lab';
 
 /** Seconds between its soft little hops. */
@@ -13,7 +15,9 @@ const EVERY: [number, number] = [3.2, 4.6];
  */
 export function jellyPreview(): Preview {
   const lab = new Lab();
+  finish(lab.build());
   let size = '';
+  let centred = false;
   let next = rand(1.5, 3);
   const fit = (w: number, h: number) => {
     const key = `${Math.round(w)}x${Math.round(h)}`;
@@ -22,6 +26,19 @@ export function jellyPreview(): Preview {
     // The free band a little narrower than the card, above the label: the
     // camera pulls back and the wedge sits comfortably in the middle.
     lab.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.21, h * 0.91);
+    lab.shift(0, 0);
+    centred = false;
+  };
+
+  /** Its picture at this size, in the middle of the card. */
+  const show = (w: number, h: number) => {
+    fit(w, h);
+    const view = lab.render();
+    if (centred) return view;
+    centred = true;
+    const o = offCentre(view, w, h);
+    lab.shift(o.x, o.y);
+    return lab.render();
   };
 
   return {
@@ -35,14 +52,13 @@ export function jellyPreview(): Preview {
         lab.hop();
       }
       lab.update(dt);
+      lab.stayPut(dt);
     },
     render(w, h) {
-      fit(w, h);
-      lab.render();
+      show(w, h);
     },
     draw(ctx, x, y, w, h) {
-      fit(w, h);
-      ctx.drawImage(lab.render(), x, y, w, h);
+      ctx.drawImage(show(w, h), x, y, w, h);
     },
     poke() {
       lab.hop();

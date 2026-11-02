@@ -6,7 +6,8 @@ import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
 import { Face, drawFace } from '../../render/face';
-import { blobTexture, lightTable, tableRenderer, woodTexture } from '../../render/table';
+import { Staged, type Build } from '../../core/stages';
+import { blobTexture, gpuReady, lightTable, tableRenderer, woodTexture } from '../../render/table';
 import { swayAt, TABLE_Y, type Placed, type Stone } from './game';
 
 /**
@@ -103,11 +104,11 @@ export class StackScene {
   private tower: Piece[] = [];
   private held: Piece | null = null;
   private falling: Piece[] = [];
-  private shadow: THREE.Mesh;
-  private heldShadow: THREE.Mesh;
+  private shadow!: THREE.Mesh;
+  private heldShadow!: THREE.Mesh;
   private faceCanvas = document.createElement('canvas');
-  private faceTex: THREE.CanvasTexture;
-  private restTex: THREE.CanvasTexture;
+  private faceTex!: THREE.CanvasTexture;
+  private restTex!: THREE.CanvasTexture;
   private faceSig = '';
   private time = rand(0, 20);
   private look = 3;
@@ -123,11 +124,17 @@ export class StackScene {
 
   constructor() {
     this.renderer = tableRenderer(this.canvas);
+  }
+
+  /** The rest of the room, in slices (see core/stages). */
+  *build(): Build {
     lightTable(this.renderer, this.scene);
+    yield;
     this.faceCanvas.width = this.faceCanvas.height = FACE_PX;
     this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
     this.restTex = dozingFace();
+    yield;
 
     const board = new THREE.Mesh(
       new RoundedBoxGeometry(BOARD.w, BOARD.h, BOARD.d, 4, 0.13),
@@ -135,6 +142,7 @@ export class StackScene {
     );
     board.position.y = BOARD.h / 2;
     this.scene.add(board);
+    yield;
 
     this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), blobMat());
     this.shadow.rotation.x = -Math.PI / 2;
@@ -147,10 +155,12 @@ export class StackScene {
     this.heldShadow.visible = false;
     this.scene.add(this.heldShadow);
 
-    // Compile the stone's program now, not on the first stone.
+    yield;
+
+    // Compile and draw a stone now, not on the first one.
     const warm = this.makePiece({ a: 1, b: 0.4, seat: 0.5, bias: 0, round: 3, tone: 0, seed: 1 });
     this.scene.add(warm.mesh);
-    this.renderer.compile(this.scene, this.camera);
+    yield* gpuReady(this.renderer, this.scene, this.camera);
     this.free(warm);
   }
 
@@ -503,7 +513,10 @@ function stoneGeometry(s: Stone) {
   return g;
 }
 
-let instance: StackScene | null = null;
+export const stackScene = new Staged(
+  () => new StackScene(),
+  (s) => s.build(),
+);
 export function getStackScene() {
-  return (instance ??= new StackScene());
+  return stackScene.get();
 }

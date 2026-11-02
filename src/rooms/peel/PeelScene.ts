@@ -5,7 +5,8 @@ import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
 import { Face, drawFace } from '../../render/face';
-import { blobTexture, lightTable, tableRenderer, woodTexture } from '../../render/table';
+import { Staged, type Build } from '../../core/stages';
+import { blobTexture, gpuReady, lightTable, tableRenderer, woodTexture } from '../../render/table';
 import { wholeGeometry } from '../slice/SliceScene';
 import { buildExtras, disposeExtra, type Extra } from '../slice/extras';
 import { onSkin, skinNormal, type V3 } from '../slice/polyhedron';
@@ -110,12 +111,12 @@ export class PeelScene {
   /** How far the finished fruit has rolled back upright (0..1). */
   private upright = 0;
   private drops: Drop[] = [];
-  private dropMesh: THREE.InstancedMesh;
+  private dropMesh!: THREE.InstancedMesh;
   private dropMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false });
   private dropDue = 0;
-  private body: THREE.Mesh;
-  private bodyMat: { mat: THREE.MeshPhysicalMaterial; uniforms: Record<string, THREE.IUniform> };
-  private stripMat: { mat: THREE.MeshPhysicalMaterial; uniforms: Record<string, THREE.IUniform> };
+  private body!: THREE.Mesh;
+  private bodyMat!: { mat: THREE.MeshPhysicalMaterial; uniforms: Record<string, THREE.IUniform> };
+  private stripMat!: { mat: THREE.MeshPhysicalMaterial; uniforms: Record<string, THREE.IUniform> };
   private bodyGeo: THREE.BufferGeometry | null = null;
   private extras: Extra[] = [];
   private strips: Strip[] = [];
@@ -127,9 +128,9 @@ export class PeelScene {
   private half = 0.2;
   private length = 30;
   private knife = new THREE.Group();
-  private blob: THREE.Mesh;
+  private blob!: THREE.Mesh;
   private faceCanvas = document.createElement('canvas');
-  private faceTex: THREE.CanvasTexture;
+  private faceTex!: THREE.CanvasTexture;
   private faceSig = '';
   private time = rand(0, 20);
   private w = 1;
@@ -139,7 +140,12 @@ export class PeelScene {
 
   constructor() {
     this.renderer = tableRenderer(this.canvas);
+  }
+
+  /** The rest of the room, in slices (see core/stages). */
+  *build(): Build {
     lightTable(this.renderer, this.scene);
+    yield;
 
     const board = new THREE.Mesh(
       new RoundedBoxGeometry(BOARD.w, BOARD.h, BOARD.d, 4, 0.13),
@@ -151,6 +157,7 @@ export class PeelScene {
     this.blob.rotation.x = -Math.PI / 2;
     this.blob.position.set(0.5, BOARD.h + 0.005, -0.2);
     this.scene.add(this.blob);
+    yield;
 
     this.faceCanvas.width = this.faceCanvas.height = FACE_PX;
     this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
@@ -162,21 +169,25 @@ export class PeelScene {
     this.body = new THREE.Mesh(new THREE.BufferGeometry(), this.bodyMat.mat);
     this.root.add(this.body);
     this.scene.add(this.root);
+    yield;
     this.buildKnife();
+    yield;
 
     this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), this.dropMat, DROPS);
     this.dropMesh.count = 0;
     this.dropMesh.frustumCulled = false;
     this.scene.add(this.dropMesh);
 
-    // Compile the strip's program now, not on the first turn.
+    yield;
+
+    // Compile and draw the strip's program now, not on the first turn.
     const warm = new THREE.Mesh(new THREE.SphereGeometry(0.01, 4, 3), this.stripMat.mat);
     warm.geometry.setAttribute('aRest', warm.geometry.attributes.position.clone());
     this.scene.add(warm);
     this.body.geometry.setAttribute('position', warm.geometry.attributes.position);
     this.body.geometry.setAttribute('aRest', warm.geometry.attributes.position);
     this.body.geometry.setAttribute('normal', warm.geometry.attributes.normal);
-    this.renderer.compile(this.scene, this.camera);
+    yield* gpuReady(this.renderer, this.scene, this.camera);
     this.scene.remove(warm);
     warm.geometry.dispose();
   }
@@ -609,7 +620,10 @@ export class PeelScene {
   }
 }
 
-let instance: PeelScene | null = null;
+export const peelScene = new Staged(
+  () => new PeelScene(),
+  (s) => s.build(),
+);
 export function getPeelScene() {
-  return (instance ??= new PeelScene());
+  return peelScene.get();
 }

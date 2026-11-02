@@ -131,7 +131,9 @@ export class StackRoom implements Scene {
     this.stone = stoneFor(this.tower.length);
     this.phase = 'ready';
     this.phaseT = 0;
-    this.x = this.aim = 0;
+    // Off to one side, so every stone has to be carried over: no tapping up a tower.
+    const off = this.tower.length ? (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.4) : 0;
+    this.x = this.aim = off;
     this.vx = 0;
     this.y = this.hangY;
     this.s.hold(this.stone, this.x, this.y);

@@ -79,7 +79,7 @@ export function peelPreview(): Preview {
     },
     draw(ctx, x, y, w, h) {
       const R = Math.min(w * 0.27, h * 0.25);
-      const cx = x + w / 2 - R * 0.14;
+      const cx = x + w / 2;
       const bob = reducedMotion ? 0 : Math.sin(time * 1.1) * R * 0.02;
       const cy = y + h * 0.5 + bob;
       contactShadow(ctx, theme.current, cx + R * 0.1, y + h * 0.5 + R * 1.16, R * 1.1, R * 0.17, 0.26);

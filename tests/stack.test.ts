@@ -92,7 +92,7 @@ describe('an endless tower', () => {
       expect(first.bias).toBe(0);
       for (const n of [1, 5, 20, 80, 500]) {
         const s = stoneFor(n);
-        expect(s.seat).toBeGreaterThanOrEqual(0.299);
+        expect(s.seat).toBeGreaterThanOrEqual(0.219);
         expect(s.a).toBeGreaterThan(s.seat);
         expect(Number.isFinite(s.b)).toBe(true);
       }
@@ -118,7 +118,7 @@ describe('an endless tower', () => {
   });
 
   it('survives a generator that always gives the same number', () => {
-    for (const v of [0, 0.5, 0.9999]) for (const n of [0, 1, 50]) expect(stoneFor(n, () => v).seat).toBeGreaterThan(0.29);
+    for (const v of [0, 0.5, 0.9999]) for (const n of [0, 1, 50]) expect(stoneFor(n, () => v).seat).toBeGreaterThan(0.21);
   });
 });
 
@@ -160,5 +160,21 @@ describe('the high score', () => {
     delete (globalThis as { localStorage?: unknown }).localStorage;
     expect(loadBest()).toBe(0);
     expect(() => saveBest(3)).not.toThrow();
+  });
+});
+
+describe('dropping roughly', () => {
+  it('a sloppy hand falls well short of a tall tower', () => {
+    const run = () => {
+      const tower: Placed[] = [];
+      for (let n = 0; n < 60; n++) {
+        const stone = stoneFor(tower.length);
+        tower.push({ stone, x: tower.length ? (Math.random() - 0.5) * 0.3 : 0, y: restY(tower, stone), lean: 0 });
+        if (!landing(tower).stable) return tower.length - 1;
+      }
+      return 60;
+    };
+    const runs = Array.from({ length: 400 }, run).sort((a, b) => a - b);
+    expect(runs[200]).toBeLessThan(25);
   });
 });

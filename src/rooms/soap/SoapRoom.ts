@@ -29,8 +29,8 @@ const STEPS = 14;
  * how big to blow. Hold anywhere and a bubble swells out of the wand, its note
  * climbing, with a ding as it reaches the ring. Let go and it pinches off and
  * floats up off the screen, and the next ring is ready at once: there's never
- * a wait. A word beside the bubble says how it went. Go 8% past the ring, or
- * let go 7% short of it, and it pops, which ends your run: the number at the
+ * a wait. A word beside the bubble says how it went. Go 5% past the ring, or
+ * let go 5% short of it, and it pops, which ends your run: the number at the
  * top is how many bubbles have held in a row, under your high score. Every bubble is a
  * different size and has a different film. Tap one that's floating to pop it,
  * just because.
@@ -216,7 +216,7 @@ export class SoapRoom implements Scene {
 
   private stepBlow(dt: number) {
     const target = this.order.size;
-    this.size += rateAt(this.order.pace, this.phaseT, this.size) * dt;
+    this.size += rateAt(this.order.pace, this.phaseT, this.size, this.order.feel) * dt;
     this.s.blow(this.size);
     const off = offBy(this.size, target);
     const strain = clamp(off / OVER, 0, 1);

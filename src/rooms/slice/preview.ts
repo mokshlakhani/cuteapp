@@ -1,3 +1,4 @@
+import { finish } from '../../core/stages';
 import type { Preview } from '../../app/scene';
 import { rand } from '../../core/math';
 import { reducedMotion } from '../../render/camera';
@@ -16,6 +17,7 @@ const EVERY: [number, number] = [3, 4.5];
  */
 export function slicePreview(): Preview {
   const scene = new SliceScene();
+  finish(scene.build());
   let fruit = Math.floor(Math.random() * SLICE_FRUITS.length);
   scene.setFruit(SLICE_FRUITS[fruit]);
   const seam = () => {
@@ -31,7 +33,7 @@ export function slicePreview(): Preview {
     if (key === size) return;
     size = key;
     // Above the label, with room round it so the fruit never touches the card's edge.
-    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.13, h * 0.83, 1.2);
+    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.15, h * 0.85, 1.2);
   };
 
   return {

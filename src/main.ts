@@ -17,8 +17,13 @@ document.addEventListener('touchmove', (e) => e.touches.length > 1 && e.preventD
 
 const host = document.getElementById('app')!;
 const app = new App(host, ROOMS, (nav) => new HomeScene(nav, ROOMS));
+// On a phone the launch screen covers building every room (see App.ready).
+app.rush = Capacitor.isNativePlatform();
 app.start();
-setupNative(() => app.home());
+// `?room=soap` opens a room straight away, for tuning and testing.
+const first = new URLSearchParams(location.search).get('room');
+if (first) setTimeout(() => app.go(first), 800);
+setupNative(() => app.home(), app);
 
 // On the web, cache the game so it opens offline once added to the home screen.
 if (import.meta.env.PROD && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
