@@ -36,7 +36,7 @@ const TICK = 0.9;
 /**
  * Room: peel. A fruit floats over a board with a little knife against it and
  * a ring round it. Circle your finger round the ring, either way, and the
- * fruit turns with you, once for each circle, and the skin comes away in one
+ * fruit turns with you, a little more than you do, and the skin comes away in one
  * long curling strip. A pace meter under the fruit shows a green zone on a
  * red track and a bead for your pace: the green wanders and narrows as you
  * go, and too long in the red — too fast or too slow — snaps the strip, and

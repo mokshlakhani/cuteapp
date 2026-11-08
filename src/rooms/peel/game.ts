@@ -3,8 +3,8 @@ import { PEEL_CLOSE, PEEL_MESSY, PEEL_PERFECT, PEEL_PERFECT_SUBS, PEEL_TIPS } fr
 /**
  * The rules of the peel room, kept free of three.js so they can be tested.
  * The peel comes off a fruit along one spiral from its crown to its base.
- * Your finger circling turns the fruit with it; each circle is one turn of
- * the spiral. The strip wants a pace: a green zone on the pace meter, with red
+ * Your finger circling turns the fruit with it, a little further than the
+ * finger goes (see GEAR). The strip wants a pace: a green zone on the pace meter, with red
  * either side. Too fast and it pulls tight; too slow and it sags under its
  * own weight. The green zone wanders as you go — quicker here, gentler there
  * — and narrows as the strip grows long, so you have to keep adjusting. Stay
@@ -64,6 +64,12 @@ const EASE = 1.6;
 const GRACE = 1;
 /** The first bit of the strip is free: a moment to get going. */
 const FREE = 0.05;
+/**
+ * The fruit turns this much further than the finger: each circle of the
+ * finger is 1.25 turns of the fruit, so a whole peel takes 20% less finger
+ * travel. The pace meter still reads the finger, so it feels the same.
+ */
+export const GEAR = 1.25;
 /** How quickly the pace follows the finger (seconds): smooth enough that touch's jitter doesn't count. */
 const LAG = 0.3;
 /** The most turn a single frame counts, so a stall in input can't lurch. */
@@ -140,7 +146,7 @@ export class Peeler {
     const out = this.pace < lo ? lo - this.pace : this.pace > hi ? this.pace - hi : 0;
     if (out > 0 && this.counting) this.tension += (RISE_EDGE + (RISE * out) / ((hi - lo) / 2)) * dt;
     else this.tension = Math.max(0, this.tension - EASE * dt);
-    this.s = Math.min(1, this.s + a / (Math.PI * 2 * this.order.turns));
+    this.s = Math.min(1, this.s + (a * GEAR) / (Math.PI * 2 * this.order.turns));
     if (this.s >= 1) {
       this.tension = 0;
       return 'done';

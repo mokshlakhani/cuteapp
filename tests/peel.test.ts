@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { angleDelta, limitFor, orderFor, paceFor, Peeler, SPIRAL, spiralAt, START_LON, verdict, windowAt, type Order } from '../src/rooms/peel/game';
+import { angleDelta, GEAR, limitFor, orderFor, paceFor, Peeler, SPIRAL, spiralAt, START_LON, verdict, windowAt, type Order } from '../src/rooms/peel/game';
 import { SLICE_FRUITS } from '../src/rooms/slice/fruits';
 import { onSkin, shell } from '../src/rooms/slice/polyhedron';
 
@@ -26,10 +26,12 @@ const waves = (n: number): Order[] =>
   Array.from({ length: n }, (_, i) => ({ turns: 3 + (i % 4), wave: [(i * 2.39) % (Math.PI * 2), (i * 1.13) % (Math.PI * 2)] }));
 
 describe('peeling', () => {
-  it('one circle of the finger is one turn of the spiral', () => {
+  it('one circle of the finger turns the fruit a little further: 20% less finger travel in all', () => {
     const p = new Peeler(ORDER);
     for (let i = 0; i < 60; i++) p.step((Math.PI * 2) / 60, 1 / 30);
-    expect(p.s).toBeCloseTo(1 / ORDER.turns, 5);
+    expect(p.s).toBeCloseTo(GEAR / ORDER.turns, 5);
+    // Finger travel for a whole peel, against one circle per turn.
+    expect(1 / GEAR).toBeCloseTo(0.8, 9);
   });
 
   it('keeping in the green, it comes off in one strip, at any frame rate', () => {

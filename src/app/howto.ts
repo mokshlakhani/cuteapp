@@ -99,7 +99,7 @@ export const HOWTO: HowTo[] = [
     id: 'peel',
     goal: 'Peel the whole fruit in as few long strips as you can, keeping your pace in the green.',
     steps: [
-      'Trace circles with your finger round the ring, either way round. The fruit turns with you, once for every circle, and the skin comes away in one long, curly strip.',
+      'Trace circles with your finger round the ring, either way round. The fruit turns with you, a little more than your finger does, and the skin comes away in one long, curly strip.',
       'The pace meter under the fruit shows how fast you’re going: the bead is your pace, the green zone is the pace the strip is happy at, and the red either side is too slow or too fast.',
       'Keep the bead in the green. Too fast and the strip pulls tight; too slow and it sags under its own weight.',
       'Stay in the red too long and the strip snaps, and a new one starts where it stopped. Keep circling until the fruit is clean.',
