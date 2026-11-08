@@ -40,17 +40,17 @@ export interface Theme {
 
 /** Soft pastel accents shared by UI tints, rubber bands and particles. */
 export const pastel = {
-  sage: '#BFD9B4',
-  mint: '#CBE6D3',
-  pink: '#F4C3C6',
-  peach: '#F8D0B4',
-  butter: '#F6E4A8',
-  sky: '#C3DAEC',
-  lilac: '#D9CCEC',
-  berry: '#E39490', // desaturated red
-  aqua: '#BFE3E4',
-  clay: '#E3C7B4',
-  honey: '#F3D48F',
+  sage: '#BEDCB1',
+  mint: '#C9E8D2',
+  pink: '#F8BFC3',
+  peach: '#FDCFAF',
+  butter: '#FCE7A2',
+  sky: '#C0DAEF',
+  lilac: '#D9CAEE',
+  berry: '#E98E8A', // desaturated red
+  aqua: '#BCE6E7',
+  clay: '#E7C6B0',
+  honey: '#FBD787',
 } as const;
 
 export type PastelName = keyof typeof pastel;
@@ -62,39 +62,39 @@ export const themes: Record<Theme['name'], Theme> = {
   day: {
     name: 'day',
     light: false,
-    bg: '#7A4A5C',
-    bgDeep: '#4E2E3A',
-    surface: '#8E5F66',
-    surfaceSunk: '#6A4049',
+    bg: '#7E465B',
+    bgDeep: '#502C39',
+    surface: '#925B64',
+    surfaceSunk: '#6D3D47',
     ink: '#FFF1E2',
-    inkSoft: '#F3DCCB',
-    inkFaint: '#CDA593',
-    shadowRgb: '52, 22, 24',
+    inkSoft: '#F6DCC8',
+    inkFaint: '#D1A38F',
+    shadowRgb: '54, 20, 22',
     shadowStrength: 1.2,
-    faceInk: '#3A2328',
+    faceInk: '#3C2127',
     floorEdge: 'rgba(255,226,196,0.2)',
     grain: 0.05,
-    glowWarm: '#F4B474',
-    glowCool: '#C9785E',
+    glowWarm: '#FEB46A',
+    glowCool: '#D17456',
   },
   // The same room after dark: deeper, with the lamps glowing warmer.
   dusk: {
     name: 'dusk',
     light: false,
-    bg: '#4A2C34',
-    bgDeep: '#2A1A1F',
-    surface: '#5E3D44',
-    surfaceSunk: '#432A30',
-    ink: '#FBEBDC',
-    inkSoft: '#DCC0AE',
-    inkFaint: '#A07F72',
-    shadowRgb: '20, 8, 10',
+    bg: '#4C2A33',
+    bgDeep: '#2B191F',
+    surface: '#603B43',
+    surfaceSunk: '#45282F',
+    ink: '#FDEBDA',
+    inkSoft: '#DFBFAB',
+    inkFaint: '#A37E6F',
+    shadowRgb: '21, 7, 9',
     shadowStrength: 1.35,
-    faceInk: '#3A2328',
+    faceInk: '#3C2127',
     floorEdge: 'rgba(255,214,170,0.12)',
     grain: 0.055,
-    glowWarm: '#E59A57',
-    glowCool: '#9C4F3E',
+    glowWarm: '#F0994C',
+    glowCool: '#A34B37',
   },
 };
 
@@ -116,14 +116,14 @@ export const ROOM_ROWS = 4;
 
 /** Each game's tile on the shelf, and the soft edge under it: earthy, muted, deep enough for cream titles. */
 export const tile: Record<string, { face: string; edge: string }> = {
-  melon: { face: '#A85248', edge: '#763830' },
-  jelly: { face: '#4E7A65', edge: '#355646' },
-  wrap: { face: '#7A6493', edge: '#544468' },
-  pour: { face: '#4E7289', edge: '#354F60' },
-  slice: { face: '#946A2C', edge: '#664818' },
-  peel: { face: '#A55636', edge: '#733A23' },
-  soap: { face: '#9C536E', edge: '#6C384C' },
-  stack: { face: '#587A48', edge: '#3D5631' },
+  melon: { face: '#AF4C41', edge: '#7b342b' },
+  jelly: { face: '#497A63', edge: '#335846' },
+  wrap: { face: '#7A6097', edge: '#54416b' },
+  pour: { face: '#4A738D', edge: '#325063' },
+  slice: { face: '#956722', edge: '#6c4912' },
+  peel: { face: '#AD522E', edge: '#79371D' },
+  soap: { face: '#A14E6D', edge: '#70344B' },
+  stack: { face: '#557B43', edge: '#3C592E' },
 };
 
 export const type = {

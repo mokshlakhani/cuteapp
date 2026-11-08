@@ -44,11 +44,15 @@ describe('peeling', () => {
     for (const o of waves(40)) expect(follow(o).breaks, JSON.stringify(o)).toBe(0);
   });
 
-  it('one steady pace, ignoring the meter, snaps on most fruits', () => {
-    let snapped = 0;
+  it('is forgiving: one steady, sensible pace gets through most fruits in one strip', () => {
+    let clean = 0;
     const all = waves(40);
-    for (const o of all) if (circle(paceFor(o.turns), o).breaks > 0) snapped++;
-    expect(snapped / all.length).toBeGreaterThan(0.5);
+    for (const o of all) if (circle(paceFor(o.turns), o).breaks === 0) clean++;
+    expect(clean / all.length).toBeGreaterThan(0.6);
+  });
+
+  it('still asks for some care: far too fast snaps it', () => {
+    for (const o of waves(8)) expect(circle(paceFor(o.turns) * 2.2, o).breaks, JSON.stringify(o)).toBeGreaterThan(0);
   });
 
   it('too slow snaps it as surely as too fast', () => {

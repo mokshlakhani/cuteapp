@@ -13,7 +13,7 @@ import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
 import { OrderHud, Rising } from '../../ui/order';
 import { getSoapScene, type Bubble, type SoapScene } from './SoapScene';
-import { burstAt, callFor, loadBest, NEAR, offBy, OVER, orderFor, PUFF, rateAt, Run, saveBest, tooSmall, type Order } from './game';
+import { burstAt, callFor, loadBest, NEAR, offBy, OVER, orderFor, PUFF, rateAt, Run, saveBest, sayFor, tooSmall, type Order } from './game';
 
 type Phase = 'ready' | 'blow';
 
@@ -175,7 +175,7 @@ export class SoapRoom implements Scene {
     }
     const target = this.order.size;
     if (tooSmall(this.size, target)) {
-      this.popLive(callFor(this.size, target));
+      this.popLive(sayFor(callFor(this.size, target)));
       return;
     }
     const pan = panFor(this.w / 2, this.w);
@@ -184,7 +184,7 @@ export class SoapRoom implements Scene {
     const beat = this.run.add();
     saveBest(this.run.best);
     this.syncHud(true);
-    this.plus.show(beat ? 'a new best!' : callFor(this.size, target), beside);
+    this.plus.show(beat ? 'a new best!' : sayFor(callFor(this.size, target)), beside);
     const at = this.s.liveAt;
     this.worded = this.s.release();
     this.wordX = beside.x - at.x;
@@ -248,7 +248,7 @@ export class SoapRoom implements Scene {
       this.ticked = this.size;
       haptics.play('tick');
     }
-    if (this.size >= burstAt(target)) this.popLive('too big');
+    if (this.size >= burstAt(target)) this.popLive(sayFor('too big'));
   }
 
   /** It pops on the wand, and that's the run. */

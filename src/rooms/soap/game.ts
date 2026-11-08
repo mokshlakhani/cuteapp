@@ -1,3 +1,5 @@
+import { deal } from '../../core/deck';
+import { SOAP_BIG, SOAP_CLOSE, SOAP_PERFECT, SOAP_SMALL } from './words';
 /**
  * The rules of the soap room, kept free of three.js so they can be tested.
  * Bubble after bubble, each with a size to blow it to. Sizes run from 0 (a
@@ -98,6 +100,12 @@ export function orderFor(rnd = Math.random, last?: Order): Order {
 }
 
 /** The word beside a bubble let go at `size`. */
+/** The word beside a bubble for a call, different each time (see words). */
+export function sayFor(call: ReturnType<typeof callFor> | 'too big', rnd = Math.random) {
+  const list = call === 'perfect' ? SOAP_PERFECT : call === 'so close' ? SOAP_CLOSE : call === 'a little small' ? SOAP_SMALL : SOAP_BIG;
+  return deal(list, rnd);
+}
+
 export function callFor(size: number, target: number) {
   const off = offBy(size, target);
   if (Math.abs(off) <= NEAR.exact) return 'perfect';

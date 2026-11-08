@@ -1,3 +1,5 @@
+import { deal } from '../../core/deck';
+import { STACK_BEST, STACK_ENDED, STACK_MATCHED, STACK_TIP } from './words';
 /**
  * The rules of the stack room, kept free of three.js so they can be tested.
  * Stones are stacked one at a time, each with a flat seat on top and under it.
@@ -155,12 +157,15 @@ export function swayAt(level: number, t: number, sway: number) {
   return sway * 0.9 * (1 - Math.exp(-h * h)) * Math.sin(t * 0.95) * (0.7 + 0.3 * Math.sin(t * 0.37));
 }
 
-/** What the room says when a run ends. */
-export function verdict(height: number, best: number, beaten: boolean): [string, string] {
+/** What the room says when a run ends: a headline that changes every time (see words), and how tall it got. */
+export function verdict(height: number, best: number, beaten: boolean, rnd = Math.random): [string, string] {
   const n = `${height} stone${height === 1 ? '' : 's'}`;
-  if (beaten) return ['a new best', n];
-  if (height === best) return ['just matched your best', n];
-  return [n, `your best is ${best}`];
+  if (beaten) return [deal(STACK_BEST, rnd), n];
+  if (height === best) return [deal(STACK_MATCHED, rnd), n];
+  return [deal(STACK_ENDED, rnd), `${n} · your best is ${best}`];
 }
+
+/** The word beside a stone as it tips, different each time. */
+export const tipWord = (rnd = Math.random) => deal(STACK_TIP, rnd);
 
 export const { load: loadBest, save: saveBest } = bestStore('softspot.stack.v1');

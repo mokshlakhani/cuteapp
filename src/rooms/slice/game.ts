@@ -1,3 +1,5 @@
+import { deal } from '../../core/deck';
+import { SLICE_CLOSE, SLICE_OVER, SLICE_PERFECT, SLICE_SHORT, SLICE_TIPS } from './words';
 import { most } from './polyhedron';
 
 /**
@@ -47,15 +49,14 @@ export function orderFor(rnd = Math.random, recent: Order[] = []): Order {
   }
 }
 
-/** What the room says once it falls apart: a headline and a quieter line. */
+/**
+ * What the room says once it falls apart: a headline that changes every
+ * time (see words), and a quieter line with how it went.
+ */
 export function verdict(pieces: number, target: number, rnd = Math.random): [string, string] {
-  if (pieces === target) {
-    const titles = ['yum, just right', 'perfect slices', 'a lovely snack'];
-    return [titles[Math.floor(rnd() * titles.length)], `${pieces} pieces`];
-  }
+  if (pieces === target) return [deal(SLICE_PERFECT, rnd), `${pieces} pieces`];
   const off = Math.abs(pieces - target);
-  const n = `${off} piece${off === 1 ? '' : 's'}`;
-  if (pieces > target) return [off === 1 ? 'one too many' : `${off} too many`, `${target} was the plan, still tasty`];
-  if (off === 1) return ['so close', `${n} short`];
-  return ['a good start', 'turn it, and cross your cuts'];
+  if (pieces > target) return [deal(SLICE_OVER, rnd), `${pieces} pieces · ${target} was the plan`];
+  if (off === 1) return [deal(SLICE_CLOSE, rnd), `${pieces} of ${target} pieces`];
+  return [deal(SLICE_SHORT, rnd), deal(SLICE_TIPS, rnd)];
 }

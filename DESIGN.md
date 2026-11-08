@@ -57,11 +57,11 @@ rest is a short list of rules.
 
 | token                          | day                    | dusk                  | use                             |
 | ------------------------------ | ---------------------- | --------------------- | ------------------------------- |
-| `bg` / `bgDeep`                | `#7A4A5C` / `#4E2E3A`  | `#4A2C34` / `#2A1A1F` | mulberry → cocoa wash           |
-| `surface`                      | `#8E5F66`              | `#5E3D44`             | buttons, cards, sheets          |
-| `surfaceSunk`                  | `#6A4049`              | `#432A30`             | tracks, wells                   |
+| `bg` / `bgDeep`                | `#7E465B` / `#502C39`  | `#4C2A33` / `#2B191F` | mulberry → cocoa wash           |
+| `surface`                      | `#925B64`              | `#603B43`             | buttons, cards, sheets          |
+| `surfaceSunk`                  | `#6D3D47`              | `#45282F`             | tracks, wells                   |
 | `ink` / `inkSoft` / `inkFaint` | milk-tea cream `#FFF1E2` … | warm cream …      | text & icons — never pure black |
-| `glowWarm` / `glowCool`        | `#F4B474` / `#C9785E`  | `#E59A57` / `#9C4F3E` | lamp amber up top, ember below  |
+| `glowWarm` / `glowCool`        | `#FEB46A` / `#D17456`  | `#F0994C` / `#A34B37` | lamp amber up top, ember below  |
 | `shadowRgb`                    | `52,22,24`             | `20,8,10`             | every shadow is warm-tinted     |
 
 **No blue light anywhere.** The ground stays deep (never lighten it), but

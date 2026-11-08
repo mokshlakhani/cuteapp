@@ -150,8 +150,11 @@ export class TopBar {
     });
     this.sound = iconButton('sound', 'sound settings', () => this.menu.toggle());
     this.menu = new SoundMenu(this.sound);
-    const right = el('div', 'topbar-right', {}, [this.help, this.sound, this.menu.root]);
-    this.root.append(this.back, right);
+    // Back and sound sit together at the left; how to play at the right. The
+    // middle stays clear for each room's own words, and home's title.
+    const left = el('div', 'topbar-left', {}, [this.back, this.sound, this.menu.root]);
+    const right = el('div', 'topbar-right', {}, [this.help]);
+    this.root.append(left, right);
     const syncIcon = () => setIcon(this.sound, settings.value.sfx || settings.value.music ? 'sound' : 'soundOff');
     syncIcon();
     settings.onChange(syncIcon);

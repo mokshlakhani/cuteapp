@@ -13,7 +13,7 @@ import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
 import { OrderHud, OrderToast, Rising } from '../../ui/order';
 import { getStackScene, type StackScene } from './StackScene';
-import { landing, leanOf, loadBest, REACH, restY, saveBest, stoneFor, swayAt, swayFor, verdict, type Placed, type Stone } from './game';
+import { landing, leanOf, loadBest, REACH, restY, saveBest, stoneFor, swayAt, swayFor, tipWord, verdict, type Placed, type Stone } from './game';
 
 type Phase = 'ready' | 'drop' | 'settle' | 'over';
 
@@ -263,7 +263,7 @@ export class StackRoom implements Scene {
     }
     this.s.face.set('dizzy', 1.2);
     haptics.play('soft');
-    this.plus.show('whoops', this.s.at(x, rest));
+    this.plus.show(tipWord(), this.s.at(x, rest));
     this.phase = 'over';
     this.phaseT = 0;
   }

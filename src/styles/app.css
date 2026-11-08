@@ -6,20 +6,20 @@
  */
 
 :root {
-  --bg: #7a4a5c;
-  --bg-deep: #4e2e3a;
-  --surface: #8e5f66;
-  --surface-sunk: #6a4049;
+  --bg: #7e465b;
+  --bg-deep: #502c39;
+  --surface: #925b64;
+  --surface-sunk: #6d3d47;
   --ink: #fff1e2;
-  --ink-soft: #f3dccb;
-  --ink-faint: #cda593;
-  --shadow-rgb: 52, 22, 24;
-  --accent: #f2c46d;
+  --ink-soft: #f6dcc8;
+  --ink-faint: #d1a38f;
+  --shadow-rgb: 54, 20, 22;
+  --accent: #fcc763;
   /* A running stitch round soft chrome: felt, not plastic. */
-  --stitch: rgba(255, 232, 208, 0.26);
+  --stitch: rgba(255,  232,208, 0.26);
   --font-display: 'Fredoka', 'Nunito', ui-rounded, system-ui, sans-serif;
   --font-text: 'Nunito', ui-rounded, system-ui, sans-serif;
-  --logo-edge: rgba(128, 58, 48, 0.55);
+  --logo-edge: rgba(134,  53,42, 0.55);
   --logo-deep: rgba(var(--shadow-rgb), 0.45);
   --r-sm: 14px;
   --r-md: 20px;
@@ -36,45 +36,45 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --shadow-soft:
-    0 1px 0 rgba(255, 236, 214, 0.18) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.45), 0 2px 5px rgba(var(--shadow-rgb), 0.12);
+    0 1px 0 rgba(255,  236,214, 0.18) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.45), 0 2px 5px rgba(var(--shadow-rgb), 0.12);
   --shadow-float:
-    0 1px 0 rgba(255, 236, 214, 0.18) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.5), 0 4px 10px rgba(var(--shadow-rgb), 0.14);
+    0 1px 0 rgba(255,  236,214, 0.18) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.5), 0 4px 10px rgba(var(--shadow-rgb), 0.14);
 }
 
 :root[data-mood='dusk'] {
-  --accent: #e0b25e;
-  --stitch: rgba(255, 224, 196, 0.18);
+  --accent: #eab554;
+  --stitch: rgba(255,  224,196, 0.18);
   --shadow-soft:
-    0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.6), 0 2px 5px rgba(var(--shadow-rgb), 0.25);
+    0 1px 0 rgba(255,  255,255, 0.06) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.6), 0 2px 5px rgba(var(--shadow-rgb), 0.25);
   --shadow-float:
-    0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.7), 0 4px 10px rgba(var(--shadow-rgb), 0.3);
+    0 1px 0 rgba(255,  255,255, 0.06) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.7), 0 4px 10px rgba(var(--shadow-rgb), 0.3);
 }
 
 /* Dusk tokens at the CSS level too, so the very first paint matches the
    system / host theme before any script runs. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #4a2c34;
-    --bg-deep: #2a1a1f;
-    --surface: #5e3d44;
-    --surface-sunk: #432a30;
-    --ink: #fbebdc;
-    --ink-soft: #dcc0ae;
-    --ink-faint: #a07f72;
-    --shadow-rgb: 20, 8, 10;
+    --bg: #4c2a33;
+    --bg-deep: #2b191f;
+    --surface: #603b43;
+    --surface-sunk: #45282f;
+    --ink: #fdebda;
+    --ink-soft: #dfbfab;
+    --ink-faint: #a37e6f;
+    --shadow-rgb: 21, 7, 9;
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --bg: #4a2c34;
-  --bg-deep: #2a1a1f;
-  --surface: #5e3d44;
-  --surface-sunk: #432a30;
-  --ink: #fbebdc;
-  --ink-soft: #dcc0ae;
-  --ink-faint: #a07f72;
-  --shadow-rgb: 20, 8, 10;
+  --bg: #4c2a33;
+  --bg-deep: #2b191f;
+  --surface: #603b43;
+  --surface-sunk: #45282f;
+  --ink: #fdebda;
+  --ink-soft: #dfbfab;
+  --ink-faint: #a37e6f;
+  --shadow-rgb: 21, 7, 9;
   color-scheme: dark;
 }
 
@@ -300,14 +300,16 @@ svg {
   pointer-events: auto;
 }
 
-.topbar-back.is-hidden {
-  opacity: 0;
-  transform: scale(0.6);
-  pointer-events: none;
-}
-
+.topbar-left,
 .topbar-right {
   position: relative;
+  display: flex;
+  gap: 10px;
+}
+
+/* On the home screen there's no back: the sound button takes its place. */
+.topbar-back.is-hidden {
+  display: none;
 }
 
 /* ——— sound popover ——— */
@@ -315,13 +317,13 @@ svg {
 .popover {
   position: absolute;
   top: 56px;
-  right: 0;
+  left: 0;
   width: 212px;
   padding: 8px;
   border-radius: var(--r-lg);
   background: var(--surface);
   box-shadow: var(--shadow-float);
-  transform-origin: calc(100% - 23px) -8px;
+  transform-origin: 23px -8px;
   opacity: 0;
   transform: scale(0.85) translateY(-6px);
   pointer-events: none;
@@ -423,7 +425,7 @@ svg {
   background: var(--surface);
   box-shadow:
     0 4px 10px -4px rgba(var(--shadow-rgb), 0.35),
-    0 1px 0 rgba(255, 255, 255, 0.8) inset;
+    0 1px 0 rgba(255,  255,255, 0.8) inset;
   transition: transform 460ms var(--ease-overshoot);
 }
 
@@ -654,9 +656,10 @@ svg {
 .home-header {
   width: 100%;
   max-width: 460px;
-  /* Clear of the sound button, top right. */
-  padding: 0 66px 0 6px;
+  /* Centred, and clear of the sound button at the top left. */
+  padding: 0 62px;
   margin-bottom: 16px;
+  text-align: center;
 }
 
 .home-title {
@@ -674,7 +677,7 @@ svg {
 
 /* A quiet hello under the name. */
 .home-greeting {
-  margin: 6px 0 0 2px;
+  margin: 6px 0 0;
   font-weight: 700;
   font-size: 14px;
   color: var(--ink-soft);
@@ -1186,7 +1189,7 @@ svg {
 }
 
 .room-pour {
-  --pour-gold: #e8c766;
+  --pour-gold: #f2cc5c;
 }
 
 /* No dock here: the hint sits low, under the drink's name. */
@@ -1209,8 +1212,8 @@ svg {
 /* ——— orders (slice, soap, stack, peel): the count, the order, what's left, how it went ——— */
 
 .scene-ui {
-  --order-gold: #f3d27a;
-  --order-coral: #f4a291;
+  --order-gold: #fcd671;
+  --order-coral: #fb9d8a;
 }
 
 .order-hud {
@@ -1411,11 +1414,11 @@ svg {
   left: 0;
   top: 0;
   box-sizing: border-box;
-  border: 2px solid rgba(255, 228, 196, 0.55);
+  border: 2px solid rgba(255,  228,196, 0.55);
   border-radius: 50%;
   box-shadow:
-    0 0 18px rgba(255, 200, 140, 0.28),
-    inset 0 0 18px rgba(255, 200, 140, 0.2);
+    0 0 18px rgba(255,  200,140, 0.28),
+    inset 0 0 18px rgba(255,  200,140, 0.2);
   pointer-events: none;
   opacity: 0;
   transition:
@@ -1466,7 +1469,7 @@ svg {
 }
 
 .peel-track {
-  stroke: rgba(255, 228, 196, 0.4);
+  stroke: rgba(255,  228,196, 0.4);
   stroke-width: 0.7;
   stroke-dasharray: 0.7 2.4;
   stroke-linecap: round;
@@ -1504,8 +1507,8 @@ svg {
 }
 
 .slice-trail path {
-  fill: rgba(255, 250, 240, 0.85);
-  filter: drop-shadow(0 0 6px rgba(255, 240, 220, 0.6));
+  fill: rgba(255,  250,240, 0.85);
+  filter: drop-shadow(0 0 6px rgba(255,  240,220, 0.6));
 }
 
 /* No dock here: the hint sits low, under the fruit's name. */
@@ -1528,11 +1531,6 @@ svg {
 
 
 /* ——— help: the ? button's card ——— */
-
-.topbar-right {
-  display: flex;
-  gap: 10px;
-}
 
 /* How to play is for a game: on the home screen there's no ? at all. */
 .topbar-right .btn-icon.is-hidden {
@@ -1708,8 +1706,8 @@ svg {
    that wanders and narrows; the bead is your pace. ——— */
 
 .peel-meter {
-  --zone-red: #c9645a;
-  --zone-green: #8fb874;
+  --zone-red: #d15d52;
+  --zone-green: #8ebd6f;
   --strain: 0;
   position: absolute;
   left: 50%;
@@ -1739,7 +1737,7 @@ svg {
   background: color-mix(in srgb, var(--zone-red) 62%, var(--surface-sunk));
   box-shadow:
     inset 0 2px 4px rgba(var(--shadow-rgb), 0.35),
-    0 1px 0 rgba(255, 236, 214, 0.14);
+    0 1px 0 rgba(255,  236,214, 0.14);
   transition: background-color var(--d-base) var(--ease-out);
 }
 
@@ -1749,7 +1747,7 @@ svg {
   position: absolute;
   inset: 3px 6px;
   border-radius: 999px;
-  border: 1.2px dashed rgba(255, 236, 214, 0.28);
+  border: 1.2px dashed rgba(255,  236,214, 0.28);
   pointer-events: none;
 }
 
@@ -1764,8 +1762,8 @@ svg {
   border-radius: 999px;
   background: var(--zone-green);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 240, 0.35),
-    0 0 10px rgba(170, 214, 140, 0.35);
+    inset 0 1px 0 rgba(255,  255,240, 0.35),
+    0 0 10px rgba(169,  220,134, 0.35);
   transition:
     left 120ms linear,
     width 120ms linear;
@@ -1781,7 +1779,7 @@ svg {
   background: var(--ink);
   box-shadow:
     0 2px 6px rgba(var(--shadow-rgb), 0.45),
-    0 0 0 calc(var(--strain) * 7px) rgba(201, 100, 90, calc(0.25 + var(--strain) * 0.45));
+    0 0 0 calc(var(--strain) * 7px) rgba(209,  93,82, calc(0.25 + var(--strain) * 0.45));
 }
 
 .peel-meter-bead::after {
@@ -1827,7 +1825,7 @@ svg {
   padding: 0 20px 0 16px;
   border-radius: 999px;
   background: var(--accent);
-  color: #3a2328;
+  color: #3c2127;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 17px;

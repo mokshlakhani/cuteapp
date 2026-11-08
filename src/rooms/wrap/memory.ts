@@ -1,3 +1,5 @@
+import { deal } from '../../core/deck';
+import { MEMORY_BIGGER, MEMORY_CLOSE, MEMORY_FUZZY, MEMORY_PERFECT, MEMORY_SMALLER } from './words';
 /**
  * The bubble wrap's memory game, kept free of the canvas so it can be tested.
  * A pattern of bubbles glows for a moment; then you pop the ones you saw and
@@ -58,11 +60,11 @@ export function nextSize(n: number, grade: Grade) {
 }
 
 /** What to say once it's scored: a headline and a quieter line. Just how many you got: no percentages, no extras. */
-export function memoryVerdict(s: MemoryScore, n: number): [string, string] {
+export function memoryVerdict(s: MemoryScore, n: number, rnd = Math.random): [string, string] {
   const line = `${s.matched} of ${n}`;
-  if (s.grade === 'perfect') return [['perfect memory', 'spot on', 'every one'][n % 3], n < MEMORY_MAX ? `${line} · next one’s bigger` : line];
-  if (s.grade === 'close') return ['so close', line];
-  return ['a fuzzy one', n > MEMORY_MIN ? `${line} · a smaller one next` : line];
+  if (s.grade === 'perfect') return [deal(MEMORY_PERFECT, rnd), n < MEMORY_MAX ? `${line} · ${deal(MEMORY_BIGGER, rnd)}` : line];
+  if (s.grade === 'close') return [deal(MEMORY_CLOSE, rnd), line];
+  return [deal(MEMORY_FUZZY, rnd), n > MEMORY_MIN ? `${line} · ${deal(MEMORY_SMALLER, rnd)}` : line];
 }
 
 const KEY = 'softspot.wrap.memory.v1';

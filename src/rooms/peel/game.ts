@@ -1,3 +1,5 @@
+import { deal } from '../../core/deck';
+import { PEEL_CLOSE, PEEL_MESSY, PEEL_PERFECT, PEEL_PERFECT_SUBS, PEEL_TIPS } from './words';
 /**
  * The rules of the peel room, kept free of three.js so they can be tested.
  * The peel comes off a fruit along one spiral from its crown to its base.
@@ -36,8 +38,8 @@ export const METER_TOP = 2.2;
 export function windowAt(order: Order, s: number): { lo: number; hi: number } {
   const base = paceFor(order.turns);
   const [a, b] = order.wave ?? [0, 0];
-  const mid = base * (1 + 0.3 * Math.sin(Math.PI * 2 * 1.3 * s + a) + 0.12 * Math.sin(Math.PI * 2 * 3.1 * s + b));
-  const half = base * (0.4 - 0.16 * Math.min(1, Math.max(0, s)));
+  const mid = base * (1 + 0.18 * Math.sin(Math.PI * 2 * 1.1 * s + a) + 0.05 * Math.sin(Math.PI * 2 * 2.3 * s + b));
+  const half = base * (0.58 - 0.12 * Math.min(1, Math.max(0, s)));
   return { lo: mid - half, hi: mid + half };
 }
 
@@ -52,18 +54,18 @@ export const START_LON = 0.72;
 /**
  * In the red, the strip strains this much a second just past the edge, and
  * this much more the further into the red (per green zone's half-width): just
- * over the edge it snaps in about 1.2 s, well into the red in about half that.
+ * over the edge it snaps in about 2.5 s, well into the red in about 1.2 s.
  */
-const RISE_EDGE = 0.8;
-const RISE = 1.4;
+const RISE_EDGE = 0.4;
+const RISE = 0.45;
 /** Back in the green, the strain lets go this much a second. */
-const EASE = 1;
+const EASE = 1.6;
 /** After a snap, or putting your finger back down, this long before the strip can strain. */
-const GRACE = 0.7;
+const GRACE = 1;
 /** The first bit of the strip is free: a moment to get going. */
-const FREE = 0.03;
+const FREE = 0.05;
 /** How quickly the pace follows the finger (seconds): smooth enough that touch's jitter doesn't count. */
-const LAG = 0.22;
+const LAG = 0.3;
 /** The most turn a single frame counts, so a stall in input can't lurch. */
 const MOST = 0.7;
 
@@ -159,8 +161,9 @@ export function angleDelta(a: number, b: number) {
   return d > Math.PI ? d - Math.PI * 2 : d < -Math.PI ? d + Math.PI * 2 : d;
 }
 
+/** What the room says once the fruit is clean: a headline that changes every time (see words), and how many strips. */
 export function verdict(breaks: number, rnd = Math.random): [string, string] {
-  if (breaks === 0) return [['one long strip', 'not a single snap', 'beautifully peeled'][Math.floor(rnd() * 3) % 3], 'all in one piece'];
-  if (breaks === 1) return ['nearly', 'two strips'];
-  return ['all peeled', `${breaks + 1} strips · keep it in the green`];
+  if (breaks === 0) return [deal(PEEL_PERFECT, rnd), deal(PEEL_PERFECT_SUBS, rnd)];
+  if (breaks === 1) return [deal(PEEL_CLOSE, rnd), 'two strips'];
+  return [deal(PEEL_MESSY, rnd), `${breaks + 1} strips · ${deal(PEEL_TIPS, rnd)}`];
 }

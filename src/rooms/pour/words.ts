@@ -154,36 +154,7 @@ export const SPILL_SUBS = [
   'fresh glass coming',
 ] as const;
 
-const decks = new Map<readonly string[], string[]>();
-const lastOf = new Map<readonly string[], string>();
-
-/**
- * The next line from `list`: every line once, in a shuffled order, before
- * any comes round again — and never the same one twice in a row.
- */
-export function deal(list: readonly string[], rnd = Math.random): string {
-  let deck = decks.get(list);
-  if (!deck || !deck.length) {
-    deck = [...list];
-    for (let i = deck.length - 1; i > 0; i--) {
-      const j = Math.floor(rnd() * (i + 1));
-      [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    // Fresh deck: don't open with the line the last one ended on.
-    const last = lastOf.get(list);
-    if (deck.length > 1 && deck[deck.length - 1] === last) [deck[0], deck[deck.length - 1]] = [deck[deck.length - 1], deck[0]];
-    decks.set(list, deck);
-  }
-  const line = deck.pop()!;
-  lastOf.set(list, line);
-  return line;
-}
-
-/** Start every deck afresh (tests). */
-export function resetWords() {
-  decks.clear();
-  lastOf.clear();
-}
+export { deal, resetDecks as resetWords } from '../../core/deck';
 
 /** Every line there is to say, counted. */
 export const WORD_COUNT = [

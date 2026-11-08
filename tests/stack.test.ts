@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { STACK_BEST, STACK_ENDED, STACK_MATCHED } from '../src/rooms/stack/words';
 import { landing, leanOf, loadBest, makeStone, REACH, restY, saveBest, seatOf, stoneFor, swayAt, swayFor, TABLE_Y, verdict, type Placed, type Stone } from '../src/rooms/stack/game';
 
 const flat = (a: number, seat = a * 0.5): Stone => ({ a, b: 0.3, seat, bias: 0, round: 3, tone: 0, seed: 1 });
@@ -141,10 +142,13 @@ describe('the sway', () => {
 
 describe('the high score', () => {
   it('says how the run went', () => {
-    expect(verdict(12, 12, true)[0]).toBe('a new best');
-    expect(verdict(12, 12, false)[0]).toBe('just matched your best');
-    expect(verdict(7, 12, false)).toEqual(['7 stones', 'your best is 12']);
-    expect(verdict(1, 3, false)[0]).toBe('1 stone');
+    expect(STACK_BEST).toContain(verdict(12, 12, true)[0]);
+    expect(verdict(12, 12, true)[1]).toBe('12 stones');
+    expect(STACK_MATCHED).toContain(verdict(12, 12, false)[0]);
+    const [title, sub] = verdict(7, 12, false);
+    expect(STACK_ENDED).toContain(title);
+    expect(sub).toBe('7 stones · your best is 12');
+    expect(verdict(1, 3, false)[1]).toBe('1 stone · your best is 3');
   });
 
   it('keeps it, and comes up clean from anything odd', () => {
