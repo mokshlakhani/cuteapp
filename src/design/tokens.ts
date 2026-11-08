@@ -56,44 +56,45 @@ export const pastel = {
 export type PastelName = keyof typeof pastel;
 
 export const themes: Record<Theme['name'], Theme> = {
-  // An orchid evening: a muted plum-violet that deepens down the screen, with
-  // a rosy glow up top and a cool one below. Cream ink holds 5:1 or better.
+  // A lamplit evening: deep mulberry falling to cocoa, with an amber lamp
+  // glow up top and a terracotta ember low down. No blue anywhere: the
+  // whole world is lit like a room with the lamps on. Cream ink holds 5:1.
   day: {
     name: 'day',
     light: false,
-    bg: '#8A5799',
-    bgDeep: '#6A3F7C',
-    surface: '#966AA4',
-    surfaceSunk: '#76498A',
-    ink: '#FFF4F7',
-    inkSoft: '#F0DDF2',
-    inkFaint: '#C9A5D1',
-    shadowRgb: '48, 18, 58',
+    bg: '#7A4A5C',
+    bgDeep: '#4E2E3A',
+    surface: '#8E5F66',
+    surfaceSunk: '#6A4049',
+    ink: '#FFF1E2',
+    inkSoft: '#F3DCCB',
+    inkFaint: '#CDA593',
+    shadowRgb: '52, 22, 24',
     shadowStrength: 1.2,
-    faceInk: '#3A2340',
-    floorEdge: 'rgba(255,236,250,0.22)',
-    grain: 0.045,
-    glowWarm: '#E7A4C4',
-    glowCool: '#6C5BB0',
+    faceInk: '#3A2328',
+    floorEdge: 'rgba(255,226,196,0.2)',
+    grain: 0.05,
+    glowWarm: '#F4B474',
+    glowCool: '#C9785E',
   },
-  // The same orchid after dark: deeper and quieter.
+  // The same room after dark: deeper, with the lamps glowing warmer.
   dusk: {
     name: 'dusk',
     light: false,
-    bg: '#4F3159',
-    bgDeep: '#33203D',
-    surface: '#5E406A',
-    surfaceSunk: '#462C50',
-    ink: '#F8ECF2',
-    inkSoft: '#CDB6D3',
-    inkFaint: '#8F7499',
-    shadowRgb: '18, 6, 24',
+    bg: '#4A2C34',
+    bgDeep: '#2A1A1F',
+    surface: '#5E3D44',
+    surfaceSunk: '#432A30',
+    ink: '#FBEBDC',
+    inkSoft: '#DCC0AE',
+    inkFaint: '#A07F72',
+    shadowRgb: '20, 8, 10',
     shadowStrength: 1.35,
-    faceInk: '#3A2340',
-    floorEdge: 'rgba(255,236,250,0.12)',
-    grain: 0.05,
-    glowWarm: '#B9709A',
-    glowCool: '#3E3A86',
+    faceInk: '#3A2328',
+    floorEdge: 'rgba(255,214,170,0.12)',
+    grain: 0.055,
+    glowWarm: '#E59A57',
+    glowCool: '#9C4F3E',
   },
 };
 
@@ -113,20 +114,20 @@ export const roomTint = {
 /** Rows on the shelf, two tiles to a row: every tile the same size. */
 export const ROOM_ROWS = 4;
 
-/** Each game's tile on the shelf, and the chunky edge under it: deep enough for white titles. */
+/** Each game's tile on the shelf, and the soft edge under it: earthy, muted, deep enough for cream titles. */
 export const tile: Record<string, { face: string; edge: string }> = {
-  melon: { face: '#C8465C', edge: '#8E2A41' },
-  jelly: { face: '#178C8C', edge: '#0E5F63' },
-  wrap: { face: '#5A5BD0', edge: '#3C3B98' },
-  pour: { face: '#2B84BE', edge: '#1B5B8A' },
-  slice: { face: '#C77A12', edge: '#8F520A' },
-  peel: { face: '#C95A2B', edge: '#923B18' },
-  soap: { face: '#C24A86', edge: '#8A2E60' },
-  stack: { face: '#3E9150', edge: '#276437' },
+  melon: { face: '#A85248', edge: '#763830' },
+  jelly: { face: '#4E7A65', edge: '#355646' },
+  wrap: { face: '#7A6493', edge: '#544468' },
+  pour: { face: '#4E7289', edge: '#354F60' },
+  slice: { face: '#946A2C', edge: '#664818' },
+  peel: { face: '#A55636', edge: '#733A23' },
+  soap: { face: '#9C536E', edge: '#6C384C' },
+  stack: { face: '#587A48', edge: '#3D5631' },
 };
 
 export const type = {
-  display: `'Lilita One', 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif`,
+  display: `'Fredoka', 'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif`,
   text: `'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif`,
   size: { title: 34, heading: 20, label: 15, caption: 13 },
   weight: { regular: 500, medium: 600, bold: 700 },

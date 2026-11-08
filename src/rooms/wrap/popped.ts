@@ -89,10 +89,42 @@ export function paintPopped(g: CanvasRenderingContext2D, R: number, index: numbe
   g.clip(shape);
   g.lineCap = 'round';
   g.lineJoin = 'round';
-  for (const c of look.creases) creases(g, c, R, rnd, shadow);
+  for (const c of look.creases) creases(g, GENTLE_CREASE[c] ?? c, R, rnd, shadow);
   g.restore();
 
-  extra(g, look.extra, R, rnd, shadow, pal, shape);
+  extra(g, GENTLE_EXTRA[look.extra] ?? look.extra, R, rnd, shadow, pal, shape);
+  restingFace(g, R, rnd, pal);
+}
+
+/**
+ * Nothing in soft spot looks broken: tears and holes are drawn as soft
+ * folds and little air pockets instead, so a popped bubble reads as a
+ * deflated, contented one rather than a torn one.
+ */
+const GENTLE_CREASE: Partial<Record<Creases, Creases>> = { slit: 'folds', x: 'twist', hatch: 'pleats' };
+const GENTLE_EXTRA: Partial<Record<Extra, Extra>> = { hole: 'pocket', split: 'lip' };
+
+/** A popped bubble rests happily: closed eyes and a small smile, very faint. */
+function restingFace(g: CanvasRenderingContext2D, R: number, rnd: () => number, pal: PoppedPalette) {
+  const ink = `rgba(${pal.shadowRgb},${0.34 * pal.shadowStrength})`;
+  const ox = (rnd() - 0.5) * R * 0.12;
+  const oy = (rnd() - 0.5) * R * 0.1;
+  const e = R * 0.2;
+  const w = R * 0.1;
+  g.save();
+  g.translate(ox, oy);
+  g.strokeStyle = ink;
+  g.lineWidth = Math.max(1, R * 0.06);
+  g.lineCap = 'round';
+  for (const sx of [-1, 1]) {
+    g.beginPath();
+    g.arc(sx * e, -R * 0.04, w, Math.PI * 1.15, Math.PI * 1.85);
+    g.stroke();
+  }
+  g.beginPath();
+  g.arc(0, R * 0.08, w * 0.8, Math.PI * 0.2, Math.PI * 0.8);
+  g.stroke();
+  g.restore();
 }
 
 // ——— outlines ———
@@ -163,14 +195,14 @@ function crease(g: CanvasRenderingContext2D, path: () => void, R: number, w: num
   g.translate(R * 0.03, R * 0.04);
   g.beginPath();
   path();
-  g.strokeStyle = shadow(0.15);
-  g.lineWidth = R * 0.07 * w;
+  g.strokeStyle = shadow(0.09);
+  g.lineWidth = R * 0.06 * w;
   g.stroke();
   g.restore();
   g.beginPath();
   path();
-  g.strokeStyle = rgba('#ffffff', 0.62);
-  g.lineWidth = R * 0.05 * w;
+  g.strokeStyle = rgba('#ffffff', 0.38);
+  g.lineWidth = R * 0.045 * w;
   g.stroke();
 }
 

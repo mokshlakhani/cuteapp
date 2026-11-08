@@ -3,13 +3,13 @@ import { clamp, rand } from '../../core/math';
 /** Columns in the little wave simulation across the drink's surface. */
 export const WAVE_N = 24;
 /** How close to the line counts as spot on (fraction of the glass's height). */
-export const PERFECT = 0.04;
+export const PERFECT = 0.05;
 /** Quiet this long (s) after the last drop, with the foam gone, and it's judged. */
 export const SETTLE = 0.6;
 /** A trace of froth this thin doesn't hold up the verdict. */
 const FOAM_OK = 0.03;
 /** Foam that settles away each second, as a fraction of what's there. */
-const FOAM_DECAY = 0.95;
+export const FOAM_DECAY = 0.95;
 
 /**
  * How a pour turned out once it's settled: right on the line, short of it,
@@ -45,6 +45,10 @@ export class Glass {
    * fill height. The drink fills the room around them, so it rises faster there.
    */
   solidAt: (f: number) => number = () => 0;
+  /** How close to the line counts as spot on, for this drink (see Drink.window). */
+  window = PERFECT;
+  /** How fast its froth settles (see Drink.foamFade). */
+  foamFade = FOAM_DECAY;
   private spilledThisPour = false;
 
   constructor(
@@ -101,7 +105,7 @@ export class Glass {
 
   step(dt: number) {
     // Foam pops away; a thin last bit goes quickly so it does finish.
-    if (this.foam > 0) this.foam = Math.max(0, this.foam - this.foam * FOAM_DECAY * dt - 0.004 * dt);
+    if (this.foam > 0) this.foam = Math.max(0, this.foam - this.foam * this.foamFade * dt - 0.004 * dt);
 
     // Over the rim.
     if (this.level > 1) {
@@ -135,7 +139,7 @@ export class Glass {
     this.quiet += dt;
     if (this.verdict === null && this.level > 0.04 && this.quiet > SETTLE && this.foam < FOAM_OK) {
       const d = this.level - this.line;
-      this.verdict = this.spilledThisPour ? 'spilled' : Math.abs(d) <= PERFECT ? 'perfect' : d < 0 ? 'under' : 'over';
+      this.verdict = this.spilledThisPour ? 'spilled' : Math.abs(d) <= this.window ? 'perfect' : d < 0 ? 'under' : 'over';
       this.spilledThisPour = false;
       this.events.verdict?.(this.verdict);
     }

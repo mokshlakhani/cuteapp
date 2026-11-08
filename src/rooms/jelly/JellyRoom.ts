@@ -196,7 +196,7 @@ export class JellyRoom implements Scene {
       slider('jelly-firmness', 'firmness', 'wobbly', 'firm', this.lab.firmness, (v) => (this.lab.firmness = v)),
       slider('jelly-damping', 'settle', 'lively', 'syrupy', this.lab.dampingAmt, (v) => (this.lab.dampingAmt = v)),
       toggleRow('slow', 'slow motion', (on) => (this.lab.timeScale = on ? 0.25 : 1)),
-      toggleRow('grid', 'show mesh', (on) => this.lab.setShowMesh(on)),
+      toggleRow('grid', 'see inside', (on) => this.lab.setShowMesh(on)),
       this.pauseRow,
       nudge,
     );
@@ -459,7 +459,7 @@ export class JellyRoom implements Scene {
     if (this.statsT <= 0 && this.open === 'settings') {
       this.statsT = 0.25;
       const s = this.lab.stats();
-      this.caption.textContent = `${s.pieces} ${s.pieces === 1 ? 'jelly' : 'jellies'} · about ${Math.round(s.mass)} g`;
+      this.caption.textContent = `${s.pieces} ${s.pieces === 1 ? 'little jelly' : 'little jellies'} on the cloth`;
     }
     this.pauseRow.classList.toggle('is-on', this.lab.paused);
   }

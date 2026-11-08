@@ -7,7 +7,7 @@ import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
 import { Face, drawFace } from '../../render/face';
 import { Staged, type Build } from '../../core/stages';
-import { blobTexture, gpuReady, lightTable, tableRenderer, woodTexture } from '../../render/table';
+import { blobTexture, gpuReady, lightTable, tableRenderer, woodTexture, clothMesh } from '../../render/table';
 import { swayAt, TABLE_Y, type Placed, type Stone } from './game';
 
 /**
@@ -141,6 +141,8 @@ export class StackScene {
       new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.72, metalness: 0, envMapIntensity: 0.5 }),
     );
     board.position.y = BOARD.h / 2;
+    // A soft cloth under the board, so it rests on something.
+    this.scene.add(clothMesh('linen', 4.6, 0));
     this.scene.add(board);
     yield;
 

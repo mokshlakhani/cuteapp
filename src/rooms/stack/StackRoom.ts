@@ -120,7 +120,7 @@ export class StackRoom implements Scene {
   }
 
   private syncHud(bump: boolean) {
-    this.hud.set(this.best, 'high score', false, false, bump);
+    this.hud.set(this.best, 'your best', false, false, bump);
   }
 
   private get hangY() {
@@ -281,7 +281,7 @@ export class StackRoom implements Scene {
       this.beaten = true;
       material.sparkle(0);
       haptics.play('soft');
-      this.plus.show('new high score!', at);
+      this.plus.show('a new best!', at);
       return;
     }
     if (passed) this.beaten = true;

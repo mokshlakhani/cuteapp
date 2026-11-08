@@ -9,6 +9,7 @@ import { duration } from '../design/tokens';
 import { ease } from '../design/motion';
 import { lighten, rgba } from '../core/color';
 import { TopBar, el } from '../ui/components';
+import { HelpCard } from '../ui/help';
 import { grainImage } from '../render/paint';
 import { frames } from '../core/frames';
 import { meter } from '../core/perf';
@@ -37,6 +38,7 @@ export class App implements RoomNav {
   /** 3D rooms' own canvases, between the stage and the grain (see Scene.view). */
   private world: HTMLDivElement;
   private topbar: TopBar;
+  private help: HelpCard;
   private scenes = new Map<string, Scene>();
   private current!: Scene;
   private transition: Transition | null = null;
@@ -58,8 +60,12 @@ export class App implements RoomNav {
     host.append(grain);
     this.layer = el('div', 'ui-layer');
     host.append(this.layer);
-    this.topbar = new TopBar(() => this.home());
-    host.append(this.topbar.root, this.roomTitle);
+    this.topbar = new TopBar(
+      () => this.home(),
+      () => this.help.toggle(this.current.id, this.rooms.find((r) => r.id === this.current.id)?.name),
+    );
+    this.help = new HelpCard();
+    host.append(this.topbar.root, this.roomTitle, this.help.root);
 
     this.input = new InputRouter(this.stage.canvas);
     const unlock = () => {
@@ -185,6 +191,7 @@ export class App implements RoomNav {
     requestAnimationFrame(() => to.ui.classList.add('is-active'));
     this.topbar.showBack(to.id !== 'home');
     this.topbar.menu.toggle(false);
+    this.help.hide();
     this.announce(to);
     this.current = to;
     this.transition = { from, to, t: 0, ox: origin.x, oy: origin.y, forward };

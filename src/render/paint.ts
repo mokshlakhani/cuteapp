@@ -110,7 +110,7 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  // Two wide, soft glows of colour, rosy up top and cool down low.
+  // Two wide, soft glows of colour: lamp amber up top, an ember low down.
   const glow = (color: string, x: number, y: number, r: number, a: number) => {
     const gl = ctx.createRadialGradient(x, y, 0, x, y, r);
     gl.addColorStop(0, rgba(color, a));
@@ -120,12 +120,12 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
     ctx.fillRect(0, 0, w, h);
   };
   const big = Math.max(w, h);
-  glow(t.glowWarm, w * 0.8, h * 0.1, big * 0.7, 0.32);
-  glow(t.glowCool, w * 0.15, h * 0.88, big * 0.75, 0.38);
+  glow(t.glowWarm, w * 0.8, h * 0.1, big * 0.7, 0.3);
+  glow(t.glowCool, w * 0.15, h * 0.88, big * 0.75, 0.3);
 
   // A soft pool of light from the upper left, like a window nearby.
   const pool = ctx.createRadialGradient(w * 0.25, h * 0.12, 0, w * 0.25, h * 0.12, Math.max(w, h) * 0.75);
-  pool.addColorStop(0, rgba('#ffffff', t.light ? 0.3 : 0.07));
+  pool.addColorStop(0, rgba('#ffe6c4', t.light ? 0.3 : 0.1));
   pool.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = pool;
   ctx.fillRect(0, 0, w, h);
@@ -133,9 +133,10 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
   if (b.spot) {
     const { x, y, r } = b.spot;
     const lamp = ctx.createRadialGradient(x, y, 0, x, y, r);
-    lamp.addColorStop(0, rgba('#fff6ec', t.light ? 0.3 : 0.07));
-    lamp.addColorStop(0.55, rgba('#fff6ec', t.light ? 0.1 : 0.025));
-    lamp.addColorStop(1, rgba('#fff6ec', 0));
+    // Lamplight: a warm amber pool that the eye settles into.
+    lamp.addColorStop(0, rgba('#ffd49c', t.light ? 0.3 : 0.16));
+    lamp.addColorStop(0.55, rgba('#ffc98a', t.light ? 0.1 : 0.06));
+    lamp.addColorStop(1, rgba('#ffc98a', 0));
     ctx.fillStyle = lamp;
     ctx.fillRect(0, 0, w, h);
   }

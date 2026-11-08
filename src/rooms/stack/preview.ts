@@ -103,7 +103,7 @@ export function stackPreview(): Preview {
         const top = i === 2;
         // Gone before it reaches the top of the card.
         const above = 1 - coming + going;
-        if (top) ctx.globalAlpha = clamp((1 - above) / 0.5, 0, 1);
+        if (top) ctx.globalAlpha = clamp((0.7 - above) / 0.4, 0, 1);
         const sy = top ? py - above * FROM * u : py;
         ctx.drawImage(stone(i, Math.round(u)), sx - a * u, sy - H, a * u * 2, H * 2);
         if (top) {

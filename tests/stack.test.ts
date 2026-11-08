@@ -141,7 +141,7 @@ describe('the sway', () => {
 
 describe('the high score', () => {
   it('says how the run went', () => {
-    expect(verdict(12, 12, true)[0]).toBe('new high score');
+    expect(verdict(12, 12, true)[0]).toBe('a new best');
     expect(verdict(12, 12, false)[0]).toBe('just matched your best');
     expect(verdict(7, 12, false)).toEqual(['7 stones', 'your best is 12']);
     expect(verdict(1, 3, false)[0]).toBe('1 stone');

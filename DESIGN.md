@@ -1,6 +1,7 @@
 # soft spot — design system
 
-> One calm little world containing a handful of interactive toys.
+> One warm little world containing a handful of interactive toys —
+> a lamplit room that feels like a hug.
 > Open → breathe → choose → play → get absorbed → feel satisfied → leave.
 
 This document is the contract every room (current and future) follows. Rooms
@@ -15,19 +16,25 @@ rest is a short list of rules.
    the screen shows the toy, a floor, and at most a back button, a sound
    button and one dock.
 2. **Show, don't tell.** Home tiles show each toy _alive_, on a chunky tile in
-   the game's own deep colour that sinks into its edge when pressed. Every
+   the game's own muted, earthy colour that sinks into its edge when pressed. Every
    tile is the same size, with a plate saying what the game's called and what
    you do, and your best in the corner if it keeps one. Each toy sits dead centre above
    its plate. A game's name stands
-   big for a moment as you walk in. Display type is Lilita One everywhere,
-   text is Nunito. Hints are one line,
+   big for a moment as you walk in. Display type is Fredoka everywhere,
+   text is Nunito. Home says a quiet hello that follows the time of day. Hints are one line,
    appear once, and leave as soon as you've done the thing.
 3. **No pressure.** No scores, timers, coins, lives, streaks, badges or
    progress bars. Nothing can be failed. Every "ending" (a burst, a pile of
    jelly pieces) resets itself gently or with one tap.
    _The one exception is **pour**, which keeps a streak of perfect pours and
    your best — quietly, in the top bar's centre, with no penalty for a miss
-   beyond the streak starting over. **Slice** is the other: each fruit asks
+   beyond the streak starting over. Each drink pours its own way, left for you
+   to find out rather than explained: milk is slow and steady with the most
+   room either side of the line; cola's foam takes a while to settle; bubble
+   tea starts as a trickle and builds; lemonade comes in glugs, the stream
+   breaking off between them; hot cocoa steams up the glass and hides the
+   line, so look before you pour. What the room says afterwards is dealt from
+   about a hundred kind lines, never the same one twice running. **Slice** is the other: each fruit asks
    for exactly so many pieces in at most so many cuts, and is scored one to
    three stars (three for exact, two for one off), and your stars are kept —
    but every fruit falls apart and earns at least a star, so nothing is ever
@@ -45,12 +52,18 @@ rest is a short list of rules.
 
 | token                          | day                    | dusk                  | use                             |
 | ------------------------------ | ---------------------- | --------------------- | ------------------------------- |
-| `bg` / `bgDeep`                | `#8A5799` / `#6A3F7C`  | `#4F3159` / `#33203D` | vertical background wash        |
-| `surface`                      | `#966AA4`              | `#5E406A`             | buttons, cards, sheets          |
-| `surfaceSunk`                  | `#76498A`              | `#462C50`             | tracks, wells                   |
-| `ink` / `inkSoft` / `inkFaint` | cream `#FFF4F7` …      | warm cream …          | text & icons — never pure black |
-| `glowWarm` / `glowCool`        | `#E7A4C4` / `#6C5BB0`  | `#B9709A` / `#3E3A86` | two slow-drifting colour glows  |
-| `shadowRgb`                    | `48,18,58`             | `18,6,24`             | every shadow is warm-tinted     |
+| `bg` / `bgDeep`                | `#7A4A5C` / `#4E2E3A`  | `#4A2C34` / `#2A1A1F` | mulberry → cocoa wash           |
+| `surface`                      | `#8E5F66`              | `#5E3D44`             | buttons, cards, sheets          |
+| `surfaceSunk`                  | `#6A4049`              | `#432A30`             | tracks, wells                   |
+| `ink` / `inkSoft` / `inkFaint` | milk-tea cream `#FFF1E2` … | warm cream …      | text & icons — never pure black |
+| `glowWarm` / `glowCool`        | `#F4B474` / `#C9785E`  | `#E59A57` / `#9C4F3E` | lamp amber up top, ember below  |
+| `shadowRgb`                    | `52,22,24`             | `20,8,10`             | every shadow is warm-tinted     |
+
+**No blue light anywhere.** The ground stays deep (never lighten it), but
+every glow, lamp and accent is amber, honey, terracotta or cocoa. Toggles
+and sliders use honey (`--accent`). Game tiles are muted and earthy (clay,
+sage, lavender, denim, honey, terracotta, rose, moss) and all hold cream
+text at 4.3:1 or better.
 
 Pastel accents (`pastel.*`): sage, mint, pink, peach, butter, sky, lilac,
 berry (a desaturated red). They tint rooms, colour rubber bands, and fill
@@ -66,10 +79,18 @@ and used for its home card and transition rim. Melon = sage, jelly = pink.
 
 ## 3. Type
 
-- **Display:** Lilita One — titles, tile names and scores. Chunky, one weight.
+- **Display:** Fredoka 500/600 — titles, tile names and scores. Round and soft;
+  titles carry one soft blurred shadow, never a hard sticker edge.
 - **Text:** Nunito 600/700 — hints, toggles, small labels.
 - All lowercase, short words: _soft spot_, _pop_, _jelly_, _fresh start_.
 - Fonts are bundled locally (no network needed on device).
+
+### Words
+
+Kind, never measuring. A miss is "almost" or "a happy spill", never a
+percentage; bests are "your best", never "high score"; orders read like a
+recipe ("12 little pieces · 4 cuts, if you can"). Score numbers sit small and
+soft at the top, in `inkSoft`.
 
 ## 4. Shape
 
@@ -95,6 +116,16 @@ Materials differ only in _opacity and inner detail_: the melon is opaque
 vinyl, the jelly is translucent with scattered inner light, bubbles and seeds
 — but both use the same shading, gloss, rim and shadow, so they read as toys
 from the same shelf.
+
+### Something soft to sit on
+
+Nothing floats in the void. Every 3D toy rests on a cloth from
+`clothMesh` (`render/table.ts`): a knitted rug (pop), gingham (jelly,
+slice, peel) or linen (soap, stack), with a running stitch round its edge.
+Soft chrome matches: the dock, sheets, popover and round buttons carry a
+faint dashed stitch (`--stitch`), like felt. 3D lights are warm
+(`#ffe2bf` key, `#ffeedb`/`#d9b49a` hemisphere) and the backdrop's lamp pool
+is amber. Jelly is cut with a round-ended butter knife: nothing sharp.
 
 ## 6. Faces (`src/render/face.ts`)
 
@@ -143,7 +174,9 @@ spring and relax back to the base expression after a hold time.
   elastic `twang/creak/burst`, jelly `squeak/snapBack/squish/slice/boing/melt`.
 - Rate limits per word stop collisions from machine-gunning; voices are capped.
 - Music: generative warm pads (Fmaj9 → Am7 → B♭maj9 → C6/9), rare soft bells,
-  the odd piano note — ~20 dB under the toys, never loops audibly.
+  the odd piano note — ~20 dB under the toys, never loops audibly. Under it,
+  a fire crackles quietly in the room (a low hush and rare soft ticks); it
+  comes and goes with the music toggle.
 - Music and sounds toggle independently. On iOS the audio session is set to
   _ambient_: respects the silent switch and mixes with the user's own music.
 

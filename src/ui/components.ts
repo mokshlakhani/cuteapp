@@ -137,24 +137,32 @@ export class SoundMenu {
 export class TopBar {
   readonly root: HTMLDivElement;
   readonly back: HTMLButtonElement;
+  readonly help: HTMLButtonElement;
   readonly sound: HTMLButtonElement;
   readonly menu: SoundMenu;
 
-  constructor(onBack: () => void) {
+  constructor(onBack: () => void, onHelp: () => void) {
     this.root = el('div', 'topbar');
     this.back = iconButton('back', 'back home', onBack, 'topbar-back');
+    this.help = iconButton('help', 'how to play', () => {
+      this.menu.toggle(false);
+      onHelp();
+    });
     this.sound = iconButton('sound', 'sound settings', () => this.menu.toggle());
     this.menu = new SoundMenu(this.sound);
-    const right = el('div', 'topbar-right', {}, [this.sound, this.menu.root]);
+    const right = el('div', 'topbar-right', {}, [this.help, this.sound, this.menu.root]);
     this.root.append(this.back, right);
     const syncIcon = () => setIcon(this.sound, settings.value.sfx || settings.value.music ? 'sound' : 'soundOff');
     syncIcon();
     settings.onChange(syncIcon);
   }
 
+  /** In a game: back and how-to-play show. On the home screen neither does. */
   showBack(show: boolean) {
     this.back.classList.toggle('is-hidden', !show);
     this.back.tabIndex = show ? 0 : -1;
+    this.help.classList.toggle('is-hidden', !show);
+    this.help.tabIndex = show ? 0 : -1;
   }
 }
 

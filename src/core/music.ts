@@ -4,7 +4,8 @@ import { scale } from './sounds';
 import { pick, rand } from './math';
 
 /**
- * Generative ambient music: warm pads, rare soft bells, the odd piano note.
+ * Generative ambient music: warm pads, rare soft bells, the odd piano note,
+ * and a fire crackling quietly somewhere in the room.
  * It never loops audibly and never competes with the toys — it sits ~20 dB
  * below interaction sounds and is written in the same F pentatonic world.
  */
@@ -27,6 +28,9 @@ class Music {
   private chordIndex = 0;
   private nextBellAt = 0;
   private started = false;
+  /** The fire's warm hush, while music plays (see hearth). */
+  private hush: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private nextCrackleAt = 0;
 
   start() {
     if (this.started) return;
@@ -42,10 +46,13 @@ class Music {
     if (want && this.timer == null) {
       this.nextChordAt = audio.now + 0.3;
       this.nextBellAt = audio.now + 3;
+      this.nextCrackleAt = audio.now + 1;
       this.timer = window.setInterval(() => this.tick(), 250);
+      this.hearth(true);
     } else if (!want && this.timer != null) {
       clearInterval(this.timer);
       this.timer = null;
+      this.hearth(false);
     }
   }
 
@@ -61,6 +68,84 @@ class Music {
       this.bell(this.nextBellAt);
       this.nextBellAt += rand(3.5, 8);
     }
+    while (this.nextCrackleAt < horizon) {
+      this.crackle(this.nextCrackleAt);
+      // Mostly little ticks, now and then a quiet run of them.
+      this.nextCrackleAt += Math.random() < 0.25 ? rand(0.05, 0.18) : rand(0.6, 2.4);
+    }
+  }
+
+  /** Noise, made once: the fire's hush and its crackles are both cut from it. */
+  private noise: AudioBuffer | null = null;
+  private noiseBuffer(ctx: BaseAudioContext) {
+    if (this.noise) return this.noise;
+    const len = ctx.sampleRate * 4;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    // Brown-ish noise: soft and low, like air round a fire.
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      d[i] = last * 3.5;
+    }
+    return (this.noise = buf);
+  }
+
+  /** White noise, a second of it, for the crackles' bright little snaps. */
+  private spark: AudioBuffer | null = null;
+  private sparkBuffer(ctx: BaseAudioContext) {
+    if (this.spark) return this.spark;
+    const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return (this.spark = buf);
+  }
+
+  /** A fire crackling far off in the room: a low hush that fades in and out. */
+  private hearth(on: boolean) {
+    const ctx = audio.context;
+    if (!ctx) return;
+    if (on && !this.hush) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer(ctx);
+      src.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 380;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, audio.now);
+      gain.gain.linearRampToValueAtTime(0.04, audio.now + 4);
+      src.connect(lp).connect(gain).connect(audio.bus('music'));
+      src.start();
+      this.hush = { src, gain };
+    } else if (!on && this.hush) {
+      const { src, gain } = this.hush;
+      gain.gain.cancelScheduledValues(audio.now);
+      gain.gain.setValueAtTime(gain.gain.value, audio.now);
+      gain.gain.linearRampToValueAtTime(0.0001, audio.now + 0.6);
+      src.stop(audio.now + 0.7);
+      this.hush = null;
+    }
+  }
+
+  /** One tiny snap of wood: a short, soft, band-passed tick. */
+  private crackle(when: number) {
+    const ctx = audio.context;
+    if (!ctx) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.sparkBuffer(ctx);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = rand(1400, 3200);
+    bp.Q.value = 1.2;
+    const g = ctx.createGain();
+    const peak = rand(0.03, 0.08);
+    const len = rand(0.008, 0.03);
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(peak, when + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + len);
+    src.connect(bp).connect(g).connect(audio.bus('music'));
+    src.start(when, rand(0, 0.9), len + 0.02);
   }
 
   private pad(notes: number[], when: number) {

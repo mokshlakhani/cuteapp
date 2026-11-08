@@ -57,14 +57,14 @@ export function starsFor(pieces: number, target: number) {
 /** What the room says once it falls apart: a headline and a quieter line. */
 export function verdict(pieces: number, target: number, rnd = Math.random): [string, string] {
   if (pieces === target) {
-    const titles = ['exactly right', 'perfect slices', 'spot on'];
+    const titles = ['yum, just right', 'perfect slices', 'a lovely snack'];
     return [titles[Math.floor(rnd() * titles.length)], `${pieces} pieces`];
   }
   const off = Math.abs(pieces - target);
   const n = `${off} piece${off === 1 ? '' : 's'}`;
-  if (pieces > target) return [off === 1 ? 'one too many' : `${off} too many`, `aim for exactly ${target}`];
+  if (pieces > target) return [off === 1 ? 'one too many' : `${off} too many`, `${target} was the plan, still tasty`];
   if (off === 1) return ['so close', `${n} short`];
-  return ['a good start', 'turn it, and cross the other cuts'];
+  return ['a good start', 'turn it, and cross your cuts'];
 }
 
 export interface Progress {

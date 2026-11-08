@@ -88,7 +88,7 @@ export function soapPreview(): Preview {
       const ringY = y + h / 2 + R * 0.68;
       const r = R * lerp(SMALL, 1, ease.inOutSine(clamp(clock / GROW, 0, 1))) * (1 + q);
       const up = clamp((clock - GROW - HOLD) / RISE, 0, 1);
-      const cy = ringY - r * 0.92 - ease.inOutSine(up) * h * 0.62;
+      const cy = ringY - r * 0.92 - ease.inOutSine(up) * h * 0.4;
       const bx = cx + Math.sin(up * TAU) * R * 0.12;
       // The wand: its stem and the ring's far side, under the bubble.
       ctx.lineCap = 'round';
@@ -104,7 +104,8 @@ export function soapPreview(): Preview {
       const s = paint(Math.round(R));
       const d = r * 2.3;
       ctx.save();
-      ctx.globalAlpha = clamp(clock / 0.5, 0, 1) * clamp((1 - up) / 0.45, 0, 1);
+      // Faded away well before the card's edge, so it never looks cut off.
+      ctx.globalAlpha = clamp(clock / 0.5, 0, 1) * clamp((0.65 - up) / 0.4, 0, 1);
       ctx.drawImage(s, bx - d / 2, cy - d / 2, d, d);
       ctx.translate(bx, cy + r * 0.02);
       drawFace(ctx, face, r * 0.98, { ink: '#3A2340', blush: '#FF9AAE' });

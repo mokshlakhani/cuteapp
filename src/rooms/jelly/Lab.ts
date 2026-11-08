@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Staged, type Build } from '../../core/stages';
-import { gpuReady, roomReflections } from '../../render/table';
+import { gpuReady, roomReflections, clothMesh } from '../../render/table';
 import { Face, drawFace } from '../../render/face';
 import { clamp, rand } from '../../core/math';
 import { polyCentroid } from '../../core/geometry';
@@ -125,8 +125,8 @@ export class Lab {
     this.scene.environmentIntensity = 0.38;
     yield;
 
-    this.scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.9));
-    this.key = new THREE.DirectionalLight('#fff4e6', 2.4);
+    this.scene.add(new THREE.HemisphereLight('#ffeedb', '#d9b49a', 0.9));
+    this.key = new THREE.DirectionalLight('#ffe2bf', 2.4);
     this.key.position.set(-7, 16, 9);
     this.key.castShadow = true;
     // Small and blurred: the shadow is soft anyway, and the blur runs every frame.
@@ -150,6 +150,8 @@ export class Lab {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
+    // A picnic cloth under the jellies.
+    this.scene.add(clothMesh('gingham', 9.5));
     yield;
 
     this.scene.add(this.knife.group);

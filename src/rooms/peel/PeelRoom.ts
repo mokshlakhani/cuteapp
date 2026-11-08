@@ -231,7 +231,7 @@ export class PeelRoom implements Scene {
           this.phase = 'play';
           this.phaseT = 0;
           const wide = this.order.turns <= 3 ? 'a wide strip' : this.order.turns >= 6 ? 'a very thin strip' : 'a thin strip';
-          if (this.peeler.s === 0) this.toast.show('peel it in one strip', wide);
+          if (this.peeler.s === 0) this.toast.show('one long, slow peel', wide);
         }
         break;
       }

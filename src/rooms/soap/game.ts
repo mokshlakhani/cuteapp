@@ -101,7 +101,7 @@ export function orderFor(rnd = Math.random, last?: Order): Order {
 export function callFor(size: number, target: number) {
   const off = offBy(size, target);
   if (Math.abs(off) <= NEAR.exact) return 'perfect';
-  return off < -UNDER ? 'too small' : 'so close';
+  return off < -UNDER ? 'a little small' : 'so close';
 }
 
 /** Bubbles in a row, and the high score they're after. */

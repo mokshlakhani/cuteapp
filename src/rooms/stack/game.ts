@@ -158,7 +158,7 @@ export function swayAt(level: number, t: number, sway: number) {
 /** What the room says when a run ends. */
 export function verdict(height: number, best: number, beaten: boolean): [string, string] {
   const n = `${height} stone${height === 1 ? '' : 's'}`;
-  if (beaten) return ['new high score', n];
+  if (beaten) return ['a new best', n];
   if (height === best) return ['just matched your best', n];
   return [n, `your best is ${best}`];
 }

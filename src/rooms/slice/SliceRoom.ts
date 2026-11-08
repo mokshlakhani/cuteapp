@@ -171,7 +171,7 @@ export class SliceRoom implements Scene {
     this.tagName.textContent = fruit.name;
     this.tag.classList.remove('is-leaving');
     this.syncHud(false);
-    this.toast.show(`exactly ${this.order.target} pieces`, `in ${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'} or fewer`);
+    this.toast.show(`${this.order.target} little pieces`, `${this.order.cuts} cut${this.order.cuts === 1 ? '' : 's'}, if you can`);
   }
 
   private syncHud(bump: boolean) {

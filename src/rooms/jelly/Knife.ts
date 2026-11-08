@@ -3,9 +3,9 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { ease } from '../../design/motion';
 
 /**
- * A chef's knife: a slim, pointed steel blade with a curved belly, a ground
- * edge that catches the light, and a warm wooden handle with two rivets —
- * rounded and chunky like every other soft spot toy, but properly sharp.
+ * A butter knife: a soft satin blade with a round end and nothing pointed,
+ * on a chunky handle painted butter yellow — rounded like every other soft
+ * spot toy, and gentle enough to hand to anyone.
  *
  * It hovers over the line you draw, lined up with it, then chops straight
  * down when you let go. If everything under it is too small to cut, it
@@ -16,12 +16,6 @@ import { ease } from '../../design/motion';
 
 /** Edge length, heel to tip (cm, before scaling). */
 const BLADE_L = 11.4;
-/** Blade height at the heel. */
-const BLADE_H = 3.0;
-/** Height of the point above the edge line. */
-const TIP_Y = 1.25;
-/** Where the flat of the edge starts curving up into the belly (0..1). */
-const BELLY = 0.6;
 const SCALE = 0.82;
 const HOVER = 4.6;
 /** Blade leaned back (rad) while aiming, so its face shows from above. */
@@ -33,37 +27,23 @@ const LIFT_T = 0.45;
 type Phase = 'hidden' | 'aiming' | 'chop' | 'hold' | 'bounce' | 'lift';
 export type CutResult = 'cut' | 'bounce' | 'none';
 
-/** Edge profile: flat, then a belly rising to the point. */
-function edgeY(x: number) {
-  const x0 = BLADE_L * BELLY;
-  if (x <= x0) return 0;
-  const u = (x - x0) / (BLADE_L - x0);
-  return TIP_Y * u * u;
-}
+/** Blade height of the butter knife: a gentle, even width all the way. */
+const BUTTER_H = 2.2;
 
-/** Spine profile: straight, then a gentle drop to the point. */
-function spineY(x: number) {
-  const x0 = BLADE_L * 0.48;
-  if (x <= x0) return BLADE_H;
-  const u = (x - x0) / (BLADE_L - x0);
-  return BLADE_H - (BLADE_H - TIP_Y) * Math.pow(u, 1.7);
-}
-
+/**
+ * A butter knife's blade: a straight edge and spine, a soft round end, and
+ * nothing pointed anywhere. It still cuts jelly (jelly is very forgiving).
+ */
 function bladeGeometry() {
   const s = new THREE.Shape();
-  const N = 28;
   const r = 0.28; // soft heel corners
+  const R = BUTTER_H / 2; // the round end
   s.moveTo(0, r);
   s.quadraticCurveTo(0, 0, r, 0);
-  for (let i = 1; i <= N; i++) {
-    const x = r + ((BLADE_L - r) * i) / N;
-    s.lineTo(x, edgeY(x));
-  }
-  for (let i = N - 1; i >= 0; i--) {
-    const x = r + ((BLADE_L - r) * i) / N;
-    s.lineTo(x, spineY(x));
-  }
-  s.quadraticCurveTo(0, BLADE_H, 0, BLADE_H - r);
+  s.lineTo(BLADE_L - R, 0);
+  s.absarc(BLADE_L - R, R, R, -Math.PI / 2, Math.PI / 2, false);
+  s.lineTo(r, BUTTER_H);
+  s.quadraticCurveTo(0, BUTTER_H, 0, BUTTER_H - r);
   s.lineTo(0, r);
   const depth = 0.16;
   const geo = new THREE.ExtrudeGeometry(s, {
@@ -75,27 +55,24 @@ function bladeGeometry() {
     curveSegments: 8,
   });
   geo.translate(0, 0, -depth / 2);
-  // Grind the edge: the blade thins to almost nothing toward the edge, so
-  // the bevel catches a bright line of light like real steel.
-  // The ground edge is polished brighter than the brushed flat, so a clean
-  // line of light runs along it even seen straight from above.
+  // A soft, rounded edge: the blade thins a little toward it and catches a
+  // gentle line of light, but nothing is ground sharp.
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const col = new Float32Array(pos.count * 3);
-  const flat = new THREE.Color('#cfd4d9');
-  const polished = new THREE.Color('#ffffff');
-  const spine = new THREE.Color('#b9bfc6');
+  const flat = new THREE.Color('#e6ddd2');
+  const polished = new THREE.Color('#fffaf2');
+  const spine = new THREE.Color('#d2c6b8');
   const c = new THREE.Color();
   const GRIND = 0.95;
   for (let i = 0; i < pos.count; i++) {
-    const x = Math.max(0, Math.min(BLADE_L, pos.getX(i)));
     const y = pos.getY(i);
-    const d = y - edgeY(x);
+    const d = y;
     const u = Math.max(0, Math.min(1, d / GRIND));
     const s = u * u * (3 - 2 * u);
-    pos.setZ(i, pos.getZ(i) * (0.1 + 0.9 * s));
+    pos.setZ(i, pos.getZ(i) * (0.55 + 0.45 * s));
     c.copy(polished).lerp(flat, s);
     // A faint darker band toward the spine gives the flat some depth.
-    const toSpine = Math.max(0, Math.min(1, (y - (spineY(x) - 0.8)) / 0.8));
+    const toSpine = Math.max(0, Math.min(1, (y - (BUTTER_H - 0.8)) / 0.8));
     c.lerp(spine, toSpine * 0.6);
     col.set([c.r, c.g, c.b], i * 3);
   }
@@ -132,41 +109,34 @@ export class Knife {
   onLand: (() => void) | null = null;
 
   constructor() {
-    // Polished steel: mostly mirror, so it picks up the warm room it's in.
+    // Satin steel: soft and warm, not a mirror.
     const steel = new THREE.MeshPhysicalMaterial({
-      color: '#ffffff',
+      color: '#fff6ea',
       vertexColors: true,
-      metalness: 0.88,
-      roughness: 0.14,
-      clearcoat: 0.8,
-      clearcoatRoughness: 0.08,
-      envMapIntensity: 5.5,
+      metalness: 0.7,
+      roughness: 0.32,
+      clearcoat: 0.5,
+      clearcoatRoughness: 0.2,
+      envMapIntensity: 3,
       transparent: true,
     });
     const fittings = new THREE.MeshPhysicalMaterial({
-      color: '#dfe3e7',
-      metalness: 0.9,
+      color: '#f1e3cf',
+      metalness: 0.7,
       roughness: 0.18,
       clearcoat: 0.6,
       envMapIntensity: 5,
       transparent: true,
     });
     const wood = new THREE.MeshPhysicalMaterial({
-      color: '#7a4a33',
+      color: '#f1cf86',
       metalness: 0,
-      roughness: 0.42,
+      roughness: 0.5,
       clearcoat: 0.5,
       clearcoatRoughness: 0.35,
       transparent: true,
     });
-    const rivet = new THREE.MeshStandardMaterial({
-      color: '#f2efe9',
-      metalness: 0.9,
-      roughness: 0.22,
-      envMapIntensity: 5,
-      transparent: true,
-    });
-    this.mats = [steel, fittings, wood, rivet];
+    this.mats = [steel, fittings, wood];
 
     const body = new THREE.Group();
     const blade = new THREE.Mesh(bladeGeometry(), steel);
@@ -181,18 +151,11 @@ export class Knife {
       hp.setY(i, hp.getY(i) * (0.94 + 0.14 * u));
     }
     handleGeo.computeVertexNormals();
-    const handleY = BLADE_H - 0.72;
+    const handleY = BUTTER_H - 0.62;
     const handle = new THREE.Mesh(handleGeo, wood);
     handle.position.set(-0.35 - HL / 2, handleY, 0);
     const bolster = new THREE.Mesh(new RoundedBoxGeometry(0.55, 1.5, 1.02, 3, 0.22), fittings);
     bolster.position.set(-0.12, handleY, 0);
-    const rivetGeo = new THREE.CylinderGeometry(0.19, 0.19, 1.04, 16);
-    rivetGeo.rotateX(Math.PI / 2);
-    for (const dx of [-1.6, -4.0]) {
-      const m = new THREE.Mesh(rivetGeo, rivet);
-      m.position.set(dx, handleY, 0);
-      body.add(m);
-    }
     body.add(blade, handle, bolster);
     // The body is built heel-at-origin (edge along 0..BLADE_L). Pivot the
     // wobble at the heel and put the heel at −BLADE_L/2, so the edge is

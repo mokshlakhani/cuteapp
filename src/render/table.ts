@@ -65,8 +65,8 @@ function bake(renderer: THREE.WebGLRenderer) {
 export function lightTable(renderer: THREE.WebGLRenderer, scene: THREE.Scene) {
   scene.environment = roomReflections(renderer);
   scene.environmentIntensity = 0.42;
-  scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.95));
-  const key = new THREE.DirectionalLight('#fff4e6', 2.3);
+  scene.add(new THREE.HemisphereLight('#ffeedb', '#d9b49a', 0.95));
+  const key = new THREE.DirectionalLight('#ffe2bf', 2.3);
   key.position.set(-9, 16, 8);
   scene.add(key, key.target);
   return key;
@@ -141,11 +141,11 @@ export function woodTexture() {
   c.width = 512;
   c.height = 344;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#E2B886';
+  ctx.fillStyle = '#D9A774';
   ctx.fillRect(0, 0, c.width, c.height);
   for (let i = 0; i < 90; i++) {
     const y = Math.random() * c.height;
-    ctx.strokeStyle = `rgba(${Math.random() < 0.5 ? '170,112,62' : '250,214,168'},${rand(0.08, 0.22)})`;
+    ctx.strokeStyle = `rgba(${Math.random() < 0.5 ? '150,92,50' : '246,204,156'},${rand(0.08, 0.22)})`;
     ctx.lineWidth = rand(0.6, 2.6);
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -157,3 +157,106 @@ export function woodTexture() {
   return tex;
 }
 
+
+export type ClothKind = 'gingham' | 'knit' | 'linen';
+
+/**
+ * Something soft for a toy to sit on, so nothing floats in the void: a round
+ * gingham cloth, a knitted rug or a linen doily, its edge a running stitch
+ * that fades into the room. Lies flat at `y`, under everything, and takes the
+ * room's shadows from the shadow floor above it.
+ */
+export function clothMesh(kind: ClothKind, radius: number, y = -0.02) {
+  const S = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d')!;
+  const mid = S / 2;
+  if (kind === 'gingham') {
+    g.fillStyle = '#F7E7D3';
+    g.fillRect(0, 0, S, S);
+    const n = 14;
+    const step = S / n;
+    g.fillStyle = 'rgba(196, 96, 72, 0.32)';
+    for (let i = 0; i < n; i += 2) {
+      g.fillRect(i * step, 0, step, S);
+      g.fillRect(0, i * step, S, step);
+    }
+    // A faint weave over the checks.
+    g.strokeStyle = 'rgba(120, 60, 40, 0.05)';
+    for (let i = 0; i < S; i += 3) {
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i, S);
+      g.stroke();
+    }
+  } else if (kind === 'knit') {
+    g.fillStyle = '#E9CDB2';
+    g.fillRect(0, 0, S, S);
+    // Rows of little V stitches, every few rows a band of rose.
+    const sw = 16;
+    const sh = 14;
+    for (let row = 0; row * sh < S + sh; row++) {
+      const band = row % 8 === 3 || row % 8 === 4;
+      g.strokeStyle = band ? 'rgba(186, 104, 104, 0.55)' : 'rgba(150, 100, 70, 0.22)';
+      g.lineWidth = 3.2;
+      g.lineCap = 'round';
+      for (let col = 0; col * sw < S + sw; col++) {
+        const x = col * sw;
+        const yy = row * sh;
+        g.beginPath();
+        g.moveTo(x + 2, yy + 2);
+        g.lineTo(x + sw / 2, yy + sh - 2);
+        g.lineTo(x + sw - 2, yy + 2);
+        g.stroke();
+      }
+    }
+  } else {
+    g.fillStyle = '#F1E2CF';
+    g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 900; i++) {
+      const v = Math.random() < 0.5;
+      g.strokeStyle = `rgba(${Math.random() < 0.5 ? '160,120,90' : '255,248,236'},${rand(0.05, 0.14)})`;
+      g.lineWidth = rand(0.6, 1.4);
+      const p = Math.random() * S;
+      const q = Math.random() * S;
+      g.beginPath();
+      if (v) {
+        g.moveTo(p, q);
+        g.lineTo(p, q + rand(20, 80));
+      } else {
+        g.moveTo(q, p);
+        g.lineTo(q + rand(20, 80), p);
+      }
+      g.stroke();
+    }
+  }
+  // A running stitch just inside the edge.
+  g.strokeStyle = kind === 'knit' ? 'rgba(255, 240, 222, 0.7)' : 'rgba(176, 84, 66, 0.55)';
+  g.lineWidth = 4;
+  g.setLineDash([14, 10]);
+  g.beginPath();
+  g.arc(mid, mid, mid * 0.86, 0, Math.PI * 2);
+  g.stroke();
+  g.setLineDash([]);
+  // Round, with an edge that melts softly into the room.
+  g.globalCompositeOperation = 'destination-in';
+  const edge = g.createRadialGradient(mid, mid, mid * 0.9, mid, mid, mid);
+  edge.addColorStop(0, 'rgba(0,0,0,1)');
+  edge.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = edge;
+  g.fillRect(0, 0, S, S);
+  g.globalCompositeOperation = 'source-over';
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const mesh = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 64),
+    // Toned down a little, so it sits in the lamplight rather than glowing.
+    new THREE.MeshStandardMaterial({ map: tex, color: '#D8C2AE', transparent: true, depthWrite: false, roughness: 0.95, metalness: 0, envMapIntensity: 0.25 }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  mesh.renderOrder = -1;
+  return mesh;
+}

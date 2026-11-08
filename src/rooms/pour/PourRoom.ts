@@ -18,11 +18,12 @@ import { el, Hint } from '../../ui/components';
 import { Glass, type Verdict } from './Glass';
 import { DRINKS, type Drink } from './drinks';
 import { GlassExtras } from './extras';
-import { feedback, nextDrink, PourGame } from './game';
+import { feedback, flowFactor, nextDrink, PourGame } from './game';
 import {
   drawGlass,
   drawImpact,
   drawJug,
+  drawSteam,
   drawStream,
   glassShape,
   halfAt,
@@ -107,6 +108,14 @@ export class PourRoom implements Scene {
   private phase: Phase = 'arrive';
   private phaseT = 0;
   private brimT = 0;
+  /** Seconds the pour has been held, for drinks that build up or glug. */
+  private held = 0;
+  /** Which glug of the pour we're on (lemonade). */
+  private gulp = 0;
+  /** Drops left the spout last frame (a gap starts a new piece of stream). */
+  private flowing = false;
+  /** 0..1: steam fogging the glass (hot cocoa), hiding the line. */
+  private fog = 0;
   private nudge = 0;
   private glugT = 0;
   private landing = 0;
@@ -169,6 +178,8 @@ export class PourRoom implements Scene {
       spill: (amount, foam) => this.onSpill(amount, foam),
       verdict: (v) => this.phase === 'settling' && this.judge(v),
     };
+    g.window = this.drink.window;
+    if (this.drink.foamFade) g.foamFade = this.drink.foamFade;
     const extras = this.extras;
     g.solidAt = (f) => extras.solidAt(f);
     return g;
@@ -277,6 +288,8 @@ export class PourRoom implements Scene {
     this.setPhase('pouring');
     this.tilt.target = POUR_TILT;
     this.brimT = 0;
+    this.held = 0;
+    this.gulp = 0;
     haptics.play('tap');
     this.face.set('wide', 0.6);
     this.syncHints();
@@ -390,6 +403,7 @@ export class PourRoom implements Scene {
 
     this.advance(dt);
     this.animate(dt);
+    this.steam(dt);
     this.pour(dt);
     this.glass.step(dt);
     this.extras.update(dt, this.landing);
@@ -410,6 +424,7 @@ export class PourRoom implements Scene {
         }
         break;
       case 'pouring':
+        this.held += dt;
         // Brimming over for a while: the jug gives up by itself.
         this.brimT = this.glass.top >= 0.995 ? this.brimT + dt : 0;
         if (this.brimT > OVERFLOW_STOP) this.stop();
@@ -448,6 +463,17 @@ export class PourRoom implements Scene {
       default:
         break;
     }
+  }
+
+  /**
+   * Hot cocoa: once it's going in, steam fogs the glass and the line fades
+   * behind it. It clears once the glass is judged, so you see how you did.
+   */
+  private steam(dt: number) {
+    const hot = this.drink.steam && this.glass.level > 0.02 && (this.phase === 'pouring' || this.phase === 'settling');
+    const target = hot ? clamp((this.glass.level - 0.02) * 6, 0, 1) : 0;
+    this.fog += (target - this.fog) * Math.min(1, dt * (hot ? 2.5 : 1.6));
+    if (this.phase === 'away') this.fog = 0;
   }
 
   /** The glass's performances: the line drawing in, the glint, the hop and the lean. */
@@ -497,8 +523,16 @@ export class PourRoom implements Scene {
       x: this.jx,
       y: this.jy - lift * this.j.H * 0.75 + bob,
       alpha: 1 - clamp(lift, 0, 1),
-      tilt: clamp(this.tilt.value, 0, 1) + (reducedMotion ? 0 : Math.sin(this.time * 1.6) * 0.008 * rest),
+      tilt: clamp(this.tilt.value, 0, 1) + (reducedMotion ? 0 : Math.sin(this.time * 1.6) * 0.008 * rest) + this.heave(),
     };
+  }
+
+  /** The pitcher heaves with each glug: a little extra tip as it gulps out, easing back between. */
+  private heave() {
+    const d = this.drink;
+    if (!d.glug || this.phase !== 'pouring' || reducedMotion) return 0;
+    const s = Math.sin((this.held / d.glug) * Math.PI);
+    return 0.05 * (s * s - 0.5) * clamp(this.held * 3, 0, 1);
   }
 
   /** The jug tips and the drink leaves it; follow every drop to where it lands. */
@@ -509,20 +543,34 @@ export class PourRoom implements Scene {
       const jug = this.jug;
       const lip = spout(this.j, jug.x, jug.y, tilt);
       const n = Math.max(1, Math.ceil(dt * 150));
+      // Each drink's own way of coming out (see Drink): steady, building, in glugs.
+      const surge = flowFactor(this.drink, this.held);
       const speed = lerp(50, 150, flow);
-      for (let i = 0; i < n; i++) {
+      if (this.drink.glug) {
+        const gulp = Math.floor(this.held / this.drink.glug + 0.5);
+        if (this.phase === 'pouring' && gulp !== this.gulp) {
+          this.gulp = gulp;
+          material.glug(this.glass.top, 1, panFor(this.g.cx, this.w));
+          haptics.play('tap');
+        }
+      }
+      // Between glugs the stream breaks off: nothing leaves the pitcher.
+      const flowing = surge > 0.12;
+      if (flowing) for (let i = 0; i < n; i++) {
         const k = i / n;
         this.drops.push({
+          brk: i === 0 && !this.flowing,
           x: lip.x + lip.dx * speed * dt * k,
           y: lip.y + lip.dy * speed * dt * k,
           vx: lip.dx * speed,
           vy: lip.dy * speed,
-          vol: (MAX_FLOW * this.game.speed * flow * dt) / n,
-          w: lerp(3, 10, flow) * clamp(this.g.wt / 70, 0.8, 1.3),
+          vol: (MAX_FLOW * this.game.speed * flow * surge * dt) / n,
+          w: lerp(3, 10, flow * clamp(surge, 0.35, 1.6)) * clamp(this.g.wt / 70, 0.8, 1.3),
           alive: true,
         });
       }
-    }
+      this.flowing = flowing;
+    } else this.flowing = false;
 
     const g = this.shape;
     const open = this.phase !== 'away' && this.phase !== 'arrive';
@@ -641,6 +689,7 @@ export class PourRoom implements Scene {
       glint: this.glintT < 0 ? 0 : ease.inOutSine(clamp(this.glintT / GLINT, 0, 1)),
       lit: this.lit,
       nudge: this.nudge,
+      fog: this.fog,
       squash: this.squash.value,
       lean: this.lean.value,
       faceAt: this.drink.extra ? Math.max(0.46, this.extras.top + 0.08) : 0.3,
@@ -664,6 +713,7 @@ export class PourRoom implements Scene {
     }
 
     drawGlass(ctx, t, g, this.glass, this.drink, look);
+    if (this.fog > 0.01) drawSteam(ctx, g, this.glass, this.fog, this.time);
     this.extras.drawRim(ctx, g);
     drawImpact(ctx, g, this.glass, this.impactX, this.landing, this.time, this.drink);
     drawStream(ctx, this.drops, this.drink);

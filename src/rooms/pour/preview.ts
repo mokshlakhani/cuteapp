@@ -120,17 +120,21 @@ export function pourPreview(): Preview {
       const floor = y + h * 0.89;
       // A little left of the middle: the pourer reaches out to the right of the glass.
       const home = glassShape(x + w / 2 - gW * 0.15, floor, gW);
-      // Sliding in from the left and off to the right, leaning as it goes.
+      // Drifting a little way in and fading up, then on and fading away:
+      // never cut off by the card's edge.
       let off = 0;
       let lean = 0;
+      let fade = 1;
       if (phase === 'in') {
         const k = ease.inOutCubic(clamp(phaseT / IN, 0, 1));
-        off = -(1 - k) * (w * 0.5 + gW);
+        off = -(1 - k) * gW * 0.6;
         lean = 0.03 * (1 - k);
+        fade = k;
       } else if (phase === 'out') {
         const k = ease.inOutCubic(clamp(phaseT / OUT, 0, 1));
-        off = k * (w * 0.5 + gW);
+        off = k * gW * 0.6;
         lean = -0.03 * Math.min(1, k * 3);
+        fade = 1 - k;
       }
       const g: GlassShape = off ? { ...home, cx: home.cx + off } : home;
       const j = jugShape(gW, drink.from);
@@ -147,6 +151,7 @@ export function pourPreview(): Preview {
       ctx.beginPath();
       ctx.rect(x, y, w, h);
       ctx.clip();
+      ctx.globalAlpha = fade;
       const lineIn = phase === 'in' ? ease.outCubic(clamp((phaseT - IN * 0.4) / (IN * 0.6), 0, 1)) : 1;
       const glint = phase === 'ting' ? ease.inOutSine(clamp(phaseT / TING, 0, 1)) : 0;
       const lit = phase === 'ting' ? clamp(phaseT / (TING * 0.4), 0, 1) : phase === 'admire' || phase === 'out' ? 1 : 0;
@@ -188,6 +193,7 @@ export function pourPreview(): Preview {
         ctx.lineWidth = 0.8;
         ctx.stroke();
       }
+      ctx.globalAlpha = 1;
       drawJug(ctx, t, j, jx, jy - lift * gW * 0.9 + bob, tilt, drink, 1 - clamp(lift, 0, 1));
       ctx.restore();
     },

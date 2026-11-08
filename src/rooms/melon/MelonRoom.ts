@@ -32,8 +32,8 @@ const CRITICAL = 0.8;
 /** The burst's slow motion: a long held breath, then time eases back in. */
 const SLOWMO = { scale: 0.1, hold: 0.5, back: 1.0 };
 
-/** How high a fresh melon drops from (scene units) and how hard it falls. */
-const DROP_FROM = 9;
+/** How high a fresh fruit drops from (scene units, a soft plop that stays clear of the count) and how hard it falls. */
+const DROP_FROM = 4.5;
 const DROP_G = 46;
 
 /**

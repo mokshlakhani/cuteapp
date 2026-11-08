@@ -94,7 +94,7 @@ describe('popping short of the ring', () => {
 
   it('a bubble that holds is never called too small, and one that pops always is', () => {
     for (let t = SIZE.min; t <= SIZE.max; t += 0.01) {
-      for (let s = 0; s < burstAt(t); s += 0.005) expect(callFor(s, t) === 'too small').toBe(tooSmall(s, t));
+      for (let s = 0; s < burstAt(t); s += 0.005) expect(callFor(s, t) === 'a little small').toBe(tooSmall(s, t));
     }
   });
 });
@@ -113,7 +113,7 @@ describe('the word beside the bubble', () => {
   });
 
   it('otherwise says it was too small', () => {
-    expect(callFor(0.3, 0.5)).toBe('too small');
+    expect(callFor(0.3, 0.5)).toBe('a little small');
   });
 });
 

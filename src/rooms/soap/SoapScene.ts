@@ -4,7 +4,7 @@ import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { Face, drawFace } from '../../render/face';
 import { Staged, type Build } from '../../core/stages';
-import { blobTexture, gpuReady, lightTable, tableRenderer } from '../../render/table';
+import { blobTexture, gpuReady, lightTable, tableRenderer, clothMesh } from '../../render/table';
 import { filmFor, RADIUS, radiusOf, type Film } from './game';
 import { thingsSheet } from './things';
 
@@ -261,6 +261,9 @@ export class SoapScene {
     shadow.scale.set(5, 2.6, 1);
     shadow.position.set(0.35, 0.002, -0.15);
     this.scene.add(shadow);
+
+    // A linen doily under the dish.
+    this.scene.add(clothMesh('linen', 2.7, 0));
 
     // A soft little dish of soapy water.
     const pts = [

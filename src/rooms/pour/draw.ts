@@ -90,6 +90,8 @@ export interface GlassLook {
   lit: number;
   /** 0..1: the line nudging for attention (a miss). */
   nudge: number;
+  /** 0..1: steam on the glass (hot cocoa), hiding the line behind it. */
+  fog?: number;
   /** Squash (1 = none) and lean (radians) about the foot. */
   squash?: number;
   lean?: number;
@@ -359,11 +361,6 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
     ctx.moveTo(g.cx + g.wt - g.wall * 0.2, yAt(g, 0.88));
     ctx.lineTo(g.cx + g.wb + (g.wt - g.wb) * 0.2 - g.wall * 0.2, yAt(g, 0.2));
     ctx.stroke();
-    // A pin-prick of light where the lamp catches the rim.
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(g.cx - g.wt * 0.55, top + rimRy * 0.85, 1.6, 0, TAU);
-    ctx.fill();
   }
   ctx.restore();
 }
@@ -377,6 +374,8 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
 function drawLine(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass: Glass, look: GlassLook) {
   if (look.lineIn <= 0) return;
   const day = t.light;
+  // Behind the steam the line all but disappears; a ghost of it stays.
+  const hidden = 1 - 0.9 * clamp(look.fog ?? 0, 0, 1);
   const ly = yAt(g, glass.line);
   const rx = halfAt(g, glass.line) - 1;
   const ry = ryAt(g, glass.line);
@@ -384,6 +383,7 @@ function drawLine(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass:
   const pulse = look.nudge * (0.5 + 0.5 * Math.sin(look.time * 9));
   const gold = mix(pastel.butter, '#ffffff', day ? 0 : 0.15);
   ctx.save();
+  ctx.globalAlpha = hidden;
   ctx.lineCap = 'round';
   // From the left wall (angle π) round the front toward the right wall (0).
   const arc = (from: number, to: number) => {
@@ -437,7 +437,7 @@ function drawLine(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass:
   if (k > 0) {
     const px = g.cx + g.wt + g.wall + 7 + (1 - k) * 10;
     const s = 5.5;
-    ctx.globalAlpha = k * (look.lit > 0.01 ? 1 : day ? 0.5 : 0.6);
+    ctx.globalAlpha = hidden * k * (look.lit > 0.01 ? 1 : day ? 0.5 : 0.6);
     ctx.fillStyle = look.lit > 0.01 ? mix(t.ink, gold, look.lit) : t.ink;
     ctx.beginPath();
     ctx.moveTo(px, ly);
@@ -1223,6 +1223,8 @@ export interface Drop {
   /** Stream thickness where this drop left the spout (px). */
   w: number;
   alive: boolean;
+  /** The first drop after a gap (a glug): not joined to the one before. */
+  brk?: boolean;
 }
 
 /** The stream: drops left in order, joined into one soft ribbon with a lit edge. */
@@ -1242,7 +1244,7 @@ export function drawStream(ctx: CanvasRenderingContext2D, drops: Drop[], d: Drin
     for (let i = 1; i < drops.length; i++) {
       const a = drops[i - 1];
       const b = drops[i];
-      if (!a.alive || !b.alive || Math.hypot(a.x - b.x, a.y - b.y) > 40) continue;
+      if (!a.alive || !b.alive || b.brk || Math.hypot(a.x - b.x, a.y - b.y) > 40) continue;
       const w = width(b);
       ctx.lineWidth = lw(w);
       const o = off(w);
@@ -1251,6 +1253,40 @@ export function drawStream(ctx: CanvasRenderingContext2D, drops: Drop[], d: Drin
       ctx.lineTo(b.x + o, b.y);
       ctx.stroke();
     }
+  }
+  ctx.restore();
+}
+
+/**
+ * Steam off hot cocoa: soft wisps curling up out of the drink, and a mist
+ * on the glass above it that hides the line.
+ */
+export function drawSteam(ctx: CanvasRenderingContext2D, g: GlassShape, glass: Glass, fog: number, time: number) {
+  const top = yAt(g, 1);
+  const surf = yAt(g, glass.top);
+  ctx.save();
+  // The mist on the glass, thickest just over the drink.
+  const mist = ctx.createLinearGradient(0, surf, 0, top - g.H * 0.08);
+  mist.addColorStop(0, rgba('#fff4e8', 0.34 * fog));
+  mist.addColorStop(1, rgba('#fff4e8', 0.12 * fog));
+  ctx.fillStyle = mist;
+  ctx.beginPath();
+  ctx.roundRect(g.cx - g.wt - g.wall * 0.5, top - g.H * 0.08, (g.wt + g.wall * 0.5) * 2, surf - top + g.H * 0.08, 6);
+  ctx.fill();
+  // Wisps: a few soft puffs rising slowly and swaying, fading as they go.
+  for (let i = 0; i < 7; i++) {
+    const p = (time * 0.22 + i / 7) % 1;
+    const x = g.cx + Math.sin(i * 2.4 + time * 0.7 + p * 3) * g.wt * 0.55;
+    const y = lerp(surf, top - g.H * 0.22, p);
+    const r = g.wt * (0.28 + p * 0.3);
+    const a = Math.sin(Math.PI * p) * 0.3 * fog;
+    const puff = ctx.createRadialGradient(x, y, 0, x, y, r);
+    puff.addColorStop(0, rgba('#fff6ec', a));
+    puff.addColorStop(1, rgba('#fff6ec', 0));
+    ctx.fillStyle = puff;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
   }
   ctx.restore();
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Staged, type Build } from '../../core/stages';
-import { gpuReady, roomReflections } from '../../render/table';
+import { gpuReady, roomReflections, clothMesh } from '../../render/table';
 import { clamp, lerp, noise1 } from '../../core/math';
 import { ease } from '../../design/motion';
 import { drawFace } from '../../render/face';
@@ -114,8 +114,8 @@ export class MelonScene {
     this.scene.environmentIntensity = 0.42;
     yield;
 
-    this.scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.95));
-    const key = new THREE.DirectionalLight('#fff4e6', 2.3);
+    this.scene.add(new THREE.HemisphereLight('#ffeedb', '#d9b49a', 0.95));
+    const key = new THREE.DirectionalLight('#ffe2bf', 2.3);
     key.position.set(-9, 16, 8);
     key.castShadow = true;
     // Small and blurred: the shadow is soft anyway, and the blur runs every frame.
@@ -141,6 +141,8 @@ export class MelonScene {
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
+    // A knitted rug for it to rest on.
+    this.scene.add(clothMesh('knit', 6.2));
     yield;
 
     // ——— the melon ———

@@ -6,19 +6,21 @@
  */
 
 :root {
-  --bg: #8a5799;
-  --bg-deep: #6a3f7c;
-  --surface: #966aa4;
-  --surface-sunk: #76498a;
-  --ink: #fff4f7;
-  --ink-soft: #f0ddf2;
-  --ink-faint: #c9a5d1;
-  --shadow-rgb: 48, 18, 58;
-  --accent: #a9d39a;
+  --bg: #7a4a5c;
+  --bg-deep: #4e2e3a;
+  --surface: #8e5f66;
+  --surface-sunk: #6a4049;
+  --ink: #fff1e2;
+  --ink-soft: #f3dccb;
+  --ink-faint: #cda593;
+  --shadow-rgb: 52, 22, 24;
+  --accent: #f2c46d;
+  /* A running stitch round soft chrome: felt, not plastic. */
+  --stitch: rgba(255, 232, 208, 0.26);
   --font-display: 'Lilita One', 'Nunito', ui-rounded, system-ui, sans-serif;
   --font-text: 'Nunito', ui-rounded, system-ui, sans-serif;
-  --logo-edge: #c24a86;
-  --logo-deep: #4a2356;
+  --logo-edge: rgba(128, 58, 48, 0.55);
+  --logo-deep: rgba(var(--shadow-rgb), 0.45);
   --r-sm: 14px;
   --r-md: 20px;
   --r-lg: 28px;
@@ -34,13 +36,14 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --shadow-soft:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.38), 0 2px 5px rgba(var(--shadow-rgb), 0.08);
+    0 1px 0 rgba(255, 236, 214, 0.18) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.45), 0 2px 5px rgba(var(--shadow-rgb), 0.12);
   --shadow-float:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.4), 0 4px 10px rgba(var(--shadow-rgb), 0.08);
+    0 1px 0 rgba(255, 236, 214, 0.18) inset, 0 18px 40px -14px rgba(var(--shadow-rgb), 0.5), 0 4px 10px rgba(var(--shadow-rgb), 0.14);
 }
 
 :root[data-mood='dusk'] {
-  --accent: #9cc790;
+  --accent: #e0b25e;
+  --stitch: rgba(255, 224, 196, 0.18);
   --shadow-soft:
     0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 8px 20px -8px rgba(var(--shadow-rgb), 0.6), 0 2px 5px rgba(var(--shadow-rgb), 0.25);
   --shadow-float:
@@ -51,27 +54,27 @@
    system / host theme before any script runs. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #4f3159;
-    --bg-deep: #33203d;
-    --surface: #5e406a;
-    --surface-sunk: #462c50;
-    --ink: #f8ecf2;
-    --ink-soft: #cdb6d3;
-    --ink-faint: #8f7499;
-    --shadow-rgb: 18, 6, 24;
+    --bg: #4a2c34;
+    --bg-deep: #2a1a1f;
+    --surface: #5e3d44;
+    --surface-sunk: #432a30;
+    --ink: #fbebdc;
+    --ink-soft: #dcc0ae;
+    --ink-faint: #a07f72;
+    --shadow-rgb: 20, 8, 10;
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --bg: #4f3159;
-  --bg-deep: #33203d;
-  --surface: #5e406a;
-  --surface-sunk: #462c50;
-  --ink: #f8ecf2;
-  --ink-soft: #cdb6d3;
-  --ink-faint: #8f7499;
-  --shadow-rgb: 18, 6, 24;
+  --bg: #4a2c34;
+  --bg-deep: #2a1a1f;
+  --surface: #5e3d44;
+  --surface-sunk: #432a30;
+  --ink: #fbebdc;
+  --ink-soft: #dcc0ae;
+  --ink-faint: #a07f72;
+  --shadow-rgb: 20, 8, 10;
   color-scheme: dark;
 }
 
@@ -88,7 +91,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-text);
-  /* Lilita One has one weight: never let the browser fake a bolder one. */
+  /* Only the weights we ship: never let the browser fake a bolder one. */
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -240,9 +243,19 @@ svg {
   border-radius: 50%;
   display: grid;
   place-items: center;
+  position: relative;
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-soft);
+}
+
+.btn-icon::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--stitch);
+  pointer-events: none;
 }
 
 .btn-icon svg {
@@ -467,6 +480,17 @@ svg {
   transition-delay: 260ms;
 }
 
+.dock::after,
+.sheet::after,
+.popover::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: inherit;
+  border: 1.5px dashed var(--stitch);
+  pointer-events: none;
+}
+
 .dock-divider {
   width: 1.5px;
   height: 24px;
@@ -565,8 +589,10 @@ svg {
   gap: 8px;
   padding: 10px 16px 10px 12px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--ink);
+  outline: 1.5px dashed var(--stitch);
+  outline-offset: -4px;
   font-weight: 700;
   font-size: 14px;
   white-space: nowrap;
@@ -636,14 +662,23 @@ svg {
 .home-title {
   margin: 0;
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 44px;
+  font-weight: 600;
+  font-size: 42px;
   line-height: 1;
   white-space: nowrap;
   color: var(--ink);
   text-shadow:
-    0 3px 0 var(--logo-edge),
-    0 6px 0 var(--logo-deep);
+    0 2px 0 var(--logo-edge),
+    0 6px 18px var(--logo-deep);
+}
+
+/* A quiet hello under the name. */
+.home-greeting {
+  margin: 6px 0 0 2px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
 
 .shelf {
@@ -702,11 +737,12 @@ svg {
   justify-content: center;
   padding: 0 8px;
   text-align: center;
-  color: #fff;
+  color: #fff1e2;
 }
 
 .card-label {
   font-family: var(--font-display);
+  font-weight: 600;
   font-size: 23px;
   line-height: 1.05;
 }
@@ -726,8 +762,9 @@ svg {
   border-radius: 999px;
   background: var(--tile-edge);
   font-family: var(--font-display);
+  font-weight: 600;
   font-size: 13px;
-  color: #fff;
+  color: #fff1e2;
 }
 
 .card-score:empty {
@@ -742,12 +779,13 @@ svg {
   top: 30%;
   text-align: center;
   font-family: var(--font-display);
-  font-size: 64px;
+  font-weight: 600;
+  font-size: 60px;
   line-height: 1;
   color: var(--ink);
   text-shadow:
-    0 4px 0 var(--logo-edge),
-    0 8px 0 var(--logo-deep);
+    0 2px 0 var(--logo-edge),
+    0 8px 24px var(--logo-deep);
   pointer-events: none;
   opacity: 0;
   z-index: 9;
@@ -771,13 +809,10 @@ svg {
 @keyframes room-title {
   0% {
     opacity: 0;
-    transform: scale(0.82);
+    transform: scale(0.94);
   }
-  16% {
+  22% {
     opacity: 1;
-    transform: scale(1.03);
-  }
-  26% {
     transform: scale(1);
   }
   72% {
@@ -959,7 +994,7 @@ svg {
 }
 
 .pour-streak {
-  height: 58px;
+  height: 40px;
   overflow: hidden;
   display: flex;
   align-items: flex-end;
@@ -969,11 +1004,10 @@ svg {
   display: block;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 56px;
+  font-size: 36px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: var(--ink);
+  color: var(--ink-soft);
 }
 
 /* A hit rolls the new number up into place; a miss drops the zero in gently. */
@@ -1037,7 +1071,7 @@ svg {
 
 .pour-toast {
   position: absolute;
-  top: calc(var(--safe-top) + 112px);
+  top: calc(var(--safe-top) + 92px);
   left: 50%;
   display: flex;
   flex-direction: column;
@@ -1105,11 +1139,10 @@ svg {
   display: block;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 48px;
+  font-size: 32px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: var(--ink);
+  color: var(--ink-soft);
 }
 
 .pop-count-label {
@@ -1198,7 +1231,7 @@ svg {
 }
 
 .order-count {
-  height: 54px;
+  height: 38px;
   display: flex;
   align-items: flex-end;
 }
@@ -1207,11 +1240,10 @@ svg {
   display: block;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 52px;
+  font-size: 34px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: var(--ink);
+  color: var(--ink-soft);
   transition: color var(--d-base) var(--ease-out);
 }
 
@@ -1269,7 +1301,7 @@ svg {
 
 .order-toast {
   position: absolute;
-  top: calc(var(--safe-top) + 126px);
+  top: calc(var(--safe-top) + 104px);
   left: 50%;
   display: flex;
   flex-direction: column;
@@ -1404,6 +1436,16 @@ svg {
   color: var(--ink-soft);
 }
 
+/* Names that can land on a cloth: a soft halo keeps them readable. */
+.order-tag-name,
+.pop-tag,
+.pour-tag {
+  color: var(--ink);
+  text-shadow:
+    0 1px 2px rgba(var(--shadow-rgb), 0.55),
+    0 0 10px rgba(var(--shadow-rgb), 0.55);
+}
+
 .order-tag.is-leaving {
   opacity: 0;
   transform: translate(-50%, 4px);
@@ -1416,8 +1458,11 @@ svg {
   left: 0;
   top: 0;
   box-sizing: border-box;
-  border: 2.5px dashed rgba(255, 244, 247, 0.72);
+  border: 2px solid rgba(255, 228, 196, 0.55);
   border-radius: 50%;
+  box-shadow:
+    0 0 18px rgba(255, 200, 140, 0.28),
+    inset 0 0 18px rgba(255, 200, 140, 0.2);
   pointer-events: none;
   opacity: 0;
   transition:
@@ -1468,7 +1513,7 @@ svg {
 }
 
 .peel-track {
-  stroke: rgba(255, 244, 247, 0.34);
+  stroke: rgba(255, 228, 196, 0.4);
   stroke-width: 0.7;
   stroke-dasharray: 0.7 2.4;
   stroke-linecap: round;
@@ -1526,5 +1571,183 @@ svg {
   }
   .room-title.is-up {
     animation-name: room-title-still;
+  }
+}
+
+
+/* ——— help: the ? button's card ——— */
+
+.topbar-right {
+  display: flex;
+  gap: 10px;
+}
+
+/* How to play is for a game: on the home screen there's no ? at all. */
+.topbar-right .btn-icon.is-hidden {
+  display: none;
+}
+
+.help-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 24px) calc(var(--safe-right) + 16px) calc(var(--safe-bottom) + 24px)
+    calc(var(--safe-left) + 16px);
+  background: rgba(var(--shadow-rgb), 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--d-base) var(--ease-out);
+}
+
+.help-scrim.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.help-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(calc(100vw - var(--safe-left) - var(--safe-right) - 32px), 400px);
+  min-width: 0;
+  max-height: min(100%, 640px);
+  padding: 18px 0 6px;
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+  transform: translateY(14px) scale(0.94);
+  transition: transform 460ms var(--ease-overshoot);
+}
+
+.help-scrim.is-open .help-card {
+  transform: none;
+}
+
+/* The same running stitch as every other soft piece of chrome. */
+.help-card::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: calc(var(--r-xl) - 5px);
+  border: 1.5px dashed var(--stitch);
+  pointer-events: none;
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 8px 24px;
+}
+
+.help-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: 0.005em;
+  color: var(--ink);
+  text-shadow: 0 2px 6px rgba(var(--shadow-rgb), 0.3);
+}
+
+.help-close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  background: var(--surface-sunk);
+  box-shadow: none;
+}
+
+.help-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.help-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 24px 18px;
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.help-goal {
+  margin: 4px 0 14px;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.help-label {
+  margin: 16px 0 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.help-steps,
+.help-tips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.help-steps {
+  counter-reset: step;
+}
+
+.help-steps li,
+.help-tips li {
+  position: relative;
+  padding-left: 32px;
+}
+
+/* Numbered steps sit in little honey dots; tips get a small stitch-dash. */
+.help-steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-sunk);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.help-tips li::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0.68em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .help-card {
+    transform: none;
+    transition: none;
   }
 }

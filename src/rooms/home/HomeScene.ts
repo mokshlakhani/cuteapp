@@ -63,6 +63,7 @@ export class HomeScene implements Scene {
   readonly tint = roomTint.home;
   readonly ui: HTMLElement;
   private cards: Card[] = [];
+  private greeting = el('p', 'home-greeting');
   private w = 0;
   private h = 0;
   private time = 0;
@@ -82,7 +83,8 @@ export class HomeScene implements Scene {
   ) {
     this.ui = el('div', 'home');
     const title = el('h1', 'home-title', {}, ['soft spot']);
-    const header = el('header', 'home-header', {}, [title]);
+    const header = el('header', 'home-header', {}, [title, this.greeting]);
+    this.greet();
     const shelf = el('div', 'shelf');
     const sleepers = el('div', 'sleepers');
     for (const info of rooms) {
@@ -181,6 +183,7 @@ export class HomeScene implements Scene {
   }
 
   enter() {
+    this.greet();
     this.showScores();
     requestAnimationFrame(() => this.measure());
     // The cards show their own canvases once home has finished blooming in.
@@ -189,6 +192,13 @@ export class HomeScene implements Scene {
 
   leave() {
     this.liveFrom = Infinity;
+  }
+
+  /** A quiet hello that follows the time of day. */
+  private greet() {
+    const hr = new Date().getHours();
+    this.greeting.textContent =
+      hr < 5 ? 'still up? stay as long as you like' : hr < 12 ? 'good morning · take your time' : hr < 17 ? 'hello again · take a little break' : hr < 22 ? 'good evening · get comfy' : 'cozy night · nothing to rush';
   }
 
   /** Your bests, fresh each time you come back. */
@@ -302,7 +312,8 @@ export class HomeScene implements Scene {
           ctx.beginPath();
           ctx.rect(toy.x, toy.y, toy.w, toy.h);
           ctx.clip();
-          c.preview.draw(ctx, toy.x, toy.y, toy.w, toy.h);
+          // A card still being laid out has no room for its toy yet.
+          if (toy.w > 1 && toy.h > 1) c.preview.draw(ctx, toy.x, toy.y, toy.w, toy.h);
         } else this.drawSleeper(ctx, t, c, x, y);
         ctx.restore();
       }
@@ -359,7 +370,7 @@ export class HomeScene implements Scene {
       ctx.beginPath();
       ctx.rect(toy.x, toy.y, toy.w, toy.h);
       ctx.clip();
-      c.preview.draw(ctx, toy.x, toy.y, toy.w, toy.h);
+      if (toy.w > 1 && toy.h > 1) c.preview.draw(ctx, toy.x, toy.y, toy.w, toy.h);
     }
     ctx.restore();
   }

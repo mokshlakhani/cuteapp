@@ -6,7 +6,7 @@ import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
 import { Face, drawFace } from '../../render/face';
 import { Staged, type Build } from '../../core/stages';
-import { blobTexture, gpuReady, lightTable, tableRenderer, woodTexture } from '../../render/table';
+import { blobTexture, gpuReady, lightTable, tableRenderer, woodTexture, clothMesh } from '../../render/table';
 import { wholeGeometry } from '../slice/SliceScene';
 import { buildExtras, disposeExtra, type Extra } from '../slice/extras';
 import { onSkin, skinNormal, type V3 } from '../slice/polyhedron';
@@ -152,6 +152,8 @@ export class PeelScene {
       new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.72, metalness: 0, envMapIntensity: 0.5 }),
     );
     board.position.y = BOARD.h / 2;
+    // A soft cloth under the board, so it rests on something.
+    this.scene.add(clothMesh('gingham', 5.0, 0));
     this.scene.add(board);
     this.blob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, toneMapped: false, opacity: 0.5 }));
     this.blob.rotation.x = -Math.PI / 2;

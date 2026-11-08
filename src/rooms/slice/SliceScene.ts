@@ -5,7 +5,7 @@ import { clamp, lerp, rand } from '../../core/math';
 import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { Face, drawFace } from '../../render/face';
-import { blobTexture, gpuReady, roomReflections, woodTexture } from '../../render/table';
+import { blobTexture, gpuReady, roomReflections, woodTexture, clothMesh } from '../../render/table';
 import { SLICE_FRUITS, type SliceFruit } from './fruits';
 import { MAX_CUTS, dressSlice, makeSliceMaterial, type SliceUniforms } from './material';
 import { corners, cutAll, cutMask, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3 } from './polyhedron';
@@ -169,8 +169,8 @@ export class SliceScene {
     this.scene.environmentIntensity = 0.42;
     yield;
 
-    this.scene.add(new THREE.HemisphereLight('#fff8ef', '#d9cfc3', 0.95));
-    const key = new THREE.DirectionalLight('#fff4e6', 2.3);
+    this.scene.add(new THREE.HemisphereLight('#ffeedb', '#d9b49a', 0.95));
+    const key = new THREE.DirectionalLight('#ffe2bf', 2.3);
     key.position.set(-9, 16, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(512, 512);
@@ -203,6 +203,8 @@ export class SliceScene {
       new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.72, metalness: 0, envMapIntensity: 0.5 }),
     );
     board.position.y = BOARD.h / 2;
+    // A soft cloth under the board, so it rests on something.
+    this.scene.add(clothMesh('gingham', 5.0, 0));
     board.receiveShadow = true;
     board.castShadow = true;
     this.scene.add(board);
@@ -265,7 +267,7 @@ export class SliceScene {
     this.minVolume = massProps(this.pieces[0]).volume * MIN_PIECE;
     this.cuts = 0;
     // Each fruit arrives facing you, a little turned.
-    this.turnQ.setFromEuler(new THREE.Euler(rand(-0.2, 0.2), rand(-0.5, 0.5), rand(-0.15, 0.15)));
+    this.turnQ.setFromEuler(new THREE.Euler(rand(-0.15, 0.15), rand(-0.3, 0.3), rand(-0.12, 0.12)));
     this.spin.yaw = this.spin.pitch = 0;
     this.skin.uniforms.uCutCount.value = 0;
     this.whole.visible = true;
@@ -591,11 +593,12 @@ export class SliceScene {
   update(dt: number, held = false) {
     this.time += dt;
     this.idle += dt;
-    // Spin left from a flick slows to a stop; left alone a while, it drifts slowly round.
+    // Spin left from a flick slows to a stop; left alone a while, it sways softly.
     const decay = Math.exp(-dt * 5);
     this.spin.yaw *= decay;
     this.spin.pitch *= decay;
-    const drift = held ? 0 : smooth01((this.idle - 4) / 3) * 0.22;
+    // A gentle sway to and fro rather than a full turn, so its face keeps coming back to you.
+    const drift = held ? 0 : smooth01((this.idle - 4) / 3) * 0.12 * Math.cos((this.idle - 4) * 0.35);
     if (!held) this.rotateBy((this.spin.yaw + drift) * dt, this.spin.pitch * dt);
     this.face.update(dt);
     this.squash.update(dt);

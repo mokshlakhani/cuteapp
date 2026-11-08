@@ -110,5 +110,5 @@ export function starsFor(breaks: number) {
 export function verdict(breaks: number, rnd = Math.random): [string, string] {
   if (breaks === 0) return [['one long strip', 'not a single snap', 'beautifully peeled'][Math.floor(rnd() * 3) % 3], 'all in one piece'];
   if (breaks === 1) return ['nearly', 'two strips'];
-  return ['all peeled', `${breaks + 1} strips, so take it slower`];
+  return ['all peeled', `${breaks + 1} strips, slow and steady next time`];
 }

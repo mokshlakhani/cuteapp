@@ -125,7 +125,7 @@ export class SoapRoom implements Scene {
   }
 
   private syncHud(bump: boolean) {
-    this.hud.set(this.run.count, `high score ${this.run.best}`, false, false, bump);
+    this.hud.set(this.run.count, `your best ${this.run.best}`, false, false, bump);
   }
 
   private placeRing() {
@@ -184,7 +184,7 @@ export class SoapRoom implements Scene {
     const beat = this.run.add();
     saveBest(this.run.best);
     this.syncHud(true);
-    this.plus.show(beat ? 'new high score!' : callFor(this.size, target), beside);
+    this.plus.show(beat ? 'a new best!' : callFor(this.size, target), beside);
     const at = this.s.liveAt;
     this.worded = this.s.release();
     this.wordX = beside.x - at.x;
