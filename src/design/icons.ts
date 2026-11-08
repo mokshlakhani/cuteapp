@@ -9,6 +9,7 @@ export const icons = {
   back: wrap('<path d="M14.5 5.5 8 12l6.5 6.5"/>'),
   plus: wrap('<path d="M12 6v12M6 12h12"/>'),
   help: wrap('<path d="M8.4 8.9a3.7 3.7 0 1 1 5.5 3.2c-1.1.6-1.9 1.4-1.9 2.7v.5" stroke-width="2.5"/><path d="M12 18.9v.1" stroke-width="3"/>'),
+  check: wrap('<path d="M5.5 12.6l4.3 4.3 8.7-9.6"/>'),
   close: wrap('<path d="M7 7l10 10M17 7 7 17"/>'),
   music: wrap('<path d="M9 17.5V6.2l9.5-2v11.3"/><circle cx="6.6" cy="17.6" r="2.4"/><circle cx="16.1" cy="15.6" r="2.4"/>'),
   sound: wrap('<path d="M4.5 9.6h2.8l4.4-3.6v12l-4.4-3.6H4.5z"/><path d="M15.4 9.2a4 4 0 0 1 0 5.6M17.9 6.7a7.6 7.6 0 0 1 0 10.6"/>'),
@@ -32,11 +33,6 @@ export const icons = {
   press: wrap(
     '<path d="M9.6 3.5v5.6a2.4 2.4 0 0 0 4.8 0V3.5"/><path d="M5.5 17.5a6.5 3.6 0 0 0 13 0"/><path d="M8.2 13.4c1 .8 2.3 1.2 3.8 1.2s2.8-.4 3.8-1.2"/>',
   ),
-  bubblesSmall: wrap(
-    '<circle cx="7" cy="8" r="2"/><circle cx="12" cy="8" r="2"/><circle cx="17" cy="8" r="2"/><circle cx="9.5" cy="12.4" r="2"/><circle cx="14.5" cy="12.4" r="2"/><circle cx="7" cy="16.8" r="2"/><circle cx="12" cy="16.8" r="2"/><circle cx="17" cy="16.8" r="2"/>',
-  ),
-  bubblesRegular: wrap('<circle cx="8.3" cy="8.3" r="3.3"/><circle cx="15.7" cy="8.3" r="3.3"/><circle cx="12" cy="15.7" r="3.3"/>'),
-  bubblesJumbo: wrap('<circle cx="12" cy="12" r="7"/><path d="M8.8 9.6a3.6 3.6 0 0 1 2.4-1.8"/>'),
   moon: wrap('<path d="M18.5 14.5A7 7 0 0 1 9.5 5.5a7 7 0 1 0 9 9z"/>'),
 };
 

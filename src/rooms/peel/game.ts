@@ -2,35 +2,68 @@
  * The rules of the peel room, kept free of three.js so they can be tested.
  * The peel comes off a fruit along one spiral from its crown to its base.
  * Your finger circling turns the fruit with it; each circle is one turn of
- * the spiral. There's one rule for what breaks a strip, and it's the same for
- * every fruit but for the strip's width: keep going faster than the strip can
- * take and it pulls tight, narrows at the knife, and snaps there. A wider
- * strip takes a brisker pace. Below that pace it never breaks, however long
- * it gets; a quick moment past it is forgiven. When it snaps, that strip drops
- * and a new one starts where it stopped. The whole fruit always comes clean,
- * so nothing can be failed. Stars for how few strips it took. Your stars are kept.
+ * the spiral. The strip wants a pace: a green zone on the pace meter, with red
+ * either side. Too fast and it pulls tight; too slow and it sags under its
+ * own weight. The green zone wanders as you go — quicker here, gentler there
+ * — and narrows as the strip grows long, so you have to keep adjusting. Stay
+ * in the red too long and the strip snaps, and a new one starts where it
+ * stopped. A thinner strip wants a gentler pace. Lift your finger and the
+ * peel waits for you. The whole fruit always comes clean, so nothing can be
+ * failed: the fewer strips it took, the better.
  */
 
 export interface Order {
   /** How many times the spiral goes round: more turns, a thinner strip. */
   turns: number;
+  /** Where the green zone's wandering starts (two phases, radians); no two fruits wander alike. */
+  wave?: [number, number];
 }
 
 /** How fast a strip can come away before it pulls tight (radians a second): thinner is weaker. */
 export const limitFor = (turns: number) => 6.8 - 0.48 * turns;
+
+/** The pace the green zone wanders round (radians a second): about a circle every two seconds or so. */
+export const paceFor = (turns: number) => limitFor(turns) * 0.6;
+
+/** The pace meter runs from standing still to this many times the strip's pace. */
+export const METER_TOP = 2.2;
+
+/**
+ * The green zone, `s` of the way along the strip: the paces it's happy at.
+ * Its middle wanders slowly between gentler and brisker as the peel goes
+ * round, and it narrows from wide to snug as the strip grows long.
+ */
+export function windowAt(order: Order, s: number): { lo: number; hi: number } {
+  const base = paceFor(order.turns);
+  const [a, b] = order.wave ?? [0, 0];
+  const mid = base * (1 + 0.3 * Math.sin(Math.PI * 2 * 1.3 * s + a) + 0.12 * Math.sin(Math.PI * 2 * 3.1 * s + b));
+  const half = base * (0.4 - 0.16 * Math.min(1, Math.max(0, s)));
+  return { lo: mid - half, hi: mid + half };
+}
+
+/** Where a pace sits against the green zone. */
+export type Zone = 'slow' | 'good' | 'fast';
 
 /** Where the spiral starts and ends, as angles down from the crown. */
 export const SPIRAL = { from: 0.26, to: Math.PI - 0.24 };
 /** Its longitude at the very start. */
 export const START_LON = 0.72;
 
-/** How fast tightness builds, per unit over the limit: half as fast again snaps in about 3/4 s. */
-const RISE = 2.6;
-const EASE = 1.2;
-/** After a snap, this long before a new strip can tighten. */
-const GRACE = 0.6;
-/** How quickly the pace follows the finger (seconds). */
-const LAG = 0.1;
+/**
+ * In the red, the strip strains this much a second just past the edge, and
+ * this much more the further into the red (per green zone's half-width): just
+ * over the edge it snaps in about 1.2 s, well into the red in about half that.
+ */
+const RISE_EDGE = 0.8;
+const RISE = 1.4;
+/** Back in the green, the strain lets go this much a second. */
+const EASE = 1;
+/** After a snap, or putting your finger back down, this long before the strip can strain. */
+const GRACE = 0.7;
+/** The first bit of the strip is free: a moment to get going. */
+const FREE = 0.03;
+/** How quickly the pace follows the finger (seconds): smooth enough that touch's jitter doesn't count. */
+const LAG = 0.22;
 /** The most turn a single frame counts, so a stall in input can't lurch. */
 const MOST = 0.7;
 
@@ -44,7 +77,7 @@ export function orderFor(rnd = Math.random, recent: Order[] = []): Order {
   for (let tries = 0; ; tries++) {
     const turns = 3 + Math.floor(rnd() * 4) % 4;
     const last = recent[recent.length - 1];
-    if (!last || last.turns !== turns || tries > 30) return { turns };
+    if (!last || last.turns !== turns || tries > 30) return { turns, wave: [rnd() * Math.PI * 2, rnd() * Math.PI * 2] };
   }
 }
 
@@ -61,6 +94,7 @@ export class Peeler {
   /** How many times it's snapped. */
   breaks = 0;
   private grace = 0;
+  private holding = false;
 
   constructor(readonly order: Order) {}
 
@@ -68,18 +102,41 @@ export class Peeler {
     return limitFor(this.order.turns);
   }
 
+  /** The green zone right here. */
+  get window() {
+    return windowAt(this.order, this.s);
+  }
+
+  /** Where the pace is against the green zone. */
+  get zone(): Zone {
+    const { lo, hi } = this.window;
+    return this.pace < lo ? 'slow' : this.pace > hi ? 'fast' : 'good';
+  }
+
+  /** Whether the strip can strain just now (not in a grace moment, nor at the very start). */
+  get counting() {
+    return this.holding && this.grace === 0 && this.s >= FREE;
+  }
+
   get done() {
     return this.s >= 1;
   }
 
-  /** `turned`: radians the finger went round since the last step. */
-  step(turned: number, dt: number): Peeled {
+  /**
+   * `turned`: radians the finger went round since the last step. `holding`:
+   * whether a finger is on the fruit; without one, the peel waits (nothing
+   * strains), and putting it back down gives a moment to get going again.
+   */
+  step(turned: number, dt: number, holding = true): Peeled {
     if (this.done || dt <= 0) return null;
+    if (holding && !this.holding) this.grace = Math.max(this.grace, GRACE);
+    this.holding = holding;
     const a = Math.min(MOST, Math.max(0, turned));
     this.pace += (a / dt - this.pace) * Math.min(1, dt / LAG);
     this.grace = Math.max(0, this.grace - dt);
-    const over = this.pace / this.limit - 1;
-    if (over > 0 && this.grace === 0) this.tension += over * RISE * dt;
+    const { lo, hi } = this.window;
+    const out = this.pace < lo ? lo - this.pace : this.pace > hi ? this.pace - hi : 0;
+    if (out > 0 && this.counting) this.tension += (RISE_EDGE + (RISE * out) / ((hi - lo) / 2)) * dt;
     else this.tension = Math.max(0, this.tension - EASE * dt);
     this.s = Math.min(1, this.s + a / (Math.PI * 2 * this.order.turns));
     if (this.s >= 1) {
@@ -102,13 +159,8 @@ export function angleDelta(a: number, b: number) {
   return d > Math.PI ? d - Math.PI * 2 : d < -Math.PI ? d + Math.PI * 2 : d;
 }
 
-/** Three for one unbroken strip, two for one snap, one otherwise. */
-export function starsFor(breaks: number) {
-  return breaks === 0 ? 3 : breaks === 1 ? 2 : 1;
-}
-
 export function verdict(breaks: number, rnd = Math.random): [string, string] {
   if (breaks === 0) return [['one long strip', 'not a single snap', 'beautifully peeled'][Math.floor(rnd() * 3) % 3], 'all in one piece'];
   if (breaks === 1) return ['nearly', 'two strips'];
-  return ['all peeled', `${breaks + 1} strips, slow and steady next time`];
+  return ['all peeled', `${breaks + 1} strips · keep it in the green`];
 }

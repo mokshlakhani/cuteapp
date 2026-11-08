@@ -2,9 +2,8 @@ import { most } from './polyhedron';
 
 /**
  * The rules of the slice room. Each fruit is an order: exactly so many
- * pieces, in at most so many knife strokes. Land on the number and it falls
- * apart with three stars; one over or under is two; anything else, one.
- * Nothing can be failed. Your stars are kept.
+ * pieces, in at most so many knife strokes. Land on the number, or don't:
+ * either way it falls apart and says how close you came. Nothing can be failed.
  */
 
 export interface Order {
@@ -48,12 +47,6 @@ export function orderFor(rnd = Math.random, recent: Order[] = []): Order {
   }
 }
 
-/** Three for exactly the order, two for one piece off either way, one for trying. */
-export function starsFor(pieces: number, target: number) {
-  const off = Math.abs(pieces - target);
-  return off === 0 ? 3 : off === 1 ? 2 : 1;
-}
-
 /** What the room says once it falls apart: a headline and a quieter line. */
 export function verdict(pieces: number, target: number, rnd = Math.random): [string, string] {
   if (pieces === target) {
@@ -65,28 +58,4 @@ export function verdict(pieces: number, target: number, rnd = Math.random): [str
   if (pieces > target) return [off === 1 ? 'one too many' : `${off} too many`, `${target} was the plan, still tasty`];
   if (off === 1) return ['so close', `${n} short`];
   return ['a good start', 'turn it, and cross your cuts'];
-}
-
-export interface Progress {
-  stars: number;
-}
-
-const KEY = 'softspot.slice.v1';
-
-export function loadProgress(): Progress {
-  try {
-    const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    const stars = Number.isFinite(p.stars) && p.stars >= 0 ? Math.floor(p.stars) : 0;
-    return { stars };
-  } catch {
-    return { stars: 0 };
-  }
-}
-
-export function saveProgress(p: Progress) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(p));
-  } catch {
-    /* private mode etc. */
-  }
 }

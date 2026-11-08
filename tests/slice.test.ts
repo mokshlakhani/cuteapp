@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { corners, cutAll, ellipsoid, faceNormal, massProps, most, onSkin, outside, revolve, shell, split, type Plane, type Poly } from '../src/rooms/slice/polyhedron';
 import { SLICE_FRUITS } from '../src/rooms/slice/fruits';
-import { orderFor, starsFor } from '../src/rooms/slice/game';
+import { orderFor } from '../src/rooms/slice/game';
 
 const plane = (n: [number, number, number], d = 0): Plane => {
   const l = Math.hypot(...n);
@@ -119,13 +119,5 @@ describe('slice orders', () => {
       expect(recent.slice(-5).some((p) => p.cuts === o.cuts && p.target === o.target)).toBe(false);
       recent.push(o);
     }
-  });
-
-  it('stars: three for exactly the order, two for one off, one otherwise', () => {
-    expect(starsFor(12, 12)).toBe(3);
-    expect(starsFor(13, 12)).toBe(2);
-    expect(starsFor(11, 12)).toBe(2);
-    expect(starsFor(14, 12)).toBe(1);
-    expect(starsFor(6, 12)).toBe(1);
   });
 });

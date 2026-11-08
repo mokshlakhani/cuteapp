@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'app.softspot.toys',
   appName: 'soft spot',
-  webDir: 'dist',
+  webDir: 'dist-app',
   backgroundColor: '#7A4A5C',
   ios: {
     contentInset: 'never',

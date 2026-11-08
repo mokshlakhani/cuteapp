@@ -1,36 +1,38 @@
 import type { Preview } from '../../app/scene';
 import { theme } from '../../design/theme';
-import { rand } from '../../core/math';
+import { rand, smoothstep } from '../../core/math';
+import { rgba } from '../../core/color';
 import { material } from '../../core/sounds';
 import { reducedMotion } from '../../render/camera';
 import { Sheet, type Bubble } from './Sheet';
 import { drawSheet, FILMS } from './draw';
 
-/** Seconds between quiet pops, and how slowly each bubble gives. */
-const EVERY: [number, number] = [1.8, 2.8];
-const SLOW_PRESS = 1.1;
+/** One loop: a pause, a few bubbles glow, then one by one those same ones quietly pop. */
+const REST = 1.2;
+const GLOW = 1.4;
+const GAP = 0.45;
+const GOLD = '#f6c96b';
 
 /**
- * A little patch of bubble wrap for the home card. Every couple of seconds one
- * bubble slowly sinks in and softly gives, all by itself, without a sound.
- * Poke it and one pops for you, with sound; pop them all and it quietly puffs
- * back up.
+ * The memory game on the home card, playing itself: a little patch of bubble
+ * wrap where a few bubbles glow gold, fade, and then those same ones softly
+ * pop, as if remembered. When too few are left it puffs back up. Poke it and
+ * one pops for you, with sound.
  */
 export function wrapPreview(): Preview {
   let sheet: Sheet | null = null;
   let key = '';
-  let refill = 0;
+  let t = 0;
+  let lit: Bubble[] = [];
+  let popped = 0;
   let quiet = 0;
-  let next = rand(1.5, 2.5);
-  /** The bubble giving way by itself right now (popped silently). */
-  let sinking: Bubble | null = null;
 
   const make = (w: number, h: number) => {
     const s = new Sheet(w, h, 'jumbo');
     s.events = {
       pop: (b, _cause, order) => {
-        if (b !== sinking) material.bubblePop(0.8, 0.9, order, 0, b.voice);
-        b.wobble.impulse(b === sinking ? 4 : 9);
+        if (!lit.includes(b)) material.bubblePop(0.8, 0.9, order, 0, b.voice);
+        b.wobble.impulse(lit.includes(b) ? 4 : 9);
         if (b.face) {
           b.face.base = 'sleepy';
           b.face.set('happy', 0.9);
@@ -38,6 +40,19 @@ export function wrapPreview(): Preview {
       },
     };
     return s;
+  };
+
+  const refill = (s: Sheet) => {
+    for (const b of s.bubbles) {
+      b.popped = false;
+      b.press = 0;
+      b.popT = 0;
+      b.wobble.impulse(rand(2, 4));
+      if (b.face) {
+        b.face.base = 'calm';
+        b.face.set('happy', 0.8);
+      }
+    }
   };
 
   return {
@@ -49,32 +64,27 @@ export function wrapPreview(): Preview {
       sheet.update(dt);
       quiet += dt;
       if (quiet > 0.6) sheet.resetOrder();
-      if (sinking?.popped) sinking = null;
-      next -= dt;
-      if (next <= 0 && !sinking && !reducedMotion && sheet.remaining > 0) {
-        next = rand(...EVERY);
+      if (reducedMotion) return;
+      t += dt;
+      if (!lit.length && t > REST) {
         const left = sheet.bubbles.filter((b) => !b.popped);
-        const b = left[Math.floor(rand(0, left.length))];
-        if (b) {
-          sinking = b;
-          b.toughness = SLOW_PRESS;
-          b.pressing = true;
+        if (left.length < 3) {
+          refill(sheet);
+          t = 0;
+          return;
         }
+        lit = [...left].sort(() => Math.random() - 0.5).slice(0, 2 + Math.floor(rand(0, 2)));
+        for (const b of lit) b.face?.set('happy', GLOW);
+        popped = 0;
+        t = 0;
       }
-      if (sheet.remaining === 0) {
-        refill += dt;
-        if (refill > 2.5) {
-          refill = 0;
-          for (const b of sheet.bubbles) {
-            b.popped = false;
-            b.press = 0;
-            b.popT = 0;
-            b.wobble.impulse(rand(2, 4));
-            if (b.face) {
-              b.face.base = 'calm';
-              b.face.set('happy', 0.8);
-            }
-          }
+      // After the glow, the same ones pop, one by one.
+      if (lit.length && t > GLOW + GAP * (popped + 1)) {
+        const b = lit[popped++];
+        if (b && !b.popped) sheet.pop(b, 'press', 0.7);
+        if (popped >= lit.length) {
+          lit = [];
+          t = 0;
         }
       }
     },
@@ -85,13 +95,34 @@ export function wrapPreview(): Preview {
       if (!sheet || k !== key) {
         sheet = make(pw, ph);
         key = k;
+        lit = [];
+        t = 0;
       }
       sheet.moveTo(x + (w - sheet.W) / 2, y + h * 0.5 - sheet.H / 2);
       drawSheet(ctx, theme.current, FILMS[0], sheet);
+      // The glowing ones, fading in and out.
+      const a = Math.min(smoothstep(0, 0.25, t), 1 - smoothstep(GLOW - 0.3, GLOW, t));
+      if (a > 0.01)
+        for (const b of lit) {
+          if (b.popped) continue;
+          const g = ctx.createRadialGradient(b.x, b.y, b.r * 0.2, b.x, b.y, b.r * 1.5);
+          g.addColorStop(0, rgba(GOLD, 0.6 * a));
+          g.addColorStop(0.62, rgba(GOLD, 0.4 * a));
+          g.addColorStop(1, rgba(GOLD, 0));
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r * 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = rgba(GOLD, a);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r * 1.08, 0, Math.PI * 2);
+          ctx.stroke();
+        }
     },
     poke() {
       if (!sheet) return;
-      const left = sheet.bubbles.filter((b) => !b.popped && b !== sinking);
+      const left = sheet.bubbles.filter((b) => !b.popped && !lit.includes(b));
       const b = left[Math.floor(rand(0, left.length))];
       quiet = 0;
       if (b) sheet.pop(b, 'press', 1);

@@ -566,10 +566,4 @@ export const material = {
     audio.noise({ dur: 0.03, attack: 0.001, gain: 0.08, filter: 'bandpass', freq: 2400, q: 1, pan });
     audio.tone({ freq: scale(9), to: scale(6), glide: 0.1, decay: 0.16, gain: 0.05, pan, type: 'triangle', reverb: 0.3 });
   },
-
-  /** One star filling in after a fruit is scored; `i` (0..2) climbs. */
-  star(i: number, pan = 0) {
-    audio.tone({ freq: scale(12 + i * 2), decay: 0.55, gain: 0.045, pan: pan + (i - 1) * 0.15, reverb: 0.6 });
-    audio.tone({ freq: scale(17 + i * 2), decay: 0.3, gain: 0.02, pan: pan + (i - 1) * 0.15, reverb: 0.6, delay: 0.03 });
-  },
 };

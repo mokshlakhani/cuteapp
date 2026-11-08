@@ -1,0 +1,97 @@
+<!doctype html>
+<!--
+  The social-share card (public/og-image.jpg), drawn from the real game's
+  screenshots. Rendered at 1200×630 by scripts/capture-shots.mjs against the
+  dev server; open /scripts/og-card.html there to look at it.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/fredoka/latin-600.css" />
+    <link rel="stylesheet" href="/node_modules/@fontsource/nunito/latin-700.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        font-family: 'Nunito', sans-serif;
+        color: #fff1e2;
+        background:
+          radial-gradient(560px 420px at 12% 0%, rgba(244, 180, 116, 0.42), transparent 70%),
+          radial-gradient(600px 400px at 100% 110%, rgba(201, 120, 94, 0.32), transparent 70%),
+          linear-gradient(180deg, #6a3f50 0%, #3d2430 100%);
+      }
+      .copy {
+        position: absolute;
+        left: 80px;
+        top: 150px;
+        width: 520px;
+      }
+      h1 {
+        margin: 0 0 22px;
+        font: 600 132px/0.9 'Fredoka', sans-serif;
+        letter-spacing: -0.03em;
+        text-shadow:
+          0 5px 0 rgba(128, 58, 48, 0.55),
+          0 16px 40px rgba(52, 22, 24, 0.55);
+      }
+      p {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.35;
+        color: #f3dccb;
+      }
+      .pill {
+        display: inline-block;
+        margin-top: 34px;
+        padding: 14px 28px;
+        border-radius: 999px;
+        background: #f2c46d;
+        color: #4a2722;
+        font: 600 28px/1 'Fredoka', sans-serif;
+        box-shadow: 0 6px 0 #b5843a;
+      }
+      .phone {
+        position: absolute;
+        width: 250px;
+        aspect-ratio: 390 / 844;
+        padding: 9px;
+        border-radius: 40px;
+        background: linear-gradient(160deg, #3d2329, #24141a);
+        box-shadow: 0 40px 60px -20px rgba(20, 8, 10, 0.85);
+      }
+      .phone img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 32px;
+        display: block;
+      }
+      .a {
+        left: 660px;
+        top: 70px;
+        transform: rotate(-6deg);
+      }
+      .b {
+        left: 880px;
+        top: 40px;
+        transform: rotate(5deg);
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="copy">
+      <h1>soft spot</h1>
+      <p>eight cozy toys to squish, pour, peel and pop</p>
+      <span class="pill">free in your browser</span>
+    </div>
+    <div class="phone a"><img src="/src/site/shots/home.webp" alt="" /></div>
+    <div class="phone b"><img src="/src/site/shots/melon.webp" alt="" /></div>
+  </body>
+</html>

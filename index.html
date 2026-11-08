@@ -2,24 +2,245 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#7A4A5C" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>soft spot — eight cozy toys to squish, pour, peel and pop</title>
+    <meta
+      name="description"
+      content="soft spot is a cozy pocket playground: eight tactile toys with little faces — pop a fruit with rubber bands, squish jelly, pour a drink to the line, stack a cairn. Free in your browser, no sign-up, no ads."
+    />
+    <meta name="theme-color" content="#4E2E3A" />
     <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href="%VITE_SITE_URL%" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="soft spot" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="%VITE_SITE_URL%" />
+    <meta property="og:site_name" content="soft spot" />
+    <meta property="og:title" content="soft spot — eight cozy toys to squish, pour, peel and pop" />
+    <meta property="og:description" content="A little lamplit room full of tactile toys. Open it for two minutes and leave feeling better. Free in your browser." />
+    <meta property="og:image" content="%VITE_SITE_URL%og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="soft spot: a shelf of eight cozy toys with little faces, on a deep plum background" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="soft spot — eight cozy toys to squish, pour, peel and pop" />
+    <meta name="twitter:description" content="A little lamplit room full of tactile toys. Free in your browser." />
+    <meta name="twitter:image" content="%VITE_SITE_URL%og-image.jpg" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "soft spot",
+        "description": "A cozy, low-pressure pocket playground of eight tactile toys: pop, jelly, bubbles, pour, slice, peel, soap and stack.",
+        "genre": ["Casual", "Relaxing", "Toy"],
+        "gamePlatform": ["Web browser", "iOS", "Android"],
+        "playMode": "SinglePlayer",
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
     <style>
       html { background: #4e2e3a; }
     </style>
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="soft spot" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <meta name="description" content="soft spot — a cozy pocket playground of tactile toys." />
-    <title>soft spot</title>
-    <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+    <!-- Opened from a home-screen icon added before the website existed: go straight to the game. -->
+    <script>
+      if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace('play/');
+    </script>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <a class="skip" href="#main">skip to content</a>
+
+    <header class="nav" data-nav>
+      <a class="brand" href="#top" aria-label="soft spot, back to top">
+        <img src="/icons/icon.svg" alt="" width="34" height="34" />
+        <span>soft spot</span>
+      </a>
+      <nav aria-label="sections">
+        <ul class="nav-links">
+          <li><a href="#toys">the toys</a></li>
+          <li><a href="#feel">how it feels</a></li>
+          <li><a href="#shelf">your shelf</a></li>
+          <li><a href="#keep">take it with you</a></li>
+        </ul>
+      </nav>
+      <a class="btn btn-honey btn-small" href="play/" data-play>play</a>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow reveal">eight cozy toys · free in your browser</p>
+          <h1 id="hero-title" class="hero-title reveal">soft spot</h1>
+          <p class="lede reveal">
+            A little lamplit room full of toys with faces — to squish, pour, peel and pop. Open it for two minutes and leave feeling
+            a bit better.
+          </p>
+          <div class="hero-actions reveal">
+            <a class="btn btn-honey btn-big" href="play/" data-play>
+              <span class="btn-icon" data-icon="press"></span>
+              play now
+            </a>
+            <a class="btn btn-felt" href="#toys">meet the toys</a>
+          </div>
+          <ul class="hero-facts reveal" aria-label="at a glance">
+            <li>no sign-up</li>
+            <li>no ads</li>
+            <li>works offline</li>
+            <li>phone, tablet or computer</li>
+          </ul>
+        </div>
+
+        <div class="hero-device reveal" data-player>
+          <div class="device">
+            <div class="device-screen">
+              <img class="device-poster" src="./src/site/shots/home.webp" alt="The soft spot shelf: eight game tiles — pop, jelly, bubbles, pour, slice, peel, soap and stack." width="660" height="1429" fetchpriority="high" />
+              <button class="device-start" type="button" data-player-start>
+                <span class="device-start-dot" data-icon="press"></span>
+                <span>play right here</span>
+              </button>
+              <div class="device-loading" aria-hidden="true"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+          <div class="device-bar" hidden data-player-bar>
+            <button class="chip" type="button" data-player-full><span data-icon="grid"></span>full screen</button>
+            <a class="chip" href="play/"><span data-icon="sparkle"></span>open in its own tab</a>
+            <button class="chip" type="button" data-player-stop><span data-icon="close"></span>put it away</button>
+          </div>
+          <p class="device-note">sound on for the full hug · the first touch wakes it</p>
+        </div>
+      </section>
+
+      <section class="section toys" id="toys" aria-labelledby="toys-title">
+        <header class="section-head reveal">
+          <p class="eyebrow">the shelf</p>
+          <h2 id="toys-title">eight toys, one shelf</h2>
+          <p>
+            Every toy has a little face and plays its own way. A few keep a quiet best; none of them can be failed. Pick one to see
+            how it plays.
+          </p>
+        </header>
+        <ul class="toy-grid" data-toys></ul>
+      </section>
+
+      <section class="section feel" id="feel" aria-labelledby="feel-title">
+        <header class="section-head reveal">
+          <p class="eyebrow">how it feels</p>
+          <h2 id="feel-title">made for unwinding</h2>
+          <p>Small, warm and quiet on purpose — the toy is the star, and everything else stays soft.</p>
+        </header>
+        <ul class="feel-grid">
+          <li class="feel-card reveal">
+            <span class="feel-icon" data-icon="moon"></span>
+            <h3>nothing to fail</h3>
+            <p>No timers, coins or lives. Every ending — a burst, a spill, a toppled tower — tidies itself up and starts again gently.</p>
+          </li>
+          <li class="feel-card reveal">
+            <span class="feel-icon" data-icon="music"></span>
+            <h3>every sound in one key</h3>
+            <p>
+              No audio files: each pluck, pop and glug is made as you play and tuned to one soft scale, so even mashing sounds nice. Slow
+              music and a crackling fire sit underneath.
+            </p>
+          </li>
+          <li class="feel-card reveal">
+            <span class="feel-icon" data-icon="sparkle"></span>
+            <h3>everything is alive</h3>
+            <p>Toys breathe, blink and watch your finger. Squeeze one and it squints; push it too far and it gets a little nervous.</p>
+          </li>
+          <li class="feel-card reveal">
+            <span class="feel-icon" data-icon="vibrate"></span>
+            <h3>you can feel it</h3>
+            <p>On a phone, every band, slice and landing has its own small tap — never a buzz.</p>
+          </li>
+          <li class="feel-card reveal">
+            <span class="feel-icon" data-icon="wave"></span>
+            <h3>dims at bedtime</h3>
+            <p>When your device is in dark mode the whole room settles into a deeper dusk, for playing before sleep.</p>
+          </li>
+          <li class="feel-card reveal">
+            <span class="feel-icon" data-icon="check"></span>
+            <h3>yours, on this device</h3>
+            <p>Your bests stay on your device. No account, no tracking, and once it has loaded it plays offline.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section class="section shelf" id="shelf" aria-labelledby="shelf-title">
+        <div class="shelf-card reveal">
+          <header class="section-head">
+            <p class="eyebrow">your shelf</p>
+            <h2 id="shelf-title">what you’ve kept</h2>
+            <p>Your bests, kept on this device by the game itself.</p>
+          </header>
+          <ul class="kept" data-kept aria-live="polite"></ul>
+          <div class="kept-empty" data-kept-empty hidden>
+            <p>Nothing on your shelf yet. Pour a drink, blow a bubble or stack a few stones and your bests will rest here.</p>
+            <a class="btn btn-honey" href="play/" data-play>start playing</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section keep" id="keep" aria-labelledby="keep-title">
+        <header class="section-head reveal">
+          <p class="eyebrow">take it with you</p>
+          <h2 id="keep-title">a toy box in your pocket</h2>
+          <p>soft spot is made for phones first. Add it to your home screen and it opens full screen, like an app, even offline.</p>
+        </header>
+        <div class="keep-grid">
+          <article class="keep-card reveal">
+            <h3>on iPhone or iPad</h3>
+            <ol>
+              <li><span>Open soft spot in Safari.</span></li>
+              <li><span>Tap the share button.</span></li>
+              <li><span>Choose <b>Add to Home Screen</b>.</span></li>
+            </ol>
+          </article>
+          <article class="keep-card reveal">
+            <h3>on Android</h3>
+            <ol>
+              <li><span>Open soft spot in Chrome.</span></li>
+              <li><span>Tap the <b>⋮</b> menu.</span></li>
+              <li><span>Choose <b>Add to Home screen</b> or <b>Install app</b>.</span></li>
+            </ol>
+            <button class="btn btn-honey" type="button" hidden data-install>install soft spot</button>
+          </article>
+          <article class="keep-card reveal">
+            <h3>share it</h3>
+            <p>Know someone who could use a soft spot? Send them the link.</p>
+            <button class="btn btn-felt" type="button" data-share><span class="btn-icon" data-icon="sparkle"></span><span data-share-label>share soft spot</span></button>
+          </article>
+        </div>
+      </section>
+
+      <section class="cta reveal" aria-labelledby="cta-title">
+        <h2 id="cta-title">pull up a chair</h2>
+        <p>The lamp’s on and the toys are waiting.</p>
+        <a class="btn btn-honey btn-big" href="play/" data-play><span class="btn-icon" data-icon="press"></span>play soft spot</a>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a class="brand" href="#top"><img src="/icons/icon.svg" alt="" width="28" height="28" /><span>soft spot</span></a>
+      <p>A cozy pocket playground. Free, no ads, no tracking.</p>
+      <p class="footer-small">Best with sound on. Works in any modern browser on phone, tablet or computer.</p>
+    </footer>
+
+    <dialog class="toy-dialog" data-dialog aria-labelledby="toy-dialog-title">
+      <div class="toy-dialog-inner" data-dialog-body></div>
+    </dialog>
+
+    <div class="toast" role="status" aria-live="polite" data-toast></div>
+
+    <noscript>
+      <p class="noscript">soft spot needs JavaScript to play. <a href="play/">Open the game</a>.</p>
+    </noscript>
+
+    <script type="module" src="/src/site/main.ts"></script>
   </body>
 </html>

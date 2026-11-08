@@ -8,3 +8,5 @@ dist-single
 /android/build
 /android/app/build
 /android/local.properties
+dist-app
+*.apk

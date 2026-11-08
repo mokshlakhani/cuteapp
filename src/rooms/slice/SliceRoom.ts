@@ -14,7 +14,7 @@ import { el, Hint } from '../../ui/components';
 import { OrderHud, OrderToast, Rising } from '../../ui/order';
 import { getSliceScene, type SliceScene } from './SliceScene';
 import { fruitFor } from './fruits';
-import { loadProgress, orderFor, saveProgress, starsFor, verdict, type Order, type Progress } from './game';
+import { orderFor, verdict, type Order } from './game';
 
 type Phase = 'intro' | 'play' | 'hold' | 'fall' | 'result' | 'clear';
 
@@ -55,8 +55,8 @@ const DECIDE = 12;
  * together until the last cut, then it falls apart onto the board. The trick
  * is to cross every cut you've made — and to turn it (swipe anywhere beside
  * it), so the next cut goes a new way through it. Every cut runs along
- * your swipe. A cut that would only shave off a sliver doesn't count. One to three stars per fruit, kept
- * with your stars; nothing can be failed.
+ * your swipe. A cut that would only shave off a sliver doesn't count. It says
+ * how close you came; nothing can be failed.
  */
 export class SliceRoom implements Scene {
   readonly id = 'slice';
@@ -72,7 +72,6 @@ export class SliceRoom implements Scene {
   private turnHint = new Hint('swipe beside the fruit to turn it', 'turn');
   private phase: Phase = 'intro';
   private phaseT = 0;
-  private progress: Progress = loadProgress();
   private order: Order;
   /** The last few orders, so the next is always something new. */
   private recent: Order[] = [];
@@ -347,11 +346,10 @@ export class SliceRoom implements Scene {
   private showResult() {
     const pieces = this.s.pieces.length;
     const t = this.order.target;
-    const stars = starsFor(pieces, t);
     const [title, sub] = verdict(pieces, t);
-    this.toast.show(title, sub, stars);
-    this.progress = { stars: this.progress.stars + stars };
-    saveProgress(this.progress);
+    this.toast.show(title, sub);
+    // Exactly the order: a little fanfare.
+    if (pieces === t) material.tada();
     this.phase = 'result';
     this.phaseT = 0;
   }
@@ -400,7 +398,6 @@ export class SliceRoom implements Scene {
         break;
       }
       case 'result': {
-        this.toast.reveal(this.phaseT);
         if (this.phaseT > 3.4) this.beginClear();
         break;
       }

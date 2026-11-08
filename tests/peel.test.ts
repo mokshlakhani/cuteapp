@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { angleDelta, limitFor, orderFor, Peeler, SPIRAL, spiralAt, starsFor, START_LON, verdict, type Order } from '../src/rooms/peel/game';
+import { angleDelta, limitFor, orderFor, paceFor, Peeler, SPIRAL, spiralAt, START_LON, verdict, windowAt, type Order } from '../src/rooms/peel/game';
 import { SLICE_FRUITS } from '../src/rooms/slice/fruits';
 import { onSkin, shell } from '../src/rooms/slice/polyhedron';
 
-const ORDER: Order = { turns: 4 };
+const ORDER: Order = { turns: 4, wave: [0, 0] };
 const LIMIT = limitFor(ORDER.turns);
 /** Circle at this rate (rad/s) until done or `most` seconds; returns the peeler. */
 function circle(rate: number, order = ORDER, dt = 1 / 60, most = 200) {
@@ -11,6 +11,19 @@ function circle(rate: number, order = ORDER, dt = 1 / 60, most = 200) {
   for (let t = 0; t < most && !p.done; t += dt) p.step(rate * dt, dt);
   return p;
 }
+/** A careful player: keeps to the middle of the green zone, catching up a little late. */
+function follow(order: Order, dt = 1 / 60, react = 0.35) {
+  const p = new Peeler(order);
+  let rate = paceFor(order.turns);
+  for (let t = 0; t < 200 && !p.done; t += dt) {
+    const { lo, hi } = p.window;
+    rate += ((lo + hi) / 2 - rate) * Math.min(1, dt / react);
+    p.step(rate * dt, dt);
+  }
+  return p;
+}
+const waves = (n: number): Order[] =>
+  Array.from({ length: n }, (_, i) => ({ turns: 3 + (i % 4), wave: [(i * 2.39) % (Math.PI * 2), (i * 1.13) % (Math.PI * 2)] }));
 
 describe('peeling', () => {
   it('one circle of the finger is one turn of the spiral', () => {
@@ -19,12 +32,41 @@ describe('peeling', () => {
     expect(p.s).toBeCloseTo(1 / ORDER.turns, 5);
   });
 
-  it('under the limit it comes off in one strip, at any frame rate', () => {
+  it('keeping in the green, it comes off in one strip, at any frame rate', () => {
     for (const dt of [1 / 120, 1 / 60, 1 / 30, 1 / 20]) {
-      const p = circle(LIMIT * 0.9, ORDER, dt);
+      const p = follow(ORDER, dt);
       expect(p.done).toBe(true);
       expect(p.breaks).toBe(0);
     }
+  });
+
+  it('a careful player who follows the green gets one strip on every fruit', () => {
+    for (const o of waves(40)) expect(follow(o).breaks, JSON.stringify(o)).toBe(0);
+  });
+
+  it('one steady pace, ignoring the meter, snaps on most fruits', () => {
+    let snapped = 0;
+    const all = waves(40);
+    for (const o of all) if (circle(paceFor(o.turns), o).breaks > 0) snapped++;
+    expect(snapped / all.length).toBeGreaterThan(0.5);
+  });
+
+  it('too slow snaps it as surely as too fast', () => {
+    const p = circle(paceFor(4) * 0.25);
+    expect(p.done).toBe(true);
+    expect(p.breaks).toBeGreaterThan(0);
+  });
+
+  it('the green zone wanders, and narrows as the strip grows', () => {
+    const o: Order = { turns: 4, wave: [1, 2] };
+    const mids = [0.1, 0.3, 0.5, 0.7, 0.9].map((s) => {
+      const w = windowAt(o, s);
+      return (w.lo + w.hi) / 2;
+    });
+    expect(Math.max(...mids) - Math.min(...mids)).toBeGreaterThan(paceFor(4) * 0.25);
+    const width = (s: number) => windowAt(o, s).hi - windowAt(o, s).lo;
+    expect(width(0.9)).toBeLessThan(width(0.1));
+    for (let s = 0; s <= 1; s += 0.05) expect(windowAt(o, s).lo).toBeGreaterThan(0);
   });
 
   it('rushing snaps it, more the longer you rush, but it always finishes', () => {
@@ -36,30 +78,24 @@ describe('peeling', () => {
     expect(worse.breaks).toBeGreaterThan(p.breaks - 1);
   });
 
-  it('a short burst of speed is forgiven', () => {
-    const p = new Peeler(ORDER);
-    for (let i = 0; i < 12; i++) p.step((LIMIT * 1.5) / 60, 1 / 60);
-    expect(p.breaks).toBe(0);
-    for (let i = 0; i < 120; i++) p.step((LIMIT * 0.5) / 60, 1 / 60);
-    expect(p.tension).toBe(0);
+  it('a short moment in the red is forgiven', () => {
+    const q = new Peeler(ORDER);
+    const mid = () => (q.window.lo + q.window.hi) / 2;
+    for (let i = 0; i < 120; i++) q.step(mid() / 60, 1 / 60);
+    for (let i = 0; i < 18; i++) q.step((q.window.hi * 1.3) / 60, 1 / 60);
+    expect(q.breaks).toBe(0);
+    for (let i = 0; i < 120; i++) q.step(mid() / 60, 1 / 60);
+    expect(q.tension).toBe(0);
   });
 
-  it('resting does no harm, and nothing moves while you rest', () => {
+  it('lifting your finger rests it: no harm, and nothing moves while you rest', () => {
     const p = new Peeler(ORDER);
     p.step(0.5, 1 / 60);
     const s = p.s;
-    for (let i = 0; i < 600; i++) expect(p.step(0, 1 / 60)).toBeNull();
+    for (let i = 0; i < 600; i++) expect(p.step(0, 1 / 60, false)).toBeNull();
     expect(p.s).toBe(s);
     expect(p.tension).toBe(0);
     expect(p.pace).toBeLessThan(0.01);
-  });
-
-  it('never snaps below the pace, however long the strip gets', () => {
-    for (const turns of [3, 4, 5, 6]) {
-      const p = circle(limitFor(turns) * 0.98, { turns });
-      expect(p.done).toBe(true);
-      expect(p.breaks).toBe(0);
-    }
   });
 
   it('a thinner strip snaps at a gentler pace, and a finger can keep under both', () => {
@@ -68,7 +104,7 @@ describe('peeling', () => {
     expect(limitFor(3)).toBeLessThan(6);
   });
 
-  it('the same pace does the same to every fruit of a width: the rule has nothing random', () => {
+  it('the same pace does the same to the same fruit: the rule has nothing random', () => {
     const a = circle(LIMIT * 1.8);
     const b = circle(LIMIT * 1.8);
     expect(a.breaks).toBe(b.breaks);
@@ -175,12 +211,8 @@ describe('peel orders', () => {
   });
 });
 
-describe('peel stars', () => {
-  it('counts snaps', () => {
-    expect(starsFor(0)).toBe(3);
-    expect(starsFor(1)).toBe(2);
-    expect(starsFor(2)).toBe(1);
-    expect(starsFor(9)).toBe(1);
+describe('peel verdicts', () => {
+  it('says something for any number of snaps', () => {
     for (const b of [0, 1, 5]) for (const r of [0, 0.9999]) expect(verdict(b, () => r)[0]).toBeTruthy();
   });
 });

@@ -8,31 +8,20 @@ import { icons } from '../../design/icons';
 import { clamp, lerp, rand, smoothstep } from '../../core/math';
 import { rgba } from '../../core/color';
 import { panFor } from '../../core/audio';
-import { material, ui as uiSound } from '../../core/sounds';
-import { haptics, type HapticWord } from '../../core/haptics';
-import { settings } from '../../core/settings';
+import { material } from '../../core/sounds';
+import { haptics } from '../../core/haptics';
 import { paintBackdrop } from '../../render/paint';
 import { Particles } from '../../render/particles';
-import { Shake, reducedMotion } from '../../render/camera';
-import { el, iconButton, Hint, Segmented, tactile } from '../../ui/components';
-import { Sheet, type Bubble, type BubbleSize, type PopCause } from './Sheet';
-import { FILMS, drawRoll, drawSheet, drawSwatch, film, warmPopped, type Film } from './draw';
+import { Shake } from '../../render/camera';
+import { el, tactile } from '../../ui/components';
+import { OrderToast } from '../../ui/order';
+import { Sheet, type Bubble } from './Sheet';
+import { FILMS, drawRoll, drawSheet, warmPopped, type Film } from './draw';
+import { flashFor, loadMemory, memoryVerdict, nextSize, pickPattern, saveMemory, scoreMemory } from './memory';
 
-type Tool = 'press' | 'stretch';
-type Phase = 'unroll' | 'play' | 'done' | 'away';
-
-interface Touch {
-  tool: Tool;
-  x: number;
-  y: number;
-  /** press: the bubble under the finger, and the pops this stroke made. */
-  bubble: Bubble | null;
-  popped: Bubble[];
-  /** stretch: how far it's pulled (0..1+), and where the last crinkle was. */
-  pull: number;
-  lastCrinkle: number;
-  grabbed: boolean;
-}
+type Phase = 'unroll' | 'play' | 'away';
+/** A breath before the pattern, the pattern glowing, your go, and how it went. */
+type Mem = 'ready' | 'watch' | 'recall' | 'reveal';
 
 /** Seconds: unrolling a fresh sheet, rolling one up, and it leaving. */
 const UNROLL = 0.85;
@@ -40,36 +29,25 @@ const ROLL_UP = 0.7;
 const ROLL_OFF = 0.4;
 /** Wait for the room to slide in before the first unroll. */
 const ENTER_DELAY = 0.45;
-/** Untouched this long, the bubbles doze off. */
-const DOZE_AFTER = 14;
 /** The roll's radius as a sheet starts and finishes unrolling (px). */
 const ROLL_FULL = 22;
 const ROLL_END = 8;
-
-/** How big a pop sounds and feels, by bubble size. */
-const POP_SIZE: Record<BubbleSize, number> = { small: 0.15, regular: 0.5, jumbo: 0.9 };
-const POP_HAPTIC: Record<BubbleSize, HapticWord> = { small: 'tap', regular: 'snap', jumbo: 'thud' };
-/** How far the view leans in on a bubble held right to the end (1 = none). */
-const ZOOM_MAX = 1.2;
-
-const PREFS = 'softspot.wrap.v1';
-
-function loadPrefs(): { film: string; size: BubbleSize } {
-  try {
-    const p = JSON.parse(localStorage.getItem(PREFS) ?? '{}');
-    const size = ['small', 'regular', 'jumbo'].includes(p.size) ? p.size : 'regular';
-    return { film: typeof p.film === 'string' ? p.film : FILMS[0].id, size };
-  } catch {
-    return { film: FILMS[0].id, size: 'regular' };
-  }
-}
+/** A breath before the pattern shows, and its glow fading in and out (s). */
+const READY = 0.7;
+const FADE = 0.3;
+/** How long the result stays before the next sheet (s), unless you tap on. */
+const SHOW = 3.6;
+const GOLD = '#f6c96b';
+const CORAL = '#f4a291';
 
 /**
- * Room: bubble wrap. A sheet of little faces on the table. Press a bubble
- * until it gives, roll a finger across a row, or grab the sheet and stretch
- * it until bubbles crackle on their own. Pop them all and the sheet rolls
- * itself up and a fresh one unrolls. Same chrome as every room: back + sound
- * up top, one dock below, a sheet that rises from it, hints that appear once.
+ * Room: bubbles, a memory game on a sheet of bubble wrap. A fresh sheet
+ * unrolls and a pattern of bubbles glows gold for a moment. When the glow
+ * fades, pop the ones you remember — only the bubble you let go on pops, so
+ * you can slide off one if you change your mind — and tap done. The ones you
+ * got shine gold, the ones you missed get a dashed ring, and any popped by
+ * mistake a coral one. Get them all and the next pattern is a bubble bigger;
+ * a fuzzy round makes it a bubble smaller. No scores to keep, nothing to fail.
  */
 export class WrapRoom implements Scene {
   readonly id = 'wrap';
@@ -81,130 +59,36 @@ export class WrapRoom implements Scene {
   private safe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private area = { x: 0, y: 0, w: 0, h: 0 };
   private sheet: Sheet | null = null;
-  private film: Film;
-  private size: BubbleSize;
-  private tool: Tool = 'press';
+  /** Each sheet comes in the next film colour. */
+  private filmAt = 0;
+  private film: Film = FILMS[0];
   private phase: Phase = 'unroll';
   private phaseT = 0;
   private time = 0;
-  private touches = new Map<number, Touch>();
-  /** The stroke whose finger is popping bubbles right now, if any. */
-  private rolling: Touch | null = null;
+  /** Each finger down, and the bubble under it. */
+  private touches = new Map<number, Bubble | null>();
   private particles = new Particles();
   private shake = new Shake();
   private lastPop = 0;
-  private pops = 0;
-  private idleT = rand(2, 4);
-  private untouched = 0;
-  private dozing = false;
   /** All popped looks painted for this sheet yet? */
   private warm = false;
-  /** Holding a bubble down: how tense it is (0..1), the mews, the lean-in. */
-  private tension = 0;
-  private meowT = 0;
-  private pulse = 0;
-  private zoom = 1;
-  private zx = 0;
-  private zy = 0;
 
-  private segmented: Segmented<Tool>;
-  private plus: HTMLButtonElement;
-  private picker: HTMLDivElement;
-  private swatches = new Map<string, HTMLButtonElement>();
-  private sizes: Segmented<BubbleSize>;
-  private open = false;
-  private hints: Record<Tool, Hint> = {
-    press: new Hint('press a bubble, or roll across a row', 'press'),
-    stretch: new Hint('pull the sheet to stretch it', 'hand'),
-  };
+  private mem: Mem = 'ready';
+  private memT = 0;
+  private size: number;
+  private pattern = new Set<Bubble>();
+  private chosen = new Set<Bubble>();
+  private doneBtn: HTMLButtonElement;
+  private toast = new OrderToast();
 
   constructor(_nav: RoomNav) {
-    const prefs = loadPrefs();
-    this.film = film(prefs.film);
-    this.size = prefs.size;
     this.ui = el('div', 'room room-wrap');
-
-    // ——— dock: tools · a fresh sheet ———
-    this.segmented = new Segmented<Tool>(
-      [
-        { value: 'press', icon: 'press', label: 'press' },
-        { value: 'stretch', icon: 'hand', label: 'stretch' },
-      ],
-      this.tool,
-      (v) => this.setTool(v),
-    );
-    this.plus = iconButton('plus', 'a fresh sheet', () => this.toggle(), 'btn-plus');
-    const dock = el('div', 'dock', {}, [this.segmented.root, el('div', 'dock-divider'), this.plus]);
-
-    // ——— sheet picker: film colour + bubble size ———
-    this.picker = el('div', 'sheet wrap-picker', { role: 'dialog', 'aria-label': 'a fresh sheet' });
-    const grid = el('div', 'sheet-grid sheet-grid-5');
-    FILMS.forEach((f, i) => {
-      const b = el('button', 'fruit-btn', { type: 'button', 'aria-label': `${f.name} film`, title: f.name });
-      b.style.setProperty('--i', String(i));
-      b.append(this.swatch(f));
-      tactile(b, () => {
-        this.film = f;
-        this.savePrefs();
-        this.freshSheet();
-        this.toggle(false);
-      });
-      this.swatches.set(f.id, b);
-      grid.append(b);
-    });
-    this.sizes = new Segmented<BubbleSize>(
-      [
-        { value: 'small', icon: 'bubblesSmall', label: 'small bubbles' },
-        { value: 'regular', icon: 'bubblesRegular', label: 'regular bubbles' },
-        { value: 'jumbo', icon: 'bubblesJumbo', label: 'jumbo bubbles' },
-      ],
-      this.size,
-      (v) => {
-        this.size = v;
-        this.savePrefs();
-        this.freshSheet();
-      },
-    );
-    const fresh = el('button', 'btn btn-text', { type: 'button' });
-    fresh.innerHTML = `${icons.sparkle}<span>fresh sheet</span>`;
-    tactile(fresh, () => {
-      this.freshSheet();
-      this.toggle(false);
-    });
-    this.picker.append(grid, el('div', 'wrap-sizes', {}, [this.sizes.root]), fresh);
-    this.syncPicker();
-    // Day ↔ dusk: repaint the little swatches to match.
-    theme.onChange(() => {
-      this.warm = false;
-      for (const f of FILMS) this.swatches.get(f.id)?.replaceChildren(this.swatch(f));
-    });
-
-    this.ui.append(this.hints.press.root, this.hints.stretch.root, this.picker, dock);
-  }
-
-  private swatch(f: Film) {
-    const size = 52;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const c = document.createElement('canvas');
-    c.width = c.height = size * dpr;
-    c.style.width = c.style.height = `${size}px`;
-    const ctx = c.getContext('2d')!;
-    ctx.scale(dpr, dpr);
-    drawSwatch(ctx, theme.current, f, size);
-    return c;
-  }
-
-  private syncPicker() {
-    for (const [id, b] of this.swatches) b.classList.toggle('is-on', id === this.film.id);
-  }
-
-  private savePrefs() {
-    this.syncPicker();
-    try {
-      localStorage.setItem(PREFS, JSON.stringify({ film: this.film.id, size: this.size }));
-    } catch {
-      /* private mode */
-    }
+    this.size = loadMemory();
+    this.doneBtn = el('button', 'btn wrap-done', { type: 'button', 'aria-label': 'done', disabled: true });
+    this.doneBtn.innerHTML = `${icons.check}<span>done</span>`;
+    tactile(this.doneBtn, () => this.submit());
+    const dock = el('div', 'dock', {}, [this.doneBtn]);
+    this.ui.append(this.toast.root, dock);
   }
 
   // ——— layout ———
@@ -213,12 +97,7 @@ export class WrapRoom implements Scene {
     this.w = w;
     this.h = h;
     this.safe = safe;
-    const top = safe.top + 76;
-    // Clear of the dock and the hint pill that sits on top of it.
-    const bottom = h - safe.bottom - 104 - 44 - 10;
-    const aw = Math.min(w - 40, 420);
-    const ah = Math.max(200, Math.min(bottom - top, aw * 1.7));
-    const area = { x: (w - aw) / 2, y: top + Math.max(0, (bottom - top - ah) / 2), w: aw, h: ah };
+    const area = this.areaFor();
     const resized = Math.abs(area.w - this.area.w) > 2 || Math.abs(area.h - this.area.h) > 2;
     this.area = area;
     this.particles.width = w;
@@ -226,21 +105,31 @@ export class WrapRoom implements Scene {
     else this.placeSheet();
   }
 
+  /** Where the sheet lies: under the words at the top, clear of the done button. */
+  private areaFor() {
+    const { w, h, safe } = this;
+    const top = safe.top + 162;
+    const bottom = h - safe.bottom - 104;
+    const aw = Math.min(w - 40, 420);
+    const ah = Math.max(200, Math.min(bottom - top, aw * 1.7));
+    return { x: (w - aw) / 2, y: top + Math.max(0, (bottom - top - ah) / 2), w: aw, h: ah };
+  }
+
   private makeSheet(unroll: boolean) {
     const a = this.area;
-    const s = new Sheet(a.w, a.h, this.size);
-    s.events = {
-      pop: (b, cause, order) => this.onPop(b, cause, order),
-      strain: (b, step) => this.onStrain(b, step),
-    };
+    this.film = FILMS[this.filmAt++ % FILMS.length];
+    const s = new Sheet(a.w, a.h, 'regular');
+    s.events = { pop: (b, _cause, order) => this.onPop(b, order) };
     this.sheet = s;
     this.placeSheet();
     s.settle();
     s.frame();
     this.touches.clear();
-    this.dozing = false;
-    this.untouched = 0;
     this.warm = false;
+    this.pattern.clear();
+    this.chosen.clear();
+    this.setMem('ready');
+    this.toast.show('get ready', 'watch for the glow');
     if (unroll) {
       this.phase = 'unroll';
       this.phaseT = 0;
@@ -256,111 +145,113 @@ export class WrapRoom implements Scene {
 
   enter() {
     this.layout(this.w || window.innerWidth, this.h || window.innerHeight, this.safe);
-    if (this.sheet && this.sheet.remaining === 0) this.makeSheet(true);
+    // Back in the room: always a fresh pattern, never one half-seen.
+    if (this.phase === 'play' && this.mem !== 'ready') this.makeSheet(true);
+    else this.toast.show('get ready', 'watch for the glow');
     if (this.phase === 'unroll') {
       this.phaseT = -ENTER_DELAY;
       material.rustle(UNROLL, ENTER_DELAY);
     }
-    this.showHint(this.tool);
   }
 
   leave() {
-    this.toggle(false);
-    for (const h of Object.values(this.hints)) h.hide();
+    this.toast.hide();
     this.releaseAll();
   }
 
-  // ——— chrome ———
-
-  private showHint(t: Tool) {
-    for (const [k, h] of Object.entries(this.hints)) if (k !== t) h.hide();
-    if (!settings.value.seenHints.includes(`wrap-${t}`)) this.hints[t].show(t === 'press' ? 1300 : 250);
-  }
-
-  private doneHint(t: Tool) {
-    if (settings.value.seenHints.includes(`wrap-${t}`)) return;
-    settings.markHintSeen(`wrap-${t}`);
-    this.hints[t].hide();
-  }
-
-  private setTool(t: Tool) {
-    this.tool = t;
-    haptics.play('tick');
-    this.toggle(false);
-    this.releaseAll();
-    this.showHint(t);
-  }
-
-  private toggle(force?: boolean) {
-    const next = force ?? !this.open;
-    if (next === this.open) return;
-    this.open = next;
-    this.picker.classList.toggle('is-open', next);
-    this.plus.classList.toggle('is-on', next);
-    uiSound.sheet(next);
-  }
-
-  /** Roll the current sheet up (if any) and unroll a new one. */
+  /** Roll the current sheet up and unroll a new one. */
   private freshSheet() {
     this.releaseAll();
-    if (this.phase === 'play' || this.phase === 'done') {
+    if (this.phase === 'play') {
       this.phase = 'away';
       this.phaseT = 0;
       this.sheet?.settle();
       this.sheet?.frame();
       material.rustle(ROLL_UP);
-    } else {
+    } else if (this.phase !== 'away') {
       this.makeSheet(true);
       material.rustle(UNROLL);
     }
   }
 
   private releaseAll() {
-    for (const [id, t] of this.touches) {
-      if (t.bubble) t.bubble.pressing = false;
-      this.sheet?.release(id);
-    }
+    for (const b of this.touches.values()) if (b) b.pressing = false;
     this.touches.clear();
   }
 
-  // ——— the sheet talking back ———
+  // ——— the game ———
 
-  private onStrain(b: Bubble, step: number) {
-    const s = this.sheet!;
-    material.bubbleStrain(step, POP_SIZE[s.size], panFor(b.x, this.w));
-    haptics.play('tick');
-    b.wobble.impulse(-1.5 * step);
-    if (step >= 2) {
-      // The neighbours watch, worried.
-      for (const o of this.near(b, 1.25)) o.face?.set(step === 3 ? 'nervous' : 'wide', 0.6);
+  private setMem(m: Mem) {
+    this.mem = m;
+    this.memT = 0;
+    this.doneBtn.disabled = m !== 'recall' || this.chosen.size === 0;
+  }
+
+  private stepMemory(dt: number) {
+    this.memT += dt;
+    const s = this.sheet;
+    if (!s || this.phase !== 'play') return;
+    switch (this.mem) {
+      case 'ready':
+        if (this.memT >= READY) {
+          const live = s.bubbles.filter((b) => !b.popped);
+          this.pattern = new Set(pickPattern(live.length, this.size).map((i) => live[i]));
+          this.chosen.clear();
+          this.setMem('watch');
+          this.toast.show('remember these', `${this.pattern.size} bubbles`);
+          material.sparkle(0);
+          haptics.play('soft');
+          for (const b of this.pattern) {
+            b.wobble.impulse(6);
+            b.face?.set('happy', flashFor(this.pattern.size));
+          }
+        }
+        break;
+      case 'watch':
+        if (this.memT >= flashFor(this.pattern.size)) {
+          this.setMem('recall');
+          this.toast.show('your turn', `pop the ${this.pattern.size} you saw, then tap done`);
+          haptics.play('tick');
+        }
+        break;
+      case 'reveal':
+        if (this.memT >= SHOW) this.freshSheet();
+        break;
+      default:
+        break;
     }
   }
 
-  private onPop(b: Bubble, cause: PopCause, order: number) {
+  /** Done: how well do your pops match the pattern? */
+  private submit() {
+    if (this.mem !== 'recall' || this.chosen.size === 0) return;
     const s = this.sheet!;
+    const index = new Map(s.bubbles.map((b, i) => [b, i]));
+    const n = this.pattern.size;
+    const score = scoreMemory(
+      [...this.pattern].map((b) => index.get(b)!),
+      [...this.chosen].map((b) => index.get(b)!),
+    );
+    this.releaseAll();
+    this.setMem('reveal');
+    this.size = nextSize(n, score.grade);
+    saveMemory(this.size);
+    this.toast.show(...memoryVerdict(score, n));
+    if (score.grade === 'perfect') material.tada();
+    haptics.play(score.grade === 'perfect' ? 'soft' : 'tap');
+    // The pattern answers back: the right ones beam, the missed ones peek out.
+    for (const b of this.pattern) {
+      b.wobble.impulse(5);
+      if (!b.popped) b.face?.set('wide', 2);
+    }
+    for (const b of this.chosen) if (!this.pattern.has(b)) b.wobble.impulse(4);
+  }
+
+  private onPop(b: Bubble, order: number) {
     this.lastPop = performance.now();
-    const z = POP_SIZE[s.size];
-    const strain = cause === 'strain';
-    const power = strain ? 0.45 : b.power;
-    material.bubblePop(z, power, order, panFor(b.x, this.w), b.voice);
-    haptics.play(strain ? 'tap' : power > 0.8 ? POP_HAPTIC[s.size] : s.size === 'jumbo' ? 'snap' : 'tap');
-    if (cause === 'press' && power >= 1) {
-      // Held right to the end: the big release.
-      material.meowRelief(panFor(b.x, this.w), b.voice);
-      haptics.play('thud');
-      this.shake.kick(s.size === 'jumbo' ? 3.2 : 2);
-      this.particles.emit({
-        kind: 'sparkle',
-        x: b.x,
-        y: b.y,
-        count: 4,
-        speed: [70, 150],
-        size: [3.5, 6],
-        life: [0.5, 0.8],
-        color: '#ffffff',
-      });
-    } else if (s.size === 'jumbo' && power > 0.8) this.shake.kick(2.2);
-    else if (s.size === 'regular' && power > 0.95) this.shake.kick(0.8);
+    material.bubblePop(0.5, b.power, order, panFor(b.x, this.w), b.voice);
+    haptics.play(b.power > 0.8 ? 'snap' : 'tap');
+    if (b.power > 0.95) this.shake.kick(0.8);
     b.wobble.impulse(9);
     if (b.face) {
       b.face.base = 'sleepy';
@@ -370,200 +261,77 @@ export class WrapRoom implements Scene {
       kind: 'puff',
       x: b.x,
       y: b.y,
-      count: 2 + Math.round(power * 3),
-      speed: [40, 90 + power * 70],
+      count: 2 + Math.round(b.power * 3),
+      speed: [40, 90 + b.power * 70],
       size: [b.r * 0.22, b.r * 0.45],
       life: [0.25, 0.45],
       color: '#ffffff',
     });
-    if (power > 0.9 || Math.random() < 0.25) {
-      this.particles.emit({
-        kind: 'sparkle',
-        x: b.x,
-        y: b.y,
-        count: power > 0.9 ? 2 : 1,
-        speed: [50, 110],
-        size: [3, 5.5],
-        life: [0.4, 0.65],
-        color: '#ffffff',
-      });
-    }
     // The neighbours flinch.
-    for (const o of this.near(b, 1.6)) {
-      o.wobble.impulse(rand(3, 6) * (0.6 + power * 0.5));
+    const s = this.sheet!;
+    for (const o of s.bubbles) {
+      if (o === b || o.popped || Math.hypot(o.x - b.x, o.y - b.y) > s.pitch * 1.6) continue;
+      o.wobble.impulse(rand(3, 6));
       o.face?.set('surprised', 0.45);
     }
-    // Rolled across a whole row in one go? It chimes.
-    const t = this.rolling ?? [...this.touches.values()].find((o) => o.bubble === b);
-    if (t && !strain) {
-      t.popped.push(b);
-      this.checkRow(t, b);
-    }
-
-    this.pops++;
-    if (this.pops >= 3) this.doneHint('press');
-    if (s.remaining === 0 && this.phase === 'play') {
-      this.phase = 'done';
-      this.phaseT = 0;
-      this.celebrate(b);
-    }
-  }
-
-  private checkRow(t: Touch, b: Bubble) {
-    const row = this.sheet!.rowOf(b.row);
-    if (row.length < 3 || !row.every((o) => o.popped)) return;
-    const mine = row.filter((o) => t.popped.includes(o)).length;
-    if (mine < Math.ceil(row.length * 0.6)) return;
-    material.bubbleRow(panFor(b.x, this.w));
-    haptics.play('soft');
-    for (const o of row) {
-      this.particles.emit({ kind: 'sparkle', x: o.x, y: o.y, count: 1, speed: [20, 60], size: [3, 5], life: [0.5, 0.8], color: '#ffffff' });
-    }
-  }
-
-  /** Unpopped bubbles within `pitches` of one bubble. */
-  private near(b: Bubble, pitches: number) {
-    const s = this.sheet!;
-    const d = s.pitch * pitches;
-    return s.bubbles.filter((o) => o !== b && !o.popped && Math.hypot(o.x - b.x, o.y - b.y) < d);
-  }
-
-  /** The last bubble went: a happy ripple runs out across the sheet. */
-  private celebrate(from: Bubble) {
-    material.tada();
-    haptics.play('soft');
-    for (const b of this.sheet!.bubbles) b.wakeIn = Math.hypot(b.x - from.x, b.y - from.y) / 700;
-  }
-
-  /** Someone came back: the bubbles wake in a ripple from the touch. */
-  private wake(x: number, y: number) {
-    if (!this.dozing) return;
-    this.dozing = false;
-    for (const b of this.sheet!.bubbles) {
-      if (b.popped || !b.face) continue;
-      b.face.base = 'calm';
-      b.wakeIn = Math.hypot(b.x - x, b.y - y) / 600;
+    if (this.mem === 'recall') {
+      this.chosen.add(b);
+      this.doneBtn.disabled = false;
     }
   }
 
   // ——— input ———
 
-  /** The view leans in on a held bubble; turn a finger into a spot on the table. */
-  private toWorld(p: Pointer): Pointer {
-    if (this.zoom === 1) return p;
-    const z = this.zoom;
-    return { ...p, x: this.zx + (p.x - this.zx) / z, y: this.zy + (p.y - this.zy) / z, vx: p.vx / z, vy: p.vy / z };
-  }
-
-  pointerDown(screen: Pointer) {
-    const p = this.toWorld(screen);
-    if (this.open) {
-      this.toggle(false);
-      return;
-    }
+  pointerDown(p: Pointer) {
     const s = this.sheet;
     if (!s || this.phase !== 'play') return;
-    this.untouched = 0;
-    this.wake(p.x, p.y);
-    const t: Touch = { tool: this.tool, x: p.x, y: p.y, bubble: null, popped: [], pull: 0, lastCrinkle: 0, grabbed: false };
-    this.touches.set(p.id, t);
-    if (t.tool === 'press') {
-      const b = s.bubbleAt(p.x, p.y);
-      if (b) this.pressOn(t, b);
-      else if (s.contains(p.x, p.y)) {
-        // A poke on bare film: it jiggles, and everyone looks.
-        s.kick(p.x, p.y, 70, s.pitch * 1.8);
-        haptics.play('tick');
-        material.boop(20, 0.25, panFor(p.x, this.w));
-      }
-    } else if (s.grab(p.id, p.x, p.y)) {
-      t.grabbed = true;
+    // A tap once it's scored moves on to the next pattern.
+    if (this.mem === 'reveal') {
+      if (this.memT > 1) this.freshSheet();
+      return;
+    }
+    if (this.mem !== 'recall') return;
+    const b = s.bubbleAt(p.x, p.y);
+    const live = b && !b.popped ? b : null;
+    this.touches.set(p.id, live);
+    if (live) this.pressOn(live);
+    else if (s.contains(p.x, p.y)) {
+      // A poke on bare film: it jiggles.
+      s.kick(p.x, p.y, 70, s.pitch * 1.8);
       haptics.play('tick');
-      material.squeak(0.15, panFor(p.x, this.w));
     }
   }
 
-  private pressOn(t: Touch, b: Bubble) {
-    t.bubble = b;
+  private pressOn(b: Bubble) {
     b.pressing = true;
     b.face?.set('squeeze', 5);
     b.wobble.impulse(-3);
     haptics.play('tick');
   }
 
-  pointerMove(screen: Pointer) {
-    const p = this.toWorld(screen);
-    const t = this.touches.get(p.id);
+  /** Only the bubble you let go on pops: sliding off one lets it puff back up. */
+  pointerMove(p: Pointer) {
     const s = this.sheet;
-    if (!t || !s || this.phase !== 'play') return;
-    const px = t.x;
-    const py = t.y;
-    t.x = p.x;
-    t.y = p.y;
-    this.untouched = 0;
-    if (t.tool === 'press') {
-      // Rolling across: every bubble the finger leaves behind pops, a bit
-      // harder the faster you go.
-      const under = s.bubbleAt(p.x, p.y);
-      const power = clamp(0.45 + Math.hypot(p.vx, p.vy) / 3000, 0.45, 0.8);
-      this.rolling = t;
-      for (const b of s.bubblesAlong(px, py, p.x, p.y)) if (b !== under) s.pop(b, 'roll', Math.max(power, b.press));
-      if (under !== t.bubble) {
-        if (t.bubble && !t.bubble.popped) s.pop(t.bubble, 'roll', Math.max(power, t.bubble.press));
-        t.bubble = null;
-        if (under) this.pressOn(t, under);
-      }
-      this.rolling = null;
-      return;
+    if (!s || !this.touches.has(p.id) || this.mem !== 'recall') return;
+    const was = this.touches.get(p.id) ?? null;
+    const b = s.bubbleAt(p.x, p.y);
+    const under = b && !b.popped ? b : null;
+    if (under === was) return;
+    if (was && !was.popped) {
+      was.pressing = false;
+      was.face?.set('calm', 0.1);
     }
-    if (!t.grabbed) return;
-    t.pull = s.drag(p.id, p.x, p.y);
-    // Crinkles that come quicker and louder the further you pull.
-    const step = lerp(0.16, 0.06, clamp(t.pull, 0, 1));
-    if (Math.abs(t.pull - t.lastCrinkle) > step) {
-      t.lastCrinkle = t.pull;
-      material.crinkle(clamp(t.pull, 0, 1), panFor(p.x, this.w));
-      haptics.play('tick');
-      if (t.pull > 0.5) material.squeak(clamp(t.pull - 0.3, 0, 1), panFor(p.x, this.w));
-    }
-    if (t.pull > 0.35) this.doneHint('stretch');
-    // Too far: it slips out of your fingers and snaps back.
-    if (t.pull > 1.9) {
-      s.release(p.id);
-      t.grabbed = false;
-      material.snapBack(1, panFor(p.x, this.w));
-      haptics.play('snap');
-      this.shake.kick(1.2);
-      for (const b of s.bubbles) if (!b.popped) b.face?.set(Math.random() < 0.3 ? 'dizzy' : 'surprised', 0.7);
-    }
+    this.touches.set(p.id, under);
+    if (under) this.pressOn(under);
   }
 
   pointerUp(p: Pointer, cancelled: boolean) {
-    const t = this.touches.get(p.id);
+    const b = this.touches.get(p.id);
     this.touches.delete(p.id);
-    const s = this.sheet;
-    if (!t || !s) return;
-    if (t.tool === 'press') {
-      const b = t.bubble;
-      if (b && !b.popped) {
-        b.pressing = false;
-        // Any real press pops on release (a quick tap is a small pop); a
-        // cancelled touch lets it puff back up.
-        if (!cancelled && this.phase === 'play') s.pop(b, 'press');
-        else b.face?.set('calm', 0.1);
-      }
-      // A long roll ends with a little flourish.
-      if (t.popped.length >= 5 && !cancelled) material.sparkle(panFor(p.x, this.w));
-      return;
-    }
-    if (t.grabbed) {
-      s.release(p.id);
-      if (t.pull > 0.15) material.snapBack(clamp(t.pull, 0, 1), panFor(p.x, this.w));
-      if (t.pull > 0.4) {
-        haptics.play('soft');
-        for (const b of s.bubbles) if (!b.popped && b.stretch > 1.15) b.face?.set('happy', 0.5);
-      }
-    }
+    if (!b || b.popped) return;
+    b.pressing = false;
+    if (!cancelled && this.phase === 'play' && this.mem === 'recall') this.sheet!.pop(b, 'press');
+    else b.face?.set('calm', 0.1);
   }
 
   // ——— simulation ———
@@ -579,129 +347,41 @@ export class WrapRoom implements Scene {
     // Paint the popped looks a few at a time, before they're needed.
     if (!this.warm) this.warm = warmPopped(theme.current, this.film, s.radius);
 
-    switch (this.phase) {
-      case 'unroll': {
-        const k = this.unrolled;
-        // Faces wake as the roll passes them.
-        for (const b of s.bubbles) {
-          if (b.face?.expression === 'sleepy' && !b.popped && b.v < k * s.H) {
-            b.face.set('happy', rand(0.5, 0.9));
-            b.wobble.impulse(rand(4, 7));
-          }
+    if (this.phase === 'unroll') {
+      const k = this.unrolled;
+      // Faces wake as the roll passes them.
+      for (const b of s.bubbles) {
+        if (b.face?.expression === 'sleepy' && !b.popped && b.v < k * s.H) {
+          b.face.set('happy', rand(0.5, 0.9));
+          b.wobble.impulse(rand(4, 7));
         }
-        if (this.phaseT >= UNROLL) {
-          this.phase = 'play';
-          this.phaseT = 0;
-          haptics.play('tap');
-        }
-        break;
       }
-      case 'done': {
-        if (this.phaseT > 1.6) {
-          this.phase = 'away';
-          this.phaseT = 0;
-          s.settle();
-          s.frame();
-          material.rustle(ROLL_UP);
-        }
-        break;
+      if (this.phaseT >= UNROLL) {
+        this.phase = 'play';
+        this.phaseT = 0;
+        haptics.play('tap');
       }
-      case 'away': {
-        if (this.phaseT >= ROLL_UP + ROLL_OFF) {
-          this.makeSheet(true);
-          material.rustle(UNROLL);
-        }
-        break;
-      }
+    } else if (this.phase === 'away' && this.phaseT >= ROLL_UP + ROLL_OFF) {
+      this.makeSheet(true);
+      material.rustle(UNROLL);
     }
 
-    if (this.phase === 'play' || this.phase === 'done') {
+    if (this.phase === 'play') {
       const steps = Math.min(8, Math.max(1, Math.ceil(dt * 240)));
       for (let i = 0; i < steps; i++) s.step(dt / steps);
       s.frame();
     }
     s.update(dt);
-    this.tense(dt);
+    this.stepMemory(dt);
 
-    // Ripples: wake-ups and the finale travel out across the sheet.
-    for (const b of s.bubbles) {
-      if (b.wakeIn < 0) continue;
-      b.wakeIn -= dt;
-      if (b.wakeIn < 0) {
-        b.wobble.impulse(rand(5, 8));
-        b.face?.set('happy', this.phase === 'done' ? 1.4 : 0.7);
-        if (this.phase === 'done') s.kick(b.x, b.y, 25, s.pitch);
-      }
-    }
-
-    // Faces follow your finger, and look worried when the film is taut.
-    const lead = this.touches.values().next().value;
+    // Faces follow your finger.
     const reach = s.pitch * 3;
+    const lead = [...this.touches.values()].find((b) => b);
     for (const b of s.bubbles) {
-      const f = b.face;
-      if (!f || b.popped) continue;
-      if (lead) f.look((lead.x - b.x) / reach, (lead.y - b.y) / reach);
-      else f.look(0, 0);
-      if (b.stretch > b.limit - 0.08) f.set('strain', 0.2);
-      else if (b.stretch > 1.22) f.set('wide', 0.25);
+      if (!b.face || b.popped) continue;
+      if (lead) b.face.look((lead.x - b.x) / reach, (lead.y - b.y) / reach);
+      else b.face.look(0, 0);
     }
-
-    if (this.phase !== 'play') return;
-    // Left alone a while, they doze off; a touch wakes them.
-    this.untouched += dt;
-    if (!this.dozing && this.untouched > DOZE_AFTER && this.touches.size === 0) {
-      this.dozing = true;
-      for (const b of s.bubbles) if (!b.popped && b.face) b.face.base = 'sleepy';
-    }
-    // Now and then, one of them wiggles.
-    this.idleT -= dt;
-    if (this.idleT <= 0 && !this.dozing) {
-      this.idleT = rand(2.5, 5);
-      const awake = s.bubbles.filter((b) => !b.popped && b.face);
-      const b = awake[Math.floor(rand(0, awake.length))];
-      if (b) {
-        b.wobble.impulse(5);
-        b.face!.set(Math.random() < 0.5 ? 'happy' : 'wide', 0.6);
-      }
-    }
-  }
-
-  /** The bubble being held down hardest right now, if any. */
-  private held() {
-    let best: Bubble | null = null;
-    for (const t of this.touches.values()) {
-      const b = t.bubble;
-      if (b && b.pressing && !b.popped && (!best || b.press > best.press)) best = b;
-    }
-    return best;
-  }
-
-  /**
-   * A held bubble builds up over its few seconds: mews that come quicker,
-   * higher and shakier, a face that goes from squished to sweating, a glow
-   * that pulses faster, and the view slowly leaning in on it.
-   */
-  private tense(dt: number) {
-    const b = this.phase === 'play' ? this.held() : null;
-    const k = b ? b.press : 0;
-    this.tension += (k - this.tension) * Math.min(1, dt * (k > this.tension ? 12 : 5));
-    this.pulse += dt * lerp(1.2, 7, this.tension);
-    if (b) {
-      this.zx = b.x;
-      this.zy = b.y;
-      this.meowT -= dt;
-      if (k > 0.06 && this.meowT <= 0) {
-        this.meowT = lerp(0.95, 0.24, k ** 1.3) * rand(0.85, 1.15);
-        material.meow(k, panFor(b.x, this.w), b.voice);
-        haptics.play(k > 0.7 ? 'tap' : 'tick');
-        b.wobble.impulse(-1.5 - k * 2.5);
-        if (k > 0.75) this.shake.kick(0.3 + (k - 0.75) * 2);
-      }
-      if (k > 0.6) b.face?.set('strain', 0.3);
-    } else this.meowT = 0;
-    const target = b && !reducedMotion ? lerp(1, ZOOM_MAX, smoothstep(0.05, 1, k)) : 1;
-    this.zoom += (target - this.zoom) * Math.min(1, dt * (target > this.zoom ? 4 : 3));
-    if (Math.abs(this.zoom - 1) < 0.0005) this.zoom = 1;
   }
 
   /** How much of a fresh sheet has unrolled (0..1). */
@@ -719,11 +399,6 @@ export class WrapRoom implements Scene {
     paintBackdrop(ctx, w, h, t, { tint: this.tint, floorY: null, spot });
     ctx.save();
     this.shake.apply(ctx, w / 2, h / 2);
-    if (this.zoom !== 1) {
-      ctx.translate(this.zx, this.zy);
-      ctx.scale(this.zoom, this.zoom);
-      ctx.translate(-this.zx, -this.zy);
-    }
     const s = this.sheet;
     if (s) {
       if (this.phase === 'unroll') {
@@ -755,46 +430,54 @@ export class WrapRoom implements Scene {
         drawRoll(ctx, t, this.film, s.x0, edge + off * (h - edge + r * 2 + 30), s.W, r);
       } else {
         drawSheet(ctx, t, this.film, s, this.time);
-      }
-      // A soft fingertip where the film is held.
-      for (const g of s.grabs.values()) {
-        ctx.fillStyle = rgba(t.ink, 0.08);
-        ctx.beginPath();
-        ctx.arc(g.cx, g.cy, 20, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.mem === 'watch' || this.mem === 'reveal') this.drawMemory(ctx);
       }
     }
-    const held = this.held();
-    if (held && this.tension > 0.05) this.drawTension(ctx, held);
     this.particles.draw(ctx);
     ctx.restore();
-    if (this.tension > 0.02) {
-      // Everything else dims a touch, so all eyes are on that one bubble.
-      const [cx, cy] = [this.zx, this.zy];
-      const g = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.12, cx, cy, Math.max(w, h) * 0.8);
-      g.addColorStop(0, `rgba(${t.shadowRgb},0)`);
-      g.addColorStop(1, `rgba(${t.shadowRgb},${0.3 * this.tension * t.shadowStrength})`);
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-    }
   }
 
-  /** A soft glow round the held bubble that throbs quicker as it nears popping. */
-  private drawTension(ctx: CanvasRenderingContext2D, b: Bubble) {
-    const k = this.tension;
-    const beat = 0.5 + 0.5 * Math.sin(this.pulse * Math.PI * 2);
-    const r = b.r * (1.25 + k * 0.35 + beat * 0.12 * k);
-    const g = ctx.createRadialGradient(b.x, b.y, b.r * 0.9, b.x, b.y, r);
-    g.addColorStop(0, rgba('#ffffff', (0.18 + beat * 0.22) * k));
-    g.addColorStop(1, rgba('#ffffff', 0));
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = rgba('#ffffff', (0.15 + beat * 0.35) * k);
-    ctx.lineWidth = 1.2 + k * 1.3;
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, b.r * (1.08 + beat * 0.06 * k), 0, Math.PI * 2);
-    ctx.stroke();
+  /** The glowing pattern, and once it's scored, which you got. */
+  private drawMemory(ctx: CanvasRenderingContext2D) {
+    const ring = (b: Bubble, color: string, a: number, dashed = false, width = 2.4) => {
+      ctx.save();
+      ctx.strokeStyle = rgba(color, a);
+      ctx.lineWidth = width;
+      if (dashed) ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r * 1.08, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    };
+    const glow = (b: Bubble, color: string, a: number) => {
+      const g = ctx.createRadialGradient(b.x, b.y, b.r * 0.2, b.x, b.y, b.r * 1.55);
+      g.addColorStop(0, rgba(color, 0.62 * a));
+      g.addColorStop(0.62, rgba(color, 0.42 * a));
+      g.addColorStop(1, rgba(color, 0));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r * 1.55, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    if (this.mem === 'watch') {
+      const T = flashFor(this.pattern.size);
+      const a = Math.min(smoothstep(0, FADE, this.memT), 1 - smoothstep(T - FADE, T, this.memT));
+      for (const b of this.pattern) {
+        glow(b, GOLD, a);
+        ring(b, GOLD, a);
+      }
+      return;
+    }
+    // Scored: the ones you got beam gold, missed ones are a dashed gold ring,
+    // and ones popped by mistake get a soft coral ring.
+    const a = smoothstep(0, 0.35, this.memT);
+    const beat = 0.75 + 0.25 * Math.sin(this.memT * 5);
+    for (const b of this.pattern) {
+      if (this.chosen.has(b)) {
+        glow(b, GOLD, a * 0.8);
+        ring(b, GOLD, a);
+      } else ring(b, GOLD, a * beat, true, 2.6);
+    }
+    for (const b of this.chosen) if (!this.pattern.has(b)) ring(b, CORAL, a, false, 2.6);
   }
 }

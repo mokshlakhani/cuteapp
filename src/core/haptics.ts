@@ -94,6 +94,8 @@ export const haptics = {
           setTimeout(() => void Haptics.impact({ style: ImpactStyle.Medium }), 200);
         }
       } else if ('vibrate' in navigator) {
+        // Browsers refuse (and log an error) until the page has been touched.
+        if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
         navigator.vibrate(webMs[word]);
       } else if (isIOS) {
         for (const at of iosTicks[word]) {

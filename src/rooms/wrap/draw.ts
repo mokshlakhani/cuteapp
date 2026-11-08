@@ -3,7 +3,7 @@ import { mix, rgba } from '../../core/color';
 import { clamp, TAU } from '../../core/math';
 import { gloss, roundRect } from '../../render/paint';
 import { ease } from '../../design/motion';
-import { drawFace, Face } from '../../render/face';
+import { drawFace } from '../../render/face';
 import type { Bubble, Sheet } from './Sheet';
 import { paintPopped, POPPED_LOOKS } from './popped';
 
@@ -392,44 +392,4 @@ export function drawRoll(ctx: CanvasRenderingContext2D, t: Theme, f: Film, x: nu
   ctx.moveTo(L + r, y - r * 0.62);
   ctx.lineTo(L + W - r, y - r * 0.62);
   ctx.stroke();
-}
-
-/** A little patch of film for the sheet picker: three bubbles, one face. */
-export function drawSwatch(ctx: CanvasRenderingContext2D, t: Theme, f: Film, size: number) {
-  const pad = size * 0.1;
-  ctx.save();
-  roundRect(ctx, pad, pad, size - pad * 2, size - pad * 2, size * 0.2);
-  ctx.shadowColor = `rgba(${t.shadowRgb},${0.18 * t.shadowStrength})`;
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetY = 2;
-  ctx.fillStyle = rgba(mix(f.tint, '#ffffff', 0.45), 0.85);
-  ctx.fill();
-  ctx.restore();
-  const r = size * 0.16;
-  const spots = [
-    [0.33, 0.34, false],
-    [0.67, 0.34, false],
-    [0.5, 0.64, true],
-  ] as const;
-  for (const [u, v, face] of spots) {
-    const b = {
-      x: u * size,
-      y: v * size,
-      r: face ? r * 1.18 : r,
-      ja: 1,
-      jb: 0,
-      jc: 0,
-      jd: 1,
-      popped: false,
-      press: 0,
-      popT: 0,
-      crumple: 0,
-      stretch: 1,
-      u: 0,
-      v: 0,
-      wobble: { value: 0 },
-      face: face ? new Face() : null,
-    } as unknown as Bubble;
-    drawBubble(ctx, t, f, b);
-  }
 }

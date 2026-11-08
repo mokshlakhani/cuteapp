@@ -17,7 +17,7 @@
   --accent: #f2c46d;
   /* A running stitch round soft chrome: felt, not plastic. */
   --stitch: rgba(255, 232, 208, 0.26);
-  --font-display: 'Lilita One', 'Nunito', ui-rounded, system-ui, sans-serif;
+  --font-display: 'Fredoka', 'Nunito', ui-rounded, system-ui, sans-serif;
   --font-text: 'Nunito', ui-rounded, system-ui, sans-serif;
   --logo-edge: rgba(128, 58, 48, 0.55);
   --logo-deep: rgba(var(--shadow-rgb), 0.45);
@@ -974,12 +974,6 @@ svg {
   box-shadow: inset 0 0 0 2.5px var(--ink-faint);
 }
 
-.wrap-sizes {
-  display: flex;
-  justify-content: center;
-  margin: 12px 0 2px;
-}
-
 /* ——— pour: streak, best, how it went ——— */
 
 .pour-hud {
@@ -1336,47 +1330,6 @@ svg {
   color: var(--ink-soft);
 }
 
-.order-stars {
-  display: none;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.order-toast.has-stars .order-stars {
-  display: flex;
-}
-
-.order-star svg {
-  display: block;
-  width: 30px;
-  height: 30px;
-  fill: transparent;
-  stroke: var(--ink-faint);
-  stroke-width: 1.6;
-  stroke-linejoin: round;
-  transition:
-    fill 200ms var(--ease-out),
-    stroke 200ms var(--ease-out);
-}
-
-.order-star:nth-child(2) svg {
-  width: 36px;
-  height: 36px;
-  margin-top: -6px;
-}
-
-.order-star.is-on svg {
-  fill: var(--order-gold);
-  stroke: var(--order-gold);
-  animation: order-star-in 520ms var(--ease-overshoot) both;
-}
-
-@keyframes order-star-in {
-  from {
-    transform: scale(0.4) rotate(-20deg);
-  }
-}
-
 /* "+3", rising off the cut. */
 .order-plus {
   position: absolute;
@@ -1565,7 +1518,6 @@ svg {
 
 @media (prefers-reduced-motion: reduce) {
   .order-count.is-up .order-count-num,
-  .order-star.is-on svg,
   .order-plus.is-up {
     animation-duration: 1ms;
   }
@@ -1751,3 +1703,149 @@ svg {
     transition: none;
   }
 }
+
+/* ——— peel: the pace meter. A felt track, red either end, with a green zone
+   that wanders and narrows; the bead is your pace. ——— */
+
+.peel-meter {
+  --zone-red: #c9645a;
+  --zone-green: #8fb874;
+  --strain: 0;
+  position: absolute;
+  left: 50%;
+  width: min(calc(100vw - 72px), 300px);
+  height: 44px;
+  transform: translate(-50%, 6px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--d-calm) var(--ease-out),
+    transform var(--d-calm) var(--ease-out);
+}
+
+.peel-meter.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.peel-meter-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 4px;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--zone-red) 62%, var(--surface-sunk));
+  box-shadow:
+    inset 0 2px 4px rgba(var(--shadow-rgb), 0.35),
+    0 1px 0 rgba(255, 236, 214, 0.14);
+  transition: background-color var(--d-base) var(--ease-out);
+}
+
+/* The running stitch, as on all the soft chrome. */
+.peel-meter-track::after {
+  content: '';
+  position: absolute;
+  inset: 3px 6px;
+  border-radius: 999px;
+  border: 1.2px dashed rgba(255, 236, 214, 0.28);
+  pointer-events: none;
+}
+
+.peel-meter.is-red .peel-meter-track {
+  background: var(--zone-red);
+}
+
+.peel-meter-green {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--zone-green);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 240, 0.35),
+    0 0 10px rgba(170, 214, 140, 0.35);
+  transition:
+    left 120ms linear,
+    width 120ms linear;
+}
+
+.peel-meter-bead {
+  position: absolute;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow:
+    0 2px 6px rgba(var(--shadow-rgb), 0.45),
+    0 0 0 calc(var(--strain) * 7px) rgba(201, 100, 90, calc(0.25 + var(--strain) * 0.45));
+}
+
+.peel-meter-bead::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(var(--shadow-rgb), 0.28);
+}
+
+.peel-meter-ends {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 27px;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-text);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peel-meter-green {
+    transition: none;
+  }
+}
+
+/* ——— bubbles: a memory game. The done button is the whole dock, and the
+   words sit up top. ——— */
+
+.room-wrap .order-toast {
+  top: calc(var(--safe-top) + 62px);
+}
+
+.wrap-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 50px;
+  padding: 0 20px 0 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #3a2328;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+  transition:
+    background-color var(--d-base) var(--ease-out),
+    color var(--d-base) var(--ease-out),
+    opacity var(--d-base) var(--ease-out);
+}
+
+.wrap-done svg {
+  width: 20px;
+  height: 20px;
+}
+
+.wrap-done:disabled {
+  background: var(--surface-sunk);
+  color: var(--ink-faint);
+  pointer-events: none;
+}
+

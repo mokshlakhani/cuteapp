@@ -23,14 +23,70 @@ and how to add a room.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 — open on your phone via your LAN IP
-npm test             # physics + geometry tests
-npm run build        # production web build in dist/
-npm run build:single # one self-contained HTML file in dist-single/
+npm run dev          # http://localhost:5173 — the website; the game is at /play/
+npm test             # physics, geometry and website-data tests
+npm run build        # production website + game in dist/
+npm run build:app    # the game alone in dist-app/, for Capacitor
+npm run build:single # the game as one self-contained HTML file in dist-single/
 ```
 
 Use a phone (or your browser's device toolbar with touch emulation). Sound
-starts after the first touch, as mobile browsers require.
+starts after the first touch, as mobile browsers require. `play/?room=soap`
+opens a room straight away.
+
+## The website
+
+The front page (`index.html`, `src/site/`) introduces the game and is where
+people play it:
+
+- **Play right here.** On a computer, the phone in the hero runs the real game
+  (`play/`) in a frame, loaded only when asked, with full-screen and "open in
+  its own tab". On a phone or tablet the same button opens the game full screen.
+- **The shelf.** Every toy as a tile in its game colours, with a screenshot
+  from the real game. Each opens a card with how to play (straight from
+  `src/app/howto.ts`, the game's own help cards) and a button into that room.
+  Cards can be linked: `#toy-pour`.
+- **Your shelf.** The bests the game keeps on this device (same origin, same
+  `localStorage`), refreshed as you play.
+- **Take it with you.** Add-to-home-screen steps, Chrome's install prompt
+  where offered, and a share button (native share sheet or copy link).
+
+The website never imports room code: names and blurbs live in
+`src/app/catalog.ts` (shared with the game's home), colours in
+`src/design/tokens.ts`, so it ships ~25 KB of script and no three.js.
+
+### Screenshots and the social card
+
+`src/site/shots/*.webp` and `public/og-image.jpg` are captured from the real
+game by playing each room in headless Chrome:
+
+```bash
+npm run dev                                   # in one terminal
+npm run shots -- http://localhost:5173        # all of them
+npm run shots -- http://localhost:5173 pour,og  # just some
+```
+
+Needs Google Chrome and `cwebp` (`brew install webp`). Re-run it when a room
+changes how it looks.
+
+## Deploying
+
+`npm run build` produces a static site in `dist/` that works from any folder
+(all paths are relative): `dist/index.html` is the website, `dist/play/` the
+game, plus `sw.js` (offline cache for both), the web manifest and icons. No
+server code, no environment secrets.
+
+- **Site URL.** Social previews and the canonical link need the full public
+  address: set `VITE_SITE_URL` (trailing slash) in `.env` or at build time,
+  e.g. `VITE_SITE_URL=https://softspot.example/ npm run build`. It defaults to
+  the GitHub Pages address.
+- **GitHub Pages** is already set up (`.github/workflows/pages.yml`): pushing
+  to the main branch tests, builds and publishes `dist/`.
+- **Any other static host** (Netlify, Cloudflare Pages, Vercel, S3…): build
+  command `npm run build`, output directory `dist`. No rewrites are needed.
+  Serve `sw.js` without long-lived caching so updates reach people.
+- People who added the game to their home screen before the website existed
+  land on the website's address; it sends them straight on to the game.
 
 ## iOS & Android (Capacitor)
 
@@ -39,7 +95,7 @@ with native haptics (Taptic Engine / Android vibrator), status-bar styling
 and the Android back button wired up (`src/native.ts`).
 
 ```bash
-npm run cap:sync       # web build + copy into ios/ and android/
+npm run cap:sync       # game-only build (dist-app/) + copy into ios/ and android/
 npx cap open ios       # opens Xcode (macOS) — run on a device for haptics
 npx cap open android   # opens Android Studio
 ```
@@ -76,8 +132,12 @@ Config lives in `capacitor.config.ts` (app id `app.softspot.toys`).
   allocation-free physics inner loops.
 
 ```
+index.html    the website's front page
+play/         the game's page
+scripts/      capture-shots (screenshots + social card from the real game)
 src/
-  app/        App (loop, transitions, top bar), Scene contract, room registry
+  site/       the website: toys (data), shelf (your bests), player (play in the page), styles
+  app/        App (loop, transitions, top bar), Scene contract, room registry, catalog, how-to
   core/       math, geometry, input, audio, sounds, music, haptics, settings
   design/     tokens, theme (day/dusk), motion (springs/easing), icons
   render/     stage, paint (lighting/material), face, particles, camera
@@ -87,5 +147,5 @@ src/
     melon/    shape (bands + squeeze), MelonScene (three.js), bands3d, explosion + debris, MelonRoom, preview
     jelly/    Piece (soft body), Lab (three.js scene), material, fruits, Knife, JellyRoom, preview
     wrap/     Sheet (stretchy film + bubbles), draw, WrapRoom, preview
-tests/        melon, jelly physics, cutting, bubble wrap & geometry tests (vitest)
+tests/        game physics, rules and geometry, and website data tests (vitest)
 ```

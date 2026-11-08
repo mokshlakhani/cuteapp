@@ -2,17 +2,19 @@
   "name": "soft-spot",
   "private": true,
   "version": "0.1.0",
-  "description": "soft spot — a cozy pocket playground of tactile toys",
+  "description": "soft spot — a cozy pocket playground of tactile toys, and its website",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
+    "build:app": "tsc --noEmit && vite build --mode app",
     "build:single": "tsc --noEmit && vite build --mode single",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "cap:sync": "npm run build && cap sync",
-    "format": "prettier --write \"src/**/*.{ts,css}\" \"tests/**/*.ts\""
+    "shots": "node scripts/capture-shots.mjs",
+    "cap:sync": "npm run build:app && cap sync",
+    "format": "prettier --write \"src/**/*.{ts,css}\" \"*.html\" \"play/*.html\" \"tests/**/*.ts\""
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",

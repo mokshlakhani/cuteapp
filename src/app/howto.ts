@@ -46,14 +46,19 @@ export const HOWTO: HowTo[] = [
   },
   {
     id: 'wrap',
-    goal: 'Pop a sheet of bubble wrap, one happy little bubble at a time.',
+    goal: 'A memory game on bubble wrap: remember which bubbles glow, then pop just those.',
     steps: [
-      'Press on a bubble and hold until it gives way with a pop.',
-      'Roll your finger along a row to pop them one after another.',
-      'Grab the sheet and pull to stretch it — stretch it far enough and bubbles crackle on their own.',
-      'Pop every bubble and the sheet rolls itself up, then a fresh one unrolls.',
+      'A fresh sheet unrolls and, after a moment, a pattern of bubbles glows gold. Remember where they are — the glow doesn’t last long.',
+      'When the glow fades, pop the bubbles you remember: press one and let go to pop it.',
+      'Only the bubble under your finger when you let go pops, so if you change your mind, slide off before letting go and it puffs back up.',
+      'When you think you have them all, tap done.',
     ],
-    tips: ['Tap + for a fresh sheet any time, with small, regular or jumbo bubbles.'],
+    tips: [
+      'Bubbles you got right shine gold, ones you missed get a dashed gold ring, and ones popped by mistake get a coral ring. Up top, it says how many of the pattern you got.',
+      'Get every one, with no extras, and the next pattern is a bubble bigger. A fuzzy round makes it a bubble smaller.',
+      'The result stays a few seconds before the next sheet; tap anywhere to move on sooner.',
+      'Each new sheet comes in a different colour of film.',
+    ],
   },
   {
     id: 'pour',
@@ -87,21 +92,24 @@ export const HOWTO: HowTo[] = [
     tips: [
       'The trick is to cross every cut you’ve already made: that’s how few cuts make many pieces.',
       'A cut that would only shave off a sliver doesn’t count.',
-      'Exactly right earns three stars, one piece off earns two, anything else earns one. Your stars are kept.',
+      'Land exactly on the number and you get a little fanfare; otherwise it tells you how close you came.',
     ],
   },
   {
     id: 'peel',
-    goal: 'Peel the whole fruit in as few long strips as you can.',
+    goal: 'Peel the whole fruit in as few long strips as you can, keeping your pace in the green.',
     steps: [
-      'Trace circles with your finger round the ring, either way round.',
-      'The fruit turns with you, once for every circle, and the skin comes away in one long, curly strip.',
-      'Go faster than the strip can take and it pulls thin at the knife. Ease off and it recovers; keep rushing and it snaps, and a new strip starts where it stopped.',
-      'Keep circling until the fruit is clean.',
+      'Trace circles with your finger round the ring, either way round. The fruit turns with you, once for every circle, and the skin comes away in one long, curly strip.',
+      'The pace meter under the fruit shows how fast you’re going: the bead is your pace, the green zone is the pace the strip is happy at, and the red either side is too slow or too fast.',
+      'Keep the bead in the green. Too fast and the strip pulls tight; too slow and it sags under its own weight.',
+      'Stay in the red too long and the strip snaps, and a new one starts where it stopped. Keep circling until the fruit is clean.',
     ],
     tips: [
-      'Thinner strips need a gentler pace — the width changes from fruit to fruit.',
-      'The fruit always comes clean. Stars are for how few strips it took: one to three, and they’re kept.',
+      'The green zone wanders as you go — quicker here, gentler there — so watch it and adjust.',
+      'It also gets narrower as the strip grows long, so the end of a fruit takes the most care.',
+      'Thinner strips want a gentler pace overall.',
+      'Lift your finger to rest: the peel waits for you, and you get a moment to get going again.',
+      'The fruit always comes clean; one unbroken strip gets a little fanfare.',
     ],
   },
   {

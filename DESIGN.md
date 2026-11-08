@@ -34,12 +34,17 @@ rest is a short list of rules.
    tea starts as a trickle and builds; lemonade comes in glugs, the stream
    breaking off between them; hot cocoa steams up the glass and hides the
    line, so look before you pour. What the room says afterwards is dealt from
-   about a hundred kind lines, never the same one twice running. **Slice** is the other: each fruit asks
-   for exactly so many pieces in at most so many cuts, and is scored one to
-   three stars (three for exact, two for one off), and your stars are kept —
-   but every fruit falls apart and earns at least a star, so nothing is ever
-   failed. **Peel** keeps the same deal: an ever-changing width of strip, one
-   to three stars, and at least one star for trying. **Soap** counts the
+   about a hundred kind lines, never the same one twice running. There are no stars anywhere in the app. **Slice** asks
+   for exactly so many pieces in at most so many cuts, and just says how
+   close you came, with a little fanfare for exactly right; every fruit falls
+   apart, so nothing is ever failed. **Peel** keeps the same deal: an
+   ever-changing width of strip, a fanfare for one unbroken strip. Its one challenge is
+   pace: a felt meter under the fruit with a green zone on a red track and a
+   bead for your pace. The green wanders and narrows as the strip grows, and
+   too long in the red, too fast or too slow, snaps the strip. **Bubbles** is a memory game and nothing else: a pattern of
+   bubbles glows, you pop the ones you saw and tap done, and it simply says
+   how many you got (no percentages, no extras, no best); a
+   perfect round makes the next pattern a bubble bigger. **Soap** counts the
    bubbles that hold in a row until one pops, under your high score. **Stack**
    has no goal: only your high score, quietly at the top, to beat if you feel
    like it._
@@ -241,7 +246,7 @@ look like they came from the same shelf:
   tips (`slice/extras.ts`). Pop only adds how each one bursts. **Peel** uses
   them too, all but the dragon fruit, whose scales are real leaves.
 - **Same chrome.** Rooms with orders or a number share theirs (`ui/order.ts`):
-  the toast that fills in the stars, the count at the top, and the little words
+  the toast that says how it went, the count at the top, and the little words
   that rise off the toy. Soap's words stay right beside its bubble.
 - **Fixed views.** A room's view keeps its size. Stack climbs instead of
   pulling back: past the top of the screen it rises one stone per stone set.

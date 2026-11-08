@@ -7,7 +7,6 @@ import { ease } from '../../design/motion';
 import { clamp } from '../../core/math';
 import { material } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
-import { keepStars } from '../../core/stars';
 import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { reducedMotion } from '../../render/camera';
@@ -15,7 +14,7 @@ import { el, Hint } from '../../ui/components';
 import { OrderToast, Rising } from '../../ui/order';
 import { SLICE_FRUITS, type SliceFruit } from '../slice/fruits';
 import { getPeelScene, type PeelScene } from './PeelScene';
-import { angleDelta, orderFor, Peeler, starsFor, verdict, type Order } from './game';
+import { angleDelta, METER_TOP, orderFor, paceFor, Peeler, verdict, type Order } from './game';
 
 type Phase = 'intro' | 'play' | 'done' | 'result' | 'clear';
 
@@ -38,10 +37,11 @@ const TICK = 0.9;
  * Room: peel. A fruit floats over a board with a little knife against it and
  * a ring round it. Circle your finger round the ring, either way, and the
  * fruit turns with you, once for each circle, and the skin comes away in one
- * long curling strip. Faster than the strip can take, it pulls tight and
- * narrows at the knife; stay there and it snaps, and a new one starts where it
- * stopped. Thinner strips want a gentler pace. The fruit always comes clean;
- * the stars are for how few strips it took. Nothing can be failed.
+ * long curling strip. A pace meter under the fruit shows a green zone on a
+ * red track and a bead for your pace: the green wanders and narrows as you
+ * go, and too long in the red — too fast or too slow — snaps the strip, and
+ * a new one starts where it stopped. Thinner strips want a gentler pace. The
+ * fruit always comes clean; the fewer strips it took, the better.
  */
 export class PeelRoom implements Scene {
   readonly id = 'peel';
@@ -53,7 +53,7 @@ export class PeelRoom implements Scene {
   private s: PeelScene;
   private w = 0;
   private h = 0;
-  private hint = new Hint('circle round the fruit, slow and steady', 'turn');
+  private hint = new Hint('circle round the fruit · keep the bead in the green', 'turn');
   private phase: Phase = 'intro';
   private phaseT = 0;
   private order: Order;
@@ -81,6 +81,11 @@ export class PeelRoom implements Scene {
   private ring: SVGSVGElement;
   private arc: SVGCircleElement;
   private arcShown = -1;
+  /** The pace meter: a red track, the green zone on it, and a bead for your pace. */
+  private meter = el('div', 'peel-meter', { 'aria-hidden': 'true' });
+  private green = el('div', 'peel-meter-green');
+  private bead = el('div', 'peel-meter-bead');
+  private meterShown = { lo: -1, hi: -1, at: -1, strain: -1, red: false };
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-peel');
@@ -103,7 +108,10 @@ export class PeelRoom implements Scene {
       c.setAttribute('r', '48');
     }
     this.ring.append(track, this.arc);
-    this.ui.append(this.ring, this.toast.root, this.plus.root, this.tag, this.hint.root);
+    const meterTrack = el('div', 'peel-meter-track', {}, [this.green]);
+    const ends = el('div', 'peel-meter-ends', {}, [el('span', '', {}, ['too slow']), el('span', '', {}, ['too fast'])]);
+    this.meter.append(meterTrack, this.bead, ends);
+    this.ui.append(this.ring, this.meter, this.toast.root, this.plus.root, this.tag, this.hint.root);
     this.s = getPeelScene();
     this.view = this.s.canvas;
     this.s.setFruit(FRUITS[0], this.order.turns, INTRO.lift);
@@ -114,7 +122,10 @@ export class PeelRoom implements Scene {
     this.h = h;
     this.s.resize(w, h, window.devicePixelRatio || 1, safe.top + 112, h - safe.bottom - 64);
     this.placeRing();
-    this.tag.style.top = `${Math.round(Math.min(this.s.boardFront.y + 18, h - 70))}px`;
+    const tagY = Math.round(Math.min(this.s.boardFront.y + 18, h - 70));
+    this.tag.style.top = `${tagY}px`;
+    // The meter sits under the fruit's name, clear of the hint at the very bottom.
+    this.meter.style.top = `${Math.round(Math.min(tagY + 40, h - safe.bottom - 112))}px`;
     this.painted = false;
   }
 
@@ -136,6 +147,8 @@ export class PeelRoom implements Scene {
 
   leave() {
     this.hint.hide();
+    this.meter.classList.remove('is-red');
+    this.meterShown.red = false;
     this.finger = null;
     this.turned = 0;
     this.s.tight = 0;
@@ -162,6 +175,40 @@ export class PeelRoom implements Scene {
     this.ring.classList.remove('is-tight', 'is-done', 'is-back');
     this.ring.classList.add('is-shown');
     this.showArc(0);
+    this.showMeter();
+  }
+
+  /** Move the green zone and the bead to where they are now; only touches the page when they've moved. */
+  private showMeter() {
+    const p = this.peeler;
+    const top = paceFor(this.order.turns) * METER_TOP;
+    const pct = (v: number) => Math.round(clamp(v / top, 0, 1) * 1000) / 10;
+    const { lo, hi } = p.window;
+    const m = this.meterShown;
+    const a = pct(lo);
+    const b = pct(hi);
+    if (a !== m.lo || b !== m.hi) {
+      m.lo = a;
+      m.hi = b;
+      this.green.style.left = `${a}%`;
+      this.green.style.width = `${b - a}%`;
+    }
+    const at = pct(p.pace);
+    if (at !== m.at) {
+      m.at = at;
+      this.bead.style.left = `${at}%`;
+    }
+    const strain = Math.round(p.tension * 20) / 20;
+    if (strain !== m.strain) {
+      m.strain = strain;
+      this.meter.style.setProperty('--strain', String(strain));
+    }
+    // Red only once it counts: not in the first moment, nor while the finger's off.
+    const red = p.zone !== 'good' && p.counting;
+    if (red !== m.red) {
+      m.red = red;
+      this.meter.classList.toggle('is-red', red);
+    }
   }
 
   private showArc(s: number) {
@@ -231,7 +278,8 @@ export class PeelRoom implements Scene {
           this.phase = 'play';
           this.phaseT = 0;
           const wide = this.order.turns <= 3 ? 'a wide strip' : this.order.turns >= 6 ? 'a very thin strip' : 'a thin strip';
-          if (this.peeler.s === 0) this.toast.show('one long, slow peel', wide);
+          if (this.peeler.s === 0) this.toast.show('one long, slow peel', `${wide} · stay in the green`);
+          this.meter.classList.add('is-shown');
         }
         break;
       }
@@ -245,7 +293,6 @@ export class PeelRoom implements Scene {
         break;
       case 'result':
         s.faceForward(dt);
-        this.toast.reveal(this.phaseT);
         if (this.phaseT > 3.4) this.beginClear();
         break;
       case 'clear': {
@@ -263,7 +310,8 @@ export class PeelRoom implements Scene {
     // The fruit follows smoothly, so uneven touches still make an even turn.
     const turned = this.turned * (1 - Math.exp(-dt * FOLLOW));
     this.turned -= turned;
-    const res = peeler.step(turned, dt);
+    const res = peeler.step(turned, dt, this.finger !== null);
+    this.showMeter();
     s.setProgress(peeler.s);
     s.tight = reducedMotion ? 0 : peeler.tension;
     this.showArc(peeler.s);
@@ -300,6 +348,8 @@ export class PeelRoom implements Scene {
       haptics.play('soft');
       settings.markHintSeen(this.id);
       this.ring.classList.add('is-done');
+      this.meter.classList.remove('is-shown', 'is-red');
+      this.meterShown.red = false;
       this.turned = 0;
       this.phase = 'done';
       this.phaseT = 0;
@@ -307,9 +357,9 @@ export class PeelRoom implements Scene {
   }
 
   private showResult() {
-    const stars = starsFor(this.peeler.breaks);
-    this.toast.show(...verdict(this.peeler.breaks), stars);
-    keepStars(this.id, stars);
+    this.toast.show(...verdict(this.peeler.breaks));
+    // One long strip: a little fanfare.
+    if (this.peeler.breaks === 0) material.tada();
     this.ring.classList.remove('is-shown');
     this.phase = 'result';
     this.phaseT = 0;
