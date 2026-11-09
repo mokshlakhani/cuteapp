@@ -14,8 +14,10 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      // A fail-safe: the page hides it itself, as soon as every room is built (see native.ts).
-      launchShowDuration: 5000,
+      // A fail-safe only: the page hides it itself once the rooms are built (see native.ts).
+      // A first launch compiles every shader before the page can say so, which can take
+      // several seconds; a short fail-safe would lift the splash onto a blank screen.
+      launchShowDuration: 30000,
       launchFadeOutDuration: 300,
       backgroundColor: '#7E465B',
       showSpinner: false,
