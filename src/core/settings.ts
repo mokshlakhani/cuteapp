@@ -17,7 +17,18 @@ const listeners = new Set<Listener>();
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    // Take only well-typed fields, so a damaged entry can never break launch.
+    const p: unknown = raw ? JSON.parse(raw) : null;
+    if (p && typeof p === 'object') {
+      const o = p as Partial<Record<keyof Settings, unknown>>;
+      const flag = (k: 'music' | 'sfx' | 'haptics') => (typeof o[k] === 'boolean' ? (o[k] as boolean) : defaults[k]);
+      return {
+        music: flag('music'),
+        sfx: flag('sfx'),
+        haptics: flag('haptics'),
+        seenHints: Array.isArray(o.seenHints) ? o.seenHints.filter((h): h is string => typeof h === 'string') : [],
+      };
+    }
   } catch {
     /* private mode etc. */
   }
