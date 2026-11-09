@@ -30,8 +30,39 @@ setupNative(() => app.home(), app);
 // The worker sits beside the manifest at the site's root, where the game lives.
 if (import.meta.env.PROD && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-  const url = new URL('sw.js', manifest?.href ?? location.href);
-  window.addEventListener('load', () => void navigator.serviceWorker.register(url).catch(() => {}));
+  const root = manifest?.href ?? location.href;
+  const url = new URL('sw.js', root);
+  let reg: ServiceWorkerRegistration | null = null;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register(url, { updateViaCache: 'none' })
+      .then((r) => (reg = r))
+      .catch(() => {});
+  });
+
+  // A home-screen app on iPhone is usually resumed, not reloaded, so it could sit
+  // on an old build for weeks. Each time it comes back into view, ask the server
+  // which build is current and quietly reload if this one is out of date.
+  const mine = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.src;
+  let lastCheck = 0;
+  const checkForNewBuild = async () => {
+    if (!mine || Date.now() - lastCheck < 30_000) return;
+    lastCheck = Date.now();
+    void reg?.update().catch(() => {});
+    try {
+      const html = await (await fetch(new URL('./', root), { cache: 'no-store' })).text();
+      const src = /<script[^>]*type="module"[^>]*src="([^"]+)"/.exec(html)?.[1];
+      if (src && new URL(src, root).href !== mine) location.reload();
+    } catch {
+      // Offline: keep playing what's here.
+    }
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void checkForNewBuild();
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) void checkForNewBuild();
+  });
 }
 
 // Debug/testing handle (harmless in production).

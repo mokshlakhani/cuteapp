@@ -3,14 +3,19 @@
 // the latest build) and fall back to their cached copy offline; everything
 // else is hashed by the build, so once cached it never changes.
 // v3: the game moved back to the root, so drop any copy cached while it lived at play/.
-const CACHE = 'softspot-v3';
+// v4: pages skip the browser's own 10-minute cache, and when this worker takes
+// over from an older one it reloads any open soft spot, so phones that kept an
+// old build open (home-screen apps resume rather than reload) catch up at once.
+const CACHE = 'softspot-v4';
 const PAGES = ['./', './site/'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll([...PAGES, './manifest.webmanifest', './icons/apple-touch-icon.png']))
+      .then((c) =>
+        c.addAll([...PAGES, './manifest.webmanifest', './icons/apple-touch-icon.png'].map((u) => new Request(u, { cache: 'reload' }))),
+      )
       .catch(() => {}),
   );
   self.skipWaiting();
@@ -18,10 +23,16 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
+    (async () => {
+      // Windows still run by the previous worker are showing an older build.
+      const stale = await self.clients.matchAll({ type: 'window' });
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      await self.clients.claim();
+      // Not awaited: the reload is answered by this worker, which only starts
+      // answering once activation (this function) has finished.
+      for (const c of stale) c.navigate(c.url).catch(() => {});
+    })(),
   );
 });
 
@@ -39,7 +50,7 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     const key = pageKey(req.url);
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
