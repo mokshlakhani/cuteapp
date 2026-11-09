@@ -205,7 +205,7 @@ async function main() {
         source: `try{localStorage.setItem('softspot.settings.v1',JSON.stringify({music:false,sfx:false,haptics:false,seenHints:[]}))}catch(e){}
           document.addEventListener('DOMContentLoaded',()=>{const st=document.createElement('style');st.textContent='.hint{display:none!important}';document.head.append(st)});`,
       });
-      await s('Page.navigate', { url: `${BASE}/play/${shot.room ? `?room=${shot.room}` : ''}` });
+      await s('Page.navigate', { url: `${BASE}/${shot.room ? `?room=${shot.room}` : ''}` });
       await sleep(shot.wait);
       await shot.play(pointer(s));
       const { data } = await s('Page.captureScreenshot', { format: 'png' });

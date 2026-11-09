@@ -14,7 +14,7 @@
     "test": "vitest run",
     "shots": "node scripts/capture-shots.mjs",
     "cap:sync": "npm run build:app && cap sync",
-    "format": "prettier --write \"src/**/*.{ts,css}\" \"*.html\" \"play/*.html\" \"tests/**/*.ts\""
+    "format": "prettier --write \"src/**/*.{ts,css}\" \"*.html\" \"site/*.html\" \"tests/**/*.ts\""
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",

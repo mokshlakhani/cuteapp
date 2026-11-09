@@ -3,7 +3,7 @@
   "short_name": "soft spot",
   "description": "A cozy pocket playground of tactile toys.",
   "id": "./",
-  "start_url": "./play/",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

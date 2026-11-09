@@ -27,7 +27,7 @@ if (first) setTimeout(() => app.go(first), 800);
 setupNative(() => app.home(), app);
 
 // On the web, cache the game so it opens offline once added to the home screen.
-// The worker sits beside the manifest at the site's root (the game itself lives at play/).
+// The worker sits beside the manifest at the site's root, where the game lives.
 if (import.meta.env.PROD && 'serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
   const url = new URL('sw.js', manifest?.href ?? location.href);

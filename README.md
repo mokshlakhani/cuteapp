@@ -23,7 +23,7 @@ and how to add a room.
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 — the website; the game is at /play/
+npm run dev          # http://localhost:5173 — the game; the website is at /site/
 npm test             # physics, geometry and website-data tests
 npm run build        # production website + game in dist/
 npm run build:app    # the game alone in dist-app/, for Capacitor
@@ -31,7 +31,7 @@ npm run build:single # the game as one self-contained HTML file in dist-single/
 ```
 
 Use a phone (or your browser's device toolbar with touch emulation). Sound
-starts after the first touch, as mobile browsers require. `play/?room=soap`
+starts after the first touch, as mobile browsers require. `?room=soap`
 opens a room straight away.
 
 ## The website
@@ -40,7 +40,7 @@ The front page (`index.html`, `src/site/`) introduces the game and is where
 people play it:
 
 - **Play right here.** On a computer, the phone in the hero runs the real game
-  (`play/`) in a frame, loaded only when asked, with full-screen and "open in
+  (the root, `./`) in a frame, loaded only when asked, with full-screen and "open in
   its own tab". On a phone or tablet the same button opens the game full screen.
 - **The shelf.** Every toy as a tile in its game colours, with a screenshot
   from the real game. Each opens a card with how to play (straight from
@@ -72,8 +72,8 @@ changes how it looks.
 ## Deploying
 
 `npm run build` produces a static site in `dist/` that works from any folder
-(all paths are relative): `dist/index.html` is the website, `dist/play/` the
-game, plus `sw.js` (offline cache for both), the web manifest and icons. No
+(all paths are relative): `dist/index.html` is the game, `dist/site/` the
+website, plus `sw.js` (offline cache for both), the web manifest and icons. No
 server code, no environment secrets.
 
 - **Site URL.** Social previews and the canonical link need the full public
@@ -85,8 +85,9 @@ server code, no environment secrets.
 - **Any other static host** (Netlify, Cloudflare Pages, Vercel, S3…): build
   command `npm run build`, output directory `dist`. No rewrites are needed.
   Serve `sw.js` without long-lived caching so updates reach people.
-- People who added the game to their home screen before the website existed
-  land on the website's address; it sends them straight on to the game.
+- The game is always at the root address, so anyone who added it to their
+  home screen keeps working. `play/` (where it lived for a day) forwards to it,
+  and the website, opened as a home-screen app, sends people to the game too.
 
 ## iOS & Android (Capacitor)
 
@@ -132,8 +133,9 @@ Config lives in `capacitor.config.ts` (app id `app.softspot.toys`).
   allocation-free physics inner loops.
 
 ```
-index.html    the website's front page
-play/         the game's page
+index.html    the game's page (the root address)
+site/         the website's front page
+public/play/  forwards the old play/ address to the game
 scripts/      capture-shots (screenshots + social card from the real game)
 src/
   site/       the website: toys (data), shelf (your bests), player (play in the page), styles

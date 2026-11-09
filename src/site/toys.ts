@@ -57,4 +57,5 @@ export const TOYS: Toy[] = CATALOG.map((c) => {
 export const toy = (id: string) => TOYS.find((t) => t.id === id) ?? null;
 
 /** The game's address, opening straight into one toy if asked. */
-export const playUrl = (id?: string) => (id ? `play/?room=${encodeURIComponent(id)}` : 'play/');
+/** The game lives at the site's root; the website is in site/, one folder down. */
+export const playUrl = (id?: string) => (id ? `../?room=${encodeURIComponent(id)}` : '../');

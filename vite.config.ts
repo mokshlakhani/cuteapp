@@ -5,9 +5,10 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 /**
  * Three builds from one source:
  *
- * - default    → `dist/`: the website. `index.html` is the front page, `play/` is
- *                the game itself. This is what GitHub Pages (or any static host) serves.
- * - `--mode app`    → `dist-app/`: the game alone at its root, for Capacitor (iOS/Android).
+ * - default    → `dist/`: the game at the root (`index.html`, the address
+ *                everyone's home-screen app opens) and the website in `site/`.
+ *                This is what GitHub Pages (or any static host) serves.
+ * - `--mode app`    → `dist-app/`: the game alone, for Capacitor (iOS/Android).
  * - `--mode single` → `dist-single/`: the game as one self-contained HTML file.
  */
 export default defineConfig(({ mode }) => {
@@ -15,8 +16,7 @@ export default defineConfig(({ mode }) => {
   const outDir = mode === 'app' ? 'dist-app' : mode === 'single' ? 'dist-single' : 'dist';
   return {
     base: './',
-    // The game-only builds treat play/ as the root, so its page lands at index.html.
-    root: gameOnly ? resolve(import.meta.dirname, 'play') : import.meta.dirname,
+    root: import.meta.dirname,
     publicDir: resolve(import.meta.dirname, 'public'),
     plugins: mode === 'single' ? [viteSingleFile()] : [],
     build: {
@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 1200,
       rollupOptions: gameOnly
         ? undefined
-        : { input: { site: resolve(import.meta.dirname, 'index.html'), play: resolve(import.meta.dirname, 'play/index.html') } },
+        : { input: { play: resolve(import.meta.dirname, 'index.html'), site: resolve(import.meta.dirname, 'site/index.html') } },
     },
   };
 });

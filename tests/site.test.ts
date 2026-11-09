@@ -26,8 +26,9 @@ describe('the website’s shelf', () => {
   });
 
   it('links into the game, straight to a room when asked', () => {
-    expect(playUrl()).toBe('play/');
-    expect(playUrl('soap')).toBe('play/?room=soap');
+    // The website is in site/; the game is one folder up, at the root.
+    expect(playUrl()).toBe('../');
+    expect(playUrl('soap')).toBe('../?room=soap');
     expect(toy('pour')?.name).toBe('pour');
     expect(toy('nope')).toBeNull();
   });

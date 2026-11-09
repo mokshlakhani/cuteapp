@@ -1,9 +1,10 @@
-// soft spot's offline cache, for the website (/) and the game (/play/).
+// soft spot's offline cache, for the game (/) and the website (/site/).
 // Pages are fetched fresh whenever there's a connection (so friends always get
 // the latest build) and fall back to their cached copy offline; everything
 // else is hashed by the build, so once cached it never changes.
-const CACHE = 'softspot-v2';
-const PAGES = ['./', './play/'];
+// v3: the game moved back to the root, so drop any copy cached while it lived at play/.
+const CACHE = 'softspot-v3';
+const PAGES = ['./', './site/'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -24,7 +25,7 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-/** A page's cache key: its path without the query (`play/?room=soap` is still the game page). */
+/** A page's cache key: its path without the query (`?room=soap` is still the game page). */
 const pageKey = (url) => {
   const u = new URL(url);
   u.search = '';

@@ -1,7 +1,7 @@
 /**
  * The phone in the hero: the real game, played right on the page.
  *
- * On a computer it loads the game (play/) in a frame inside the phone, only
+ * On a computer it loads the game (the site's root) in a frame inside the phone, only
  * when asked, so the front page stays light. On a phone or tablet a framed
  * phone inside a phone is cramped, so the same button opens the game full
  * screen instead.
