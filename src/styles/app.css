@@ -597,7 +597,10 @@ svg {
   outline-offset: -4px;
   font-weight: 700;
   font-size: 14px;
-  white-space: nowrap;
+  /* One line where there's room; on a narrow phone it wraps inside the screen instead of running off it. */
+  width: max-content;
+  max-width: calc(100vw - 28px);
+  text-wrap: balance;
   box-shadow: var(--shadow-soft);
   transform: translate(-50%, 10px);
   opacity: 0;
@@ -651,6 +654,24 @@ svg {
 .home .card,
 .home .sleeper {
   pointer-events: auto;
+}
+
+/* The shelf's first arrival: the title, then each tile's words, rising in with its tile (HomeScene ARRIVE). */
+.is-arriving .home-header,
+.is-arriving .card {
+  animation: card-in 560ms cubic-bezier(0.165, 0.84, 0.44, 1) both;
+  animation-delay: calc(120ms + var(--i, 0) * 55ms);
+}
+
+.is-arriving .home-header {
+  animation-delay: 0ms;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
 }
 
 .home-header {
@@ -1333,6 +1354,124 @@ svg {
   color: var(--ink-soft);
 }
 
+/* The headline lands with a little spring, and the quieter line follows it in. */
+.order-toast-title,
+.pour-toast-title {
+  transform: scale(0.9);
+  transition: transform 520ms var(--ease-overshoot);
+}
+
+.order-toast-sub,
+.pour-toast-sub {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--d-base) var(--ease-out),
+    transform 420ms var(--ease-out);
+}
+
+.is-shown > .order-toast-title,
+.is-shown > .pour-toast-title {
+  transform: scale(1);
+}
+
+.is-shown > .order-toast-sub,
+.is-shown > .pour-toast-sub {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 110ms;
+}
+
+/* A soft burst of twinkles (ui/order.ts Twinkle). */
+.twinkle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.twinkle-bit {
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  background: #ffe9b8;
+  /* A four-point sparkle. */
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+}
+
+.twinkle-bit:nth-child(3n) {
+  background: #ffd7c2;
+}
+
+.twinkle-bit:nth-child(3n + 1) {
+  background: #fff6e2;
+}
+
+.twinkle.is-up .twinkle-bit {
+  animation: twinkle 950ms var(--ease-out) both;
+}
+
+@keyframes twinkle {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2) rotate(0deg);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(calc(var(--dx) * 0.55), calc(var(--dy) * 0.55)) scale(var(--s)) rotate(calc(var(--spin) * 0.5));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(calc(var(--s) * 0.5)) rotate(var(--spin));
+  }
+}
+
+/* Where a finger lands in a room: one soft ring, so every touch is answered at once. */
+.touch-ring {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 241, 226, 0.55);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.touch-ring.is-up {
+  animation: touch-ring 460ms var(--ease-out) both;
+}
+
+@keyframes touch-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-toast-title,
+  .pour-toast-title,
+  .order-toast-sub,
+  .pour-toast-sub {
+    transform: none;
+    transition: opacity var(--d-base) var(--ease-out);
+  }
+  .touch-ring {
+    display: none;
+  }
+}
+
 /* "+3", rising off the cut. */
 .order-plus {
   position: absolute;
@@ -1813,8 +1952,29 @@ svg {
 /* ——— bubbles: a memory game. The done button is the whole dock, and the
    words sit up top. ——— */
 
-.room-wrap .order-toast {
+/* No count at the top in these two, so their words sit higher, clear of the toy. */
+.room-wrap .order-toast,
+.room-peel .order-toast {
   top: calc(var(--safe-top) + 62px);
+}
+
+/* On the narrowest phones the top bar's buttons come close to the middle: quieter words there. */
+@media (max-width: 350px) {
+  .pour-meta,
+  .order-goal {
+    font-size: 11px;
+  }
+  .pour-meta {
+    gap: 3px;
+  }
+  .hint {
+    font-size: 13px;
+    border-radius: 22px;
+  }
+  .order-toast-sub,
+  .pour-toast-sub {
+    font-size: 13px;
+  }
 }
 
 .wrap-done {

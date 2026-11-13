@@ -11,7 +11,7 @@ import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
-import { OrderToast, Rising } from '../../ui/order';
+import { OrderToast, Rising, Twinkle } from '../../ui/order';
 import { SLICE_FRUITS, type SliceFruit } from '../slice/fruits';
 import { getPeelScene, type PeelScene } from './PeelScene';
 import { angleDelta, METER_TOP, orderFor, paceFor, Peeler, verdict, type Order } from './game';
@@ -21,6 +21,8 @@ type Phase = 'intro' | 'play' | 'done' | 'result' | 'clear';
 /** Dragon fruit stays out: its scales are real leaves, and there's no peeling those. */
 const FRUITS = SLICE_FRUITS.filter((f) => f.id !== 'dragonfruit');
 const INTRO = { lift: 9, time: 1.1 };
+/** Room under the board (px): the name (22), the meter (44) and the hint (40) over the bottom edge, with air between. */
+const BELOW = 146;
 /** Too near the fruit's middle, a finger's angle jumps about: it doesn't count. */
 const DEAD = 28;
 /** How far the first stroke must go before the way round is decided. */
@@ -76,6 +78,7 @@ export class PeelRoom implements Scene {
 
   private toast = new OrderToast();
   private plus = new Rising();
+  private twinkle = new Twinkle();
   private tag = el('div', 'order-tag');
   private tagName = el('span', 'order-tag-name');
   private ring: SVGSVGElement;
@@ -111,7 +114,7 @@ export class PeelRoom implements Scene {
     const meterTrack = el('div', 'peel-meter-track', {}, [this.green]);
     const ends = el('div', 'peel-meter-ends', {}, [el('span', '', {}, ['too slow']), el('span', '', {}, ['too fast'])]);
     this.meter.append(meterTrack, this.bead, ends);
-    this.ui.append(this.ring, this.meter, this.toast.root, this.plus.root, this.tag, this.hint.root);
+    this.ui.append(this.ring, this.meter, this.toast.root, this.plus.root, this.twinkle.root, this.tag, this.hint.root);
     this.s = getPeelScene();
     this.view = this.s.canvas;
     this.s.setFruit(FRUITS[0], this.order.turns, INTRO.lift);
@@ -120,12 +123,31 @@ export class PeelRoom implements Scene {
   layout(w: number, h: number, safe: Insets) {
     this.w = w;
     this.h = h;
-    this.s.resize(w, h, window.devicePixelRatio || 1, safe.top + 112, h - safe.bottom - 64);
+    let top = safe.top + 112;
+    let bottom = h - safe.bottom - 64;
+    const dpr = window.devicePixelRatio || 1;
+    this.s.resize(w, h, dpr, top, bottom);
+    // Under the board, from the top down: the fruit's name, the pace meter,
+    // then the hint at the very bottom. Each needs its own room, so on a short
+    // screen the fruit and board move up and shrink a little to leave it; and
+    // the ring round the fruit stays under the words at the top.
+    // (On the narrowest phones the hint runs to two lines.)
+    const room = h - safe.bottom - BELOW - (w < 360 ? 20 : 0);
+    for (let i = 0; i < 2; i++) {
+      const f = this.s.screenFruit;
+      const ring = Math.min(f.r * 1.45, w / 2 - 14);
+      const over = safe.top + 134 - (f.y - ring);
+      const under = this.s.boardFront.y + 18 - room;
+      if (over <= 1 && under <= 1) break;
+      top += Math.max(0, over);
+      bottom -= Math.max(0, under);
+      if (bottom - top < 160) break;
+      this.s.resize(w, h, dpr, top, bottom);
+    }
     this.placeRing();
-    const tagY = Math.round(Math.min(this.s.boardFront.y + 18, h - 70));
+    const tagY = Math.round(Math.min(this.s.boardFront.y + 18, room));
     this.tag.style.top = `${tagY}px`;
-    // The meter sits under the fruit's name, clear of the hint at the very bottom.
-    this.meter.style.top = `${Math.round(Math.min(tagY + 40, h - safe.bottom - 112))}px`;
+    this.meter.style.top = `${tagY + 30}px`;
     this.painted = false;
   }
 
@@ -359,7 +381,11 @@ export class PeelRoom implements Scene {
   private showResult() {
     this.toast.show(...verdict(this.peeler.breaks));
     // One long strip: a little fanfare.
-    if (this.peeler.breaks === 0) material.tada();
+    if (this.peeler.breaks === 0) {
+      material.tada();
+      const f = this.s.screenFruit;
+      this.twinkle.burst(f, f.r * 1.5);
+    }
     this.ring.classList.remove('is-shown');
     this.phase = 'result';
     this.phaseT = 0;

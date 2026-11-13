@@ -12,8 +12,8 @@ import { MELON_A, MELON_R } from './shape';
  * segments, creamy apple, a peach's sunny flesh.
  */
 
-/** What the flesh breaks into: soft lumps or citrus segments. (Arils and coconut meat are still drawn by the burst, for fruits that may come back.) */
-export type InsideKind = 'lumps' | 'segments' | 'arils' | 'meat';
+/** What the flesh breaks into: soft lumps, citrus segments, or crisp wedges like slices of apple. (Arils and coconut meat are still drawn by the burst, for fruits that may come back.) */
+export type InsideKind = 'lumps' | 'segments' | 'wedges' | 'arils' | 'meat';
 /** Seeds: watermelon teardrops, flat melon seeds, juicy arils, tiny black specks, citrus pips. */
 export type SeedKind = 'teardrop' | 'flat' | 'aril' | 'tiny' | 'pip' | 'none';
 
@@ -122,8 +122,8 @@ export const POP_FRUITS: PopFruit[] = [
     fleshLight: '#FFC163',
     lining: '#FFF1D6',
     inside: 'segments',
-    shards: [9, 14],
-    chunks: 1.3,
+    shards: [11, 16],
+    chunks: 0.55,
     juice: { color: '#FFA62E', amount: 1.8, mist: 0.55 },
     seeds: { kind: 'pip', color: '#F6E8C4', count: 0.25, size: 0.1 },
     pulp: { color: '#FFB547', count: 1.6, strings: false },
@@ -131,19 +131,19 @@ export const POP_FRUITS: PopFruit[] = [
   fruit('lemon', {
     skin: { base: P.lemon.peel, accent: '#DDB000' },
     rind: {
-      thick: 0.13,
+      thick: 0.1,
       layers: [
         [0, '#EFC316'],
         [0.22, '#FFE985'],
-        [0.38, P.lemon.pith],
+        [0.5, '#FFF4BC'],
       ],
     },
     flesh: P.lemon.flesh,
     fleshLight: '#FFF29A',
-    lining: '#FFF9DD',
+    lining: '#FFF0A8',
     inside: 'segments',
-    shards: [9, 14],
-    chunks: 1.3,
+    shards: [16, 22],
+    chunks: 0.5,
     juice: { color: '#FFE45A', amount: 1.8, mist: 0.6 },
     seeds: { kind: 'pip', color: '#F7F0CF', count: 0.3, size: 0.09 },
     pulp: { color: '#FFE96B', count: 1.6, strings: false },
@@ -152,7 +152,7 @@ export const POP_FRUITS: PopFruit[] = [
     // A thin red skin over crisp, creamy flesh; brown pips from the core.
     skin: { base: P.apple.skin, accent: '#A81E2A' },
     rind: {
-      thick: 0.12,
+      thick: 0.06,
       layers: [
         [0, '#D8303C'],
         [0.12, '#FFF6DA'],
@@ -162,9 +162,9 @@ export const POP_FRUITS: PopFruit[] = [
     flesh: P.apple.flesh,
     fleshLight: '#FFF8E2',
     lining: '#FFF4D4',
-    inside: 'lumps',
-    shards: [8, 12],
-    chunks: 1.1,
+    inside: 'wedges',
+    shards: [10, 14],
+    chunks: 0.5,
     juice: { color: '#FFF3D6', amount: 0.6, mist: 0.35 },
     seeds: { kind: 'pip', color: P.apple.seed, count: 0.45, size: 0.1 },
     pulp: { color: P.apple.flesh, count: 1.1, strings: false },

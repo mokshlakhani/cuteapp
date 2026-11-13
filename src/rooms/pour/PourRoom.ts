@@ -15,6 +15,7 @@ import { Particles } from '../../render/particles';
 import { reducedMotion, Shake } from '../../render/camera';
 import { Face } from '../../render/face';
 import { el, Hint } from '../../ui/components';
+import { Twinkle } from '../../ui/order';
 import { Glass, type Verdict } from './Glass';
 import { DRINKS, type Drink } from './drinks';
 import { GlassExtras } from './extras';
@@ -146,6 +147,7 @@ export class PourRoom implements Scene {
   private toastTitle: HTMLSpanElement;
   private toastSub: HTMLSpanElement;
   private tag: HTMLDivElement;
+  private twinkle = new Twinkle(7);
   private hints = { pour: new Hint('press and hold to pour', 'press'), stop: new Hint('let go at the line', 'press') };
 
   constructor(_nav: RoomNav) {
@@ -169,7 +171,7 @@ export class PourRoom implements Scene {
     this.toastSub = el('span', 'pour-toast-sub');
     this.toast = el('div', 'pour-toast', { 'aria-live': 'polite' }, [this.toastTitle, this.toastSub]);
     this.tag = el('div', 'pour-tag', {}, [this.drink.name]);
-    this.ui.append(hud, this.toast, this.tag, this.hints.pour.root, this.hints.stop.root);
+    this.ui.append(hud, this.toast, this.tag, this.twinkle.root, this.hints.pour.root, this.hints.stop.root);
   }
 
   private newGlass() {
@@ -195,9 +197,24 @@ export class PourRoom implements Scene {
     this.floorY = h - safe.bottom - Math.max(118, h * 0.16);
     const usable = this.floorY - safe.top;
     // As big as the screen allows, while the tipped jug still fits to the right.
-    const gW = clamp(Math.min(w * 0.44, (w / 2 - 12) / 1.07, usable * 0.3), 100, 200);
+    let gW = clamp(Math.min(w * 0.44, (w / 2 - 12) / 1.07, usable * 0.3), 100, 200);
     this.g = glassShape(w / 2, this.floorY, gW);
     this.fitPourer();
+    // On a short screen the jug would hang in the words at the top: glass
+    // and jug both get a little smaller until it clears them. (Sized for the
+    // tallest pourer, so the glass is the same size for every drink.)
+    const words = safe.top + 150;
+    for (let i = 0; i < 8 && gW > 72; i++) {
+      let highest = Infinity;
+      for (const kind of ['jug', 'pitcher', 'bottle', 'carton'] as const) {
+        const j = jugShape(gW, kind);
+        highest = Math.min(highest, yAt(this.g, 1) - hover(j) - j.H * 0.56);
+      }
+      if (highest >= words) break;
+      gW *= 0.93;
+      this.g = glassShape(w / 2, this.floorY, gW);
+      this.fitPourer();
+    }
     this.particles.width = w;
     this.particles.floorY = this.floorY;
     this.puddle.x = this.g.cx;
@@ -273,8 +290,8 @@ export class PourRoom implements Scene {
   /** Holding on: the jug pours for as long as it's held. */
   private press(who: number | 'key') {
     if (!this.active || this.holder !== null) return;
-    // A finger that's early, while the glass slides in, pours as soon as it's there.
-    if (this.phase === 'arrive') this.holder = who;
+    // A finger that's early, while one glass slides off or the next slides in, pours as soon as it's there.
+    if (this.phase === 'arrive' || this.phase === 'away') this.holder = who;
     if (this.phase !== 'ready') return;
     this.holder = who;
     this.start();
@@ -366,6 +383,7 @@ export class PourRoom implements Scene {
       if (this.game.streak > 0 && this.game.streak % 5 === 0) material.tada();
       haptics.play('soft');
       this.glintT = 0;
+      this.twinkle.burst({ x: this.g.cx, y: yAt(this.g, this.glass.line) }, this.g.wt * 1.5);
       this.hopIn = 0.08;
       this.face.set('happy', SHOW_HIT + 0.5);
     } else {
@@ -479,9 +497,10 @@ export class PourRoom implements Scene {
    * behind it. It clears once the glass is judged, so you see how you did.
    */
   private steam(dt: number) {
-    const hot = this.drink.steam && this.glass.level > 0.02 && (this.phase === 'pouring' || this.phase === 'settling');
-    const target = hot ? clamp((this.glass.level - 0.02) * 6, 0, 1) : 0;
-    this.fog += (target - this.fog) * Math.min(1, dt * (hot ? 2.5 : 1.6));
+    // It starts to fog the moment the cocoa starts coming, and is thick within the first splash.
+    const hot = this.drink.steam && (this.phase === 'pouring' || this.phase === 'settling');
+    const target = hot ? clamp(0.45 + this.glass.level * 14, 0, 1) : 0;
+    this.fog += (target - this.fog) * Math.min(1, dt * (hot ? 5.5 : 1.6));
     if (this.phase === 'away') this.fog = 0;
   }
 

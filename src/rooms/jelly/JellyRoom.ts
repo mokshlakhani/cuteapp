@@ -304,6 +304,12 @@ export class JellyRoom implements Scene {
     const next = which === this.open ? null : which;
     if (next === this.open) return;
     this.open = next;
+    // A sheet rises over where the hints sit: they step aside for it.
+    if (next) {
+      for (const h of Object.values(this.hints)) h.hide();
+      this.mergeHint.hide();
+      this.fullHint.hide();
+    } else this.showHint(this.tool);
     this.fruitSheet.classList.toggle('is-open', next === 'fruit');
     this.settingsSheet.classList.toggle('is-open', next === 'settings');
     this.plus.classList.toggle('is-on', next === 'fruit');

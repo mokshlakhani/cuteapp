@@ -9,6 +9,7 @@ import { Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { mix, rgba } from '../../core/color';
 import { clamp, rand, TAU } from '../../core/math';
+import { reducedMotion } from '../../render/camera';
 import { material } from '../../core/sounds';
 import { haptics } from '../../core/haptics';
 import { contactShadow, paintBackdrop, roundRect, gloss, shade } from '../../render/paint';
@@ -50,6 +51,8 @@ const EDGE = 6;
 const PRESS = 0.05;
 /** The plate along a tile's foot, with its name on (px; `--plate` in app.css). */
 const PLATE = 50;
+/** The shelf's first arrival: each tile this long after the one before (ms), taking this long, rising this far (px). Matches .is-arriving in app.css. */
+const ARRIVE = { each: 55, time: 560, rise: 16 };
 
 /**
  * Home: the game's front page. Each game is a chunky tile in its own colour,
@@ -70,6 +73,9 @@ export class HomeScene implements Scene {
   private blobs = new Map<string, HTMLCanvasElement>();
   /** When the cards may show their own canvases (see draw). */
   private liveFrom = Infinity;
+  /** The first arrival: whether it's happened, and when it began (0: not arriving). */
+  private arrived = false;
+  private arriveAt = 0;
   private settled = false;
   /** What the stage was last painted whole for, while settled; '' when it needs painting. */
   private stageKey = '';
@@ -96,6 +102,7 @@ export class HomeScene implements Scene {
       );
       const colours = tile[info.id];
       if (colours) node.style.setProperty('--tile-edge', colours.edge);
+      node.style.setProperty('--i', String(this.cards.length));
       const top = el('span', 'card-face');
       const score = el('span', 'card-score');
       if (awake) top.append(el('span', 'card-plate', {}, [el('span', 'card-label', {}, [info.name]), el('span', 'card-blurb', {}, [info.blurb])]), score);
@@ -188,6 +195,26 @@ export class HomeScene implements Scene {
     requestAnimationFrame(() => this.measure());
     // The cards show their own canvases once home has finished blooming in.
     this.liveFrom = performance.now() + duration.room + 60;
+    // The very first time, the shelf arrives: each tile rises into place a
+    // beat after the one before, title first. (Coming back from a room, home
+    // blooms in whole, as every room does.)
+    if (!this.arrived) {
+      this.arrived = true;
+      if (!reducedMotion) {
+        this.arriveAt = performance.now() + 120;
+        this.ui.classList.add('is-arriving');
+        const total = ARRIVE.each * (this.cards.length - 1) + ARRIVE.time + 160;
+        this.liveFrom = Math.max(this.liveFrom, this.arriveAt + total);
+        window.setTimeout(() => this.ui.classList.remove('is-arriving'), total + 300);
+      }
+    }
+  }
+
+  /** How far a card has arrived (0 not yet, 1 in place). */
+  private arriving(c: Card) {
+    if (!this.arriveAt) return 1;
+    const k = clamp((performance.now() - this.arriveAt - c.slot * ARRIVE.each) / ARRIVE.time, 0, 1);
+    return 1 - Math.pow(1 - k, 4);
   }
 
   leave() {
@@ -256,7 +283,18 @@ export class HomeScene implements Scene {
     if (!this.settled) {
       this.stageKey = '';
       paintBackdrop(ctx, this.w, this.h, t, { tint: this.tint, floorY: null });
-      for (const c of this.cards) this.drawCard(ctx, t, c, true);
+      for (const c of this.cards) {
+        const k = this.arriving(c);
+        if (k >= 1) this.drawCard(ctx, t, c, true);
+        else if (k > 0) {
+          // Rising into place, in step with its words (see .is-arriving in app.css).
+          ctx.save();
+          ctx.globalAlpha = k;
+          ctx.translate(0, ARRIVE.rise * (1 - k));
+          this.drawCard(ctx, t, c, true);
+          ctx.restore();
+        }
+      }
       return;
     }
     const dpr = Math.min(window.devicePixelRatio || 1, 2);

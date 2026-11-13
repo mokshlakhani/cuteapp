@@ -108,7 +108,8 @@ export class MelonRoom implements Scene {
     this.w = w;
     this.h = h;
     const top = safe.top + 70;
-    const bottom = h - safe.bottom - 70;
+    // Clear of the fruit's name and the hint over it.
+    const bottom = h - safe.bottom - 112;
     this.s.resize(w, h, window.devicePixelRatio || 1, top, bottom);
   }
 

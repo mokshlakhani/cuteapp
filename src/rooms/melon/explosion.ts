@@ -110,7 +110,7 @@ export class Explosion {
    * lumps, citrus segments, band strands and loops. Building them fresh at
    * the moment of the pop was its hitch.
    */
-  private pool: { lumps: THREE.BufferGeometry[]; segments: THREE.BufferGeometry[]; strands: THREE.BufferGeometry[]; loops: { r: number; geo: THREE.BufferGeometry }[] } | null = null;
+  private pool: { lumps: THREE.BufferGeometry[]; segments: THREE.BufferGeometry[]; back: THREE.BufferGeometry; strands: THREE.BufferGeometry[]; loops: { r: number; geo: THREE.BufferGeometry }[] } | null = null;
   private drops: Body[] = [];
   private seeds: Body[] = [];
   private pulp: Body[] = [];
@@ -129,6 +129,8 @@ export class Explosion {
   private dropMat: THREE.MeshPhysicalMaterial;
   private pulpMat: THREE.MeshPhysicalMaterial;
   private liningMat: THREE.MeshPhysicalMaterial;
+  /** The skin left on the back of a slice (an apple's). */
+  private skinMat: THREE.MeshPhysicalMaterial;
   private fruit: PopFruit = POP_FRUITS[0];
   /** The rind, being broken ahead of the pop (a few pieces each frame). */
   private prep: { steps: Generator<void, Fragment[], void>; g: number; frags: Fragment[] | null } | null = null;
@@ -163,6 +165,7 @@ export class Explosion {
       });
     this.chunkMats = [0, 1, 2, 3].map(() => glossy('#ffffff'));
     this.liningMat = glossy('#ffffff');
+    this.skinMat = glossy('#ffffff');
     // Juice: glossy, a touch deeper than the flesh, stretched along its flight.
     this.dropMat = new THREE.MeshPhysicalMaterial({ roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1 });
     this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), this.dropMat, MAX_DROPS);
@@ -228,6 +231,7 @@ export class Explosion {
     this.pool = {
       lumps: many(8, () => lumpGeometry(1, 1)),
       segments: many(4, () => segmentGeometry(1)),
+      back: segmentGeometry(1, 'back'),
       // Strands 2 long, stretched to length along x (their thickness stays).
       strands: many(8, () => strandGeometry(2)),
       // Loops in a few sizes, so scaling one never makes it thick or thin.
@@ -257,6 +261,7 @@ export class Explosion {
       new THREE.Mesh(shardGeo, [this.shardMat, this.fleshMat]),
       seedHolder,
       new THREE.Mesh(pool.lumps[0], this.liningMat),
+      new THREE.Mesh(pool.back, this.skinMat),
       new THREE.Mesh(pool.strands[0], this.pulpMat),
       new THREE.Mesh(pool.strands[0], this.bandMat('#ffffff')),
       new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false })),
@@ -286,6 +291,7 @@ export class Explosion {
     [0, 1, 0.35, 0.6].forEach((k, i) => this.chunkMats[i].color.copy(flesh).lerp(light, k));
     for (const m of this.chunkMats) m.sheenColor.copy(light).lerp(new THREE.Color('#ffffff'), 0.5);
     this.liningMat.color.set(fruit.lining);
+    this.skinMat.color.set(fruit.skin.base);
     this.juice.set(fruit.juice.color);
     this.dropMat.color.copy(this.juice);
     this.pulpMat.color.set(fruit.pulp.color);
@@ -397,10 +403,13 @@ export class Explosion {
 
     // ——— what's inside: lumps of flesh (seeds and all), segments, arils, meat ———
     const F = this.fruit;
-    const chunks = Math.max(FACES, Math.round(randInt(20, 32) * mess * F.chunks));
+    const wedges = F.inside === 'segments' || F.inside === 'wedges';
+    // Segments and slices: about as many as the fruit really has.
+    const chunks = wedges ? randInt(9, 12) : Math.max(FACES, Math.round(randInt(20, 32) * mess * F.chunks));
     for (let i = 0; i < chunks; i++) {
       const big = i < FACES || Math.random() < 0.3;
-      const r = (i < FACES ? 1.25 : 1) * (big ? rand(0.36, 0.58) : rand(0.14, 0.32));
+      // Segments and slices come whole, near enough: big enough to know them by.
+      const r = wedges ? (i < FACES ? rand(0.95, 1.08) : rand(0.74, 0.96)) : (i < FACES ? 1.25 : 1) * (big ? rand(0.36, 0.58) : rand(0.14, 0.32));
       const mesh = this.insideChunk(r, i);
       mesh.castShadow = true;
       const c = local(split(rand(-0.9, 0.9)), rand(0, TAU), rand(0.25, 0.8));
@@ -410,7 +419,7 @@ export class Explosion {
         vel: away(c, rand(6, 17) / (0.6 + r), rand(6, 15)),
         q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), rand(0, TAU))),
         w: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(rand(5, 16)),
-        rest: r * (F.inside === 'meat' ? 0.3 : F.inside === 'segments' ? 0.45 : 0.7),
+        rest: r * (F.inside === 'meat' ? 0.3 : wedges ? 0.42 : 0.7),
         bounce: rand(0.3, 0.5),
         size: r,
         grip: rand(2, 3.6),
@@ -594,8 +603,11 @@ export class Explosion {
     let mesh: THREE.Mesh;
     switch (F.inside) {
       case 'segments':
+      case 'wedges':
         // A citrus segment: a plump half-moon, its inner edge flat.
         mesh = unit(pick(pool.segments), mat);
+        // A slice of apple keeps its skin along its back.
+        if (F.inside === 'wedges') mesh.add(new THREE.Mesh(pool.back, this.skinMat));
         if (F.seeds.kind === 'pip' && Math.random() < 0.3) seed(1, 0.4, 0.08);
         return mesh;
       case 'arils':
@@ -1170,27 +1182,61 @@ export function sacGeometry() {
 }
 
 /** A citrus segment: a plump half-moon with a flat inner edge (radius ≈ r). */
-export function segmentGeometry(r: number) {
-  const g = new THREE.SphereGeometry(r, 18, 10, 0, Math.PI);
-  g.scale(1.25, 0.7, 0.62);
-  // Close the flat side so it isn't hollow.
-  // (The half-sphere bulges toward +z; its open face is the whole x-y cross-section, facing -z.)
-  const cap = new THREE.CircleGeometry(r, 24);
-  cap.rotateY(Math.PI);
-  cap.scale(1.25, 0.7, 1);
-  const merged = new THREE.BufferGeometry();
-  const a = g.toNonIndexed();
-  const b = cap.toNonIndexed();
-  const pos = new Float32Array(a.attributes.position.array.length + b.attributes.position.array.length);
-  pos.set(a.attributes.position.array as Float32Array, 0);
-  pos.set(b.attributes.position.array as Float32Array, a.attributes.position.array.length);
-  // Bent along its length into a crescent, like a real segment.
-  for (let i = 0; i < pos.length; i += 3) pos[i + 1] -= (pos[i] / (r * 1.25)) ** 2 * r * 0.45;
-  merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  merged.computeVertexNormals();
-  g.dispose();
-  cap.dispose();
-  return merged;
+export function segmentGeometry(r: number, part: 'all' | 'back' = 'all') {
+  // A wedge of a ball, pole to pole: the shape of an orange segment or a
+  // slice of apple. Its curved back is smooth; its two cut sides are flat.
+  const A = 0.74;
+  const N = 14;
+  const M = 5;
+  const P = (th: number, ph: number): [number, number, number] => [-r * Math.cos(ph) * Math.sin(th), r * Math.cos(th), r * Math.sin(ph) * Math.sin(th)];
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const tri = (a: number[], b: number[], c: number[], n?: number[]) => {
+    if (n) {
+      // Wound so it faces the way its normal says.
+      const ux = b[0] - a[0];
+      const uy = b[1] - a[1];
+      const uz = b[2] - a[2];
+      const vx = c[0] - a[0];
+      const vy = c[1] - a[1];
+      const vz = c[2] - a[2];
+      const d = (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2];
+      if (d < 0) [b, c] = [c, b];
+    }
+    for (const v of [a, b, c]) {
+      pos.push(v[0], v[1], v[2]);
+      const m = n ?? [v[0] / r, v[1] / r, v[2] / r];
+      nor.push(m[0], m[1], m[2]);
+    }
+  };
+  for (let i = 0; i < N; i++) {
+    const t0 = (i / N) * Math.PI;
+    const t1 = ((i + 1) / N) * Math.PI;
+    for (let k = 0; k < M; k++) {
+      const p0 = (k / M) * A;
+      const p1 = ((k + 1) / M) * A;
+      tri(P(t0, p0), P(t1, p0), P(t1, p1));
+      tri(P(t0, p0), P(t1, p1), P(t0, p1));
+    }
+    if (part === 'back') continue;
+    // The two cut sides, each a half disc from the core out.
+    tri([0, 0, 0], P(t0, 0), P(t1, 0), [0, 0, -1]);
+    tri([0, 0, 0], P(t0, A), P(t1, A), [Math.sin(A), 0, Math.cos(A)]);
+  }
+  // About its own middle, and a little plumper than a true wedge so it reads at a glance.
+  const cx = -Math.cos(A / 2) * r * 0.45;
+  const cz = Math.sin(A / 2) * r * 0.45;
+  // (The back alone is the skin over it: a hair proud of the flesh, so it never flickers through.)
+  const out = part === 'back' ? 1.012 : 1;
+  for (let i = 0; i < pos.length; i += 3) {
+    pos[i] = (pos[i] * out - cx) * 0.95;
+    pos[i + 1] *= 0.82 * out;
+    pos[i + 2] = (pos[i + 2] * out - cz) * 0.95;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor), 3));
+  return g;
 }
 
 /** A juice puddle's outline: a lumpy blob with satellite droplets (radius ≈ 1). */

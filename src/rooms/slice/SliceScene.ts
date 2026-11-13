@@ -76,6 +76,41 @@ const tmpR = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpM = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
+/** Scratch: a piece's corners at the board (x, z from its middle), and from its middle to the nearest point of what they span. */
+const SUP = Array.from({ length: 12 }, () => new THREE.Vector2());
+const LEAN = new THREE.Vector2();
+
+/**
+ * How far a piece's middle is, sideways, from what it's standing on: its one
+ * corner, or the nearest point along the corners it has down. Leaves the way
+ * there in LEAN.
+ */
+function offSupport(n: number) {
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const a = SUP[i];
+    if (a.lengthSq() < best) {
+      best = a.lengthSq();
+      LEAN.copy(a);
+    }
+    for (let j = i + 1; j < n; j++) {
+      const b = SUP[j];
+      const ex = b.x - a.x;
+      const ey = b.y - a.y;
+      const l2 = ex * ex + ey * ey;
+      if (l2 < 1e-8) continue;
+      const t = Math.min(1, Math.max(0, -(a.x * ex + a.y * ey) / l2));
+      const qx = a.x + ex * t;
+      const qy = a.y + ey * t;
+      const d2 = qx * qx + qy * qy;
+      if (d2 < best) {
+        best = d2;
+        LEAN.set(qx, qy);
+      }
+    }
+  }
+  return Math.sqrt(best);
+}
 const tmpE = new THREE.Euler();
 const tmpRay = new THREE.Ray();
 const tmpS = new THREE.Vector3();
@@ -681,6 +716,8 @@ export class SliceScene {
       // Corners below the board push back: an impulse at each, with friction.
       let deepest = 0;
       let touching = false;
+      // What it's standing on: the corners at the board, relative to its middle.
+      let nSup = 0;
       const invI = 1 / (0.45 * c.gyr * c.gyr);
       for (const v of c.pts) {
         tmpR.copy(v).applyQuaternion(c.q);
@@ -688,6 +725,7 @@ export class SliceScene {
         const py = c.pos.y + tmpR.y;
         const pz = c.pos.z + tmpR.z;
         const pen = this.groundAt(px, pz) - py;
+        if (pen > -0.03 && nSup < SUP.length) SUP[nSup++].set(tmpR.x, tmpR.z);
         if (pen <= 0) continue;
         touching = true;
         deepest = Math.max(deepest, pen);
@@ -736,8 +774,18 @@ export class SliceScene {
       }
       if (c.landed) c.ground += dt;
       const slow = c.vel.lengthSq() < 0.03 && c.w.lengthSq() < 0.06;
-      c.calm = touching && slow ? c.calm + dt : 0;
-      if (c.calm > 0.3 || (touching && c.ground > 2.4)) {
+      // Is its weight over what it stands on? A piece caught balancing on an
+      // edge or a corner looks slow, but it isn't at rest: it's mid-tip. It's
+      // helped on over (as its weight would take it) rather than left perched.
+      const lean = nSup ? offSupport(nSup) : 0;
+      const steady = nSup >= 3 || lean < 0.07 * c.reach;
+      if (touching && slow && !steady) {
+        const k = (GRAVITY * dt * 0.9) / (c.gyr * c.gyr + LEAN.lengthSq() + 1e-4);
+        c.w.x += -LEAN.y * k;
+        c.w.z += LEAN.x * k;
+      }
+      c.calm = touching && slow && steady ? c.calm + dt : 0;
+      if (c.calm > 0.3 || (touching && c.ground > 4)) {
         c.settled = true;
         c.vel.set(0, 0, 0);
         c.w.set(0, 0, 0);
@@ -751,7 +799,7 @@ export class SliceScene {
       for (let j = i + 1; j < chunks.length; j++) {
         const b = chunks[j];
         if (a.settled && b.settled) continue;
-        const rr = (a.reach + b.reach) * 0.42;
+        const rr = (a.reach + b.reach) * 0.54;
         const dx = b.pos.x - a.pos.x;
         const dz = b.pos.z - a.pos.z;
         const d2 = dx * dx + dz * dz;

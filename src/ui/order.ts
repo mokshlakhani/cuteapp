@@ -80,3 +80,42 @@ export class Rising {
     this.root.style.translate = `${x.toFixed(1)}px ${p.y.toFixed(1)}px`;
   }
 }
+
+/**
+ * A soft burst of twinkles for the moments that earn one: exactly the order,
+ * one unbroken strip, a perfect bubble, a new best. A handful of four-point
+ * sparkles drift out from a spot and fade: warm, brief, and only transforms
+ * and opacity, so it costs the frame nothing. One shape for every room.
+ */
+export class Twinkle {
+  readonly root = el('div', 'twinkle', { 'aria-hidden': 'true' });
+  private bits: HTMLElement[] = [];
+
+  constructor(count = 9) {
+    for (let i = 0; i < count; i++) {
+      const b = el('span', 'twinkle-bit');
+      this.bits.push(b);
+      this.root.append(b);
+    }
+  }
+
+  /** Burst from `p` (px in the room), reaching about `reach` px. */
+  burst(p: { x: number; y: number }, reach = 70) {
+    if (reducedMotion) return;
+    this.root.style.translate = `${p.x.toFixed(1)}px ${p.y.toFixed(1)}px`;
+    const turn = Math.random() * Math.PI * 2;
+    this.bits.forEach((b, i) => {
+      // Evenly round, a little uneven, drifting up more than down.
+      const a = turn + (i / this.bits.length) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const d = reach * (0.55 + Math.random() * 0.45);
+      b.style.setProperty('--dx', `${(Math.cos(a) * d).toFixed(1)}px`);
+      b.style.setProperty('--dy', `${(Math.sin(a) * d * 0.85 - reach * 0.18).toFixed(1)}px`);
+      b.style.setProperty('--s', (0.6 + Math.random() * 0.7).toFixed(2));
+      b.style.setProperty('--spin', `${Math.round((Math.random() - 0.5) * 120)}deg`);
+      b.style.animationDelay = `${Math.round(Math.random() * 110)}ms`;
+    });
+    this.root.classList.remove('is-up');
+    void this.root.offsetWidth;
+    this.root.classList.add('is-up');
+  }
+}

@@ -208,6 +208,15 @@ splat), `sparkle` (soft four-point twinkle), `puff` (soft air circle),
 `seed` (tumbling teardrop), `bubble`. All round, soft, and short-lived — the
 scene stays clean.
 
+### Moments
+
+Two shared touches of motion (`ui/order.ts`, `App.ts`), so every room answers the same way:
+a **twinkle** (a handful of warm four-point sparkles drifting out and fading, under a second)
+for the moments that earn one (exactly the order, one unbroken strip, a perfect bubble or
+pour, a new best), and a soft **ring** where a finger lands in any room. Headlines land with a
+small spring and their quieter line follows. All of it is transforms and opacity only, and
+none of it plays with reduced motion on.
+
 ## 11. Layout
 
 - Portrait first; adapts to any aspect ratio. Sizes derive from the viewport
@@ -217,6 +226,10 @@ scene stays clean.
   bottom dock on the floor.
 - Chrome: back (top-left, rooms only) · sound (top-right, always) · optional
   dock (bottom-centre). That's it.
+- Nothing overlaps at any size. Rooms fit their toy to the words: the toy sits
+  under the order at the top, and under a board come its name, any meter, then
+  the hint at the very bottom, each with its own room (the toy shrinks a little
+  on a short screen rather than sit under them). Hints wrap inside the screen.
 
 ## 12. 3D rooms follow the same rules
 

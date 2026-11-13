@@ -11,7 +11,7 @@ import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
-import { OrderHud, OrderToast, Rising } from '../../ui/order';
+import { OrderHud, OrderToast, Rising, Twinkle } from '../../ui/order';
 import { getStackScene, type StackScene } from './StackScene';
 import { landing, leanOf, loadBest, REACH, restY, saveBest, stoneFor, swayAt, swayFor, tipWord, verdict, type Placed, type Stone } from './game';
 
@@ -72,10 +72,11 @@ export class StackRoom implements Scene {
   private hud = new OrderHud();
   private toast = new OrderToast();
   private plus = new Rising();
+  private twinkle = new Twinkle(7);
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-stack');
-    this.ui.append(this.hud.root, this.toast.root, this.plus.root, this.hint.root);
+    this.ui.append(this.hud.root, this.toast.root, this.plus.root, this.twinkle.root, this.hint.root);
     this.s = getStackScene();
     this.view = this.s.canvas;
     this.s.onTumble = (speed, at) => {
@@ -87,7 +88,7 @@ export class StackRoom implements Scene {
   layout(w: number, h: number, safe: Insets) {
     this.w = w;
     this.h = h;
-    this.s.resize(w, h, window.devicePixelRatio || 1, safe.top + 150, h - safe.bottom - 60);
+    this.s.resize(w, h, window.devicePixelRatio || 1, safe.top + 150, h - safe.bottom - 104);
     this.painted = false;
   }
 
@@ -283,6 +284,7 @@ export class StackRoom implements Scene {
       material.sparkle(0);
       haptics.play('soft');
       this.plus.show('a new best!', at);
+      this.twinkle.burst(at, 64);
       return;
     }
     if (passed) this.beaten = true;

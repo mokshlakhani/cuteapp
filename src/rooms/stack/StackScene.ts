@@ -264,19 +264,23 @@ export class StackScene {
 
   /** The stones from `from` up tip off, to this side, from the top down. */
   tumble(from: number, side: number) {
-    // A tall tower's collapse runs quicker, so none is left hanging when the next run starts.
-    const step = Math.min(0.07, 0.9 / (this.tower.length - from));
+    // What's above the join that gave goes over together, as a leaning column
+    // does: the higher a stone sat, the further and faster it's thrown, so
+    // they fan out and roll off one by one instead of dropping in a lump. The
+    // lowest goes a breath after the top, as the lean reaches it.
+    const n = this.tower.length - from;
     for (let i = this.tower.length - 1; i >= from; i--) {
-      const p = this.tower[i];
-      this.launch(p, side, (this.tower.length - 1 - i) * step);
+      const k = n > 1 ? (i - from) / (n - 1) : 1;
+      this.launch(this.tower[i], side, (1 - k) * Math.min(0.16, 0.05 * n), 0.25 + 0.75 * k);
     }
     this.tower.length = Math.min(this.tower.length, from);
   }
 
-  private launch(p: Piece, side: number, delay: number) {
+  private launch(p: Piece, side: number, delay: number, throwK = 1) {
     p.pos.copy(p.mesh.position);
-    p.vel.set(side * rand(1.5, 2.3), rand(0.6, 1.6), rand(-0.3, 0.5));
-    p.spin.set(rand(-1, 1), rand(-0.6, 0.6), -side * rand(2.5, 4));
+    p.vel.set(side * (0.7 + 2.3 * throwK) * rand(0.85, 1.15), rand(0.3, 0.9) + 1.1 * throwK, rand(-0.5, 0.7) * (0.4 + throwK));
+    // It rolls the way it's thrown, faster the further it's thrown.
+    p.spin.set(rand(-1, 1), rand(-0.6, 0.6), -side * (1.4 + 3.2 * throwK) * rand(0.8, 1.2));
     p.gone = -delay;
     p.bounced = false;
     p.u.uFace.value = this.faceTex;
@@ -397,8 +401,9 @@ export class StackScene {
       }
       // Soon after it lands, it shrinks away: no piles.
       if (p.bounced) {
-        p.scale -= dt * 1.5;
-        p.mesh.scale.setScalar(Math.max(0.001, Math.min(1, p.scale * 1.6)));
+        // (A moment to roll first.)
+        p.scale -= dt * 1.1;
+        p.mesh.scale.setScalar(Math.max(0.001, Math.min(1, p.scale * 2.2)));
         if (p.scale <= 0) {
           this.free(p);
           this.falling.splice(i, 1);

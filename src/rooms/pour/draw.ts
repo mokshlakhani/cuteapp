@@ -375,7 +375,7 @@ function drawLine(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass:
   if (look.lineIn <= 0) return;
   const day = t.light;
   // Behind the steam the line all but disappears; a ghost of it stays.
-  const hidden = 1 - 0.9 * clamp(look.fog ?? 0, 0, 1);
+  const hidden = 1 - 0.97 * clamp(look.fog ?? 0, 0, 1);
   const ly = yAt(g, glass.line);
   const rx = halfAt(g, glass.line) - 1;
   const ry = ryAt(g, glass.line);
@@ -1268,8 +1268,8 @@ export function drawSteam(ctx: CanvasRenderingContext2D, g: GlassShape, glass: G
   ctx.save();
   // The mist on the glass, thickest just over the drink.
   const mist = ctx.createLinearGradient(0, surf, 0, top);
-  mist.addColorStop(0, rgba('#fff4e8', 0.34 * fog));
-  mist.addColorStop(1, rgba('#fff4e8', 0.12 * fog));
+  mist.addColorStop(0, rgba('#fff4e8', 0.5 * fog));
+  mist.addColorStop(1, rgba('#fff4e8', 0.3 * fog));
   ctx.fillStyle = mist;
   // Only on the glass itself: it follows the glass's own sides up to its rim.
   const lo = halfAt(g, clamp(glass.top, 0, 1));

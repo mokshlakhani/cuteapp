@@ -39,7 +39,7 @@ export function windowAt(order: Order, s: number): { lo: number; hi: number } {
   const base = paceFor(order.turns);
   const [a, b] = order.wave ?? [0, 0];
   const mid = base * (1 + 0.18 * Math.sin(Math.PI * 2 * 1.1 * s + a) + 0.05 * Math.sin(Math.PI * 2 * 2.3 * s + b));
-  const half = base * (0.5 - 0.13 * Math.min(1, Math.max(0, s)));
+  const half = base * (0.46 - 0.13 * Math.min(1, Math.max(0, s)));
   return { lo: mid - half, hi: mid + half };
 }
 
@@ -54,10 +54,10 @@ export const START_LON = 0.72;
 /**
  * In the red, the strip strains this much a second just past the edge, and
  * this much more the further into the red (per green zone's half-width): just
- * over the edge it snaps in about 2 s, well into the red in about 1 s.
+ * over the edge it snaps in about 1.8 s, well into the red in about 0.85 s.
  */
-const RISE_EDGE = 0.5;
-const RISE = 0.55;
+const RISE_EDGE = 0.56;
+const RISE = 0.62;
 /** Back in the green, the strain lets go this much a second. */
 const EASE = 1.3;
 /** After a snap, or putting your finger back down, this long before the strip can strain. */

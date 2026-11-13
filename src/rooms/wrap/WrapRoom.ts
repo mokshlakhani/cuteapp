@@ -14,7 +14,7 @@ import { paintBackdrop } from '../../render/paint';
 import { Particles } from '../../render/particles';
 import { Shake } from '../../render/camera';
 import { el, Segmented, tactile } from '../../ui/components';
-import { OrderToast } from '../../ui/order';
+import { OrderToast, Twinkle } from '../../ui/order';
 import { Sheet, type Bubble, type BubbleSize } from './Sheet';
 import { FILMS, drawRoll, drawSheet, warmPopped, type Film } from './draw';
 import { flashFor, loadMemory, memoryVerdict, nextSize, pickPattern, saveMemory, scoreMemory } from './memory';
@@ -90,6 +90,7 @@ export class WrapRoom implements Scene {
   private chosen = new Set<Bubble>();
   private doneBtn: HTMLButtonElement;
   private toast = new OrderToast();
+  private twinkle = new Twinkle(11);
   /** The size of bubble on the sheet, picked in the dock and kept between visits. */
   private bubbleSize: BubbleSize = loadBubbleSize();
   private sizes: Segmented<BubbleSize>;
@@ -111,7 +112,7 @@ export class WrapRoom implements Scene {
       (v) => this.setSize(v),
     );
     const dock = el('div', 'dock', {}, [this.sizes.root, el('div', 'dock-divider'), this.doneBtn]);
-    this.ui.append(this.toast.root, dock);
+    this.ui.append(this.toast.root, this.twinkle.root, dock);
   }
 
   // ——— layout ———
@@ -273,7 +274,10 @@ export class WrapRoom implements Scene {
     this.size = nextSize(n, score.grade);
     saveMemory(this.size);
     this.toast.show(...memoryVerdict(score, n));
-    if (score.grade === 'perfect') material.tada();
+    if (score.grade === 'perfect') {
+      material.tada();
+      this.twinkle.burst({ x: s.x0 + s.W / 2, y: s.y0 + s.H / 2 }, Math.min(s.W, s.H) * 0.42);
+    }
     haptics.play(score.grade === 'perfect' ? 'soft' : 'tap');
     // The pattern answers back: the right ones beam, the missed ones peek out.
     for (const b of this.pattern) {
@@ -326,7 +330,14 @@ export class WrapRoom implements Scene {
       if (this.memT > 1) this.freshSheet();
       return;
     }
-    if (this.mem !== 'recall') return;
+    if (this.mem !== 'recall') {
+      // Not your turn yet: the film still answers a touch, so it never feels dead.
+      if (s.contains(p.x, p.y)) {
+        s.kick(p.x, p.y, 45, s.pitch * 1.6);
+        haptics.play('tick');
+      }
+      return;
+    }
     const b = s.bubbleAt(p.x, p.y);
     const live = b && !b.popped ? b : null;
     this.touches.set(p.id, live);

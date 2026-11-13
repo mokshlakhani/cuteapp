@@ -11,7 +11,7 @@ import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { reducedMotion } from '../../render/camera';
 import { el, Hint } from '../../ui/components';
-import { OrderHud, Rising } from '../../ui/order';
+import { OrderHud, Rising, Twinkle } from '../../ui/order';
 import { getSoapScene, type Bubble, type SoapScene } from './SoapScene';
 import { burstAt, callFor, loadBest, NEAR, offBy, OVER, orderFor, PUFF, rateAt, Run, saveBest, sayFor, tooSmall, type Order } from './game';
 
@@ -69,12 +69,13 @@ export class SoapRoom implements Scene {
 
   private hud = new OrderHud();
   private plus = new Rising();
+  private twinkle = new Twinkle(7);
   private ring = el('div', 'soap-ring', { 'aria-hidden': 'true' });
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-soap');
     this.order = orderFor();
-    this.ui.append(this.hud.root, this.ring, this.plus.root, this.hint.root);
+    this.ui.append(this.hud.root, this.ring, this.plus.root, this.twinkle.root, this.hint.root);
     this.s = getSoapScene();
     this.view = this.s.canvas;
     this.s.events = {
@@ -192,6 +193,8 @@ export class SoapRoom implements Scene {
     material.soapFree(this.size, pan);
     this.streak = perfect ? this.streak + 1 : 0;
     if (perfect) material.soapChime(this.streak, pan);
+    // Right on the ring, or past your best: a few twinkles round it as it floats free.
+    if (perfect || beat) this.twinkle.burst(at, this.s.ghost(target).r * 1.25);
     if (beat) material.sparkle(0);
     haptics.play(perfect ? 'soft' : 'tap');
     settings.markHintSeen(this.id);

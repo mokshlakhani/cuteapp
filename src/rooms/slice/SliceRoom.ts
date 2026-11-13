@@ -11,7 +11,7 @@ import { haptics } from '../../core/haptics';
 import { settings } from '../../core/settings';
 import { paintBackdrop } from '../../render/paint';
 import { el, Hint } from '../../ui/components';
-import { OrderHud, OrderToast, Rising } from '../../ui/order';
+import { OrderHud, OrderToast, Rising, Twinkle } from '../../ui/order';
 import { getSliceScene, type SliceScene } from './SliceScene';
 import { fruitFor } from './fruits';
 import { orderFor, verdict, type Order } from './game';
@@ -45,6 +45,8 @@ const HOLD = 0.75;
 const TRAIL_LIFE = 0.28;
 /** A haptic tick for every this much turning (radians). */
 const TURN_TICK = 0.3;
+/** Room under the board for the fruit's name, over the hint at the very bottom (px). */
+const TAG_ROOM = 94;
 /** How far (px) a stroke off the fruit moves before it's judged a cut or a turn. */
 const DECIDE = 12;
 
@@ -68,6 +70,7 @@ export class SliceRoom implements Scene {
   private s: SliceScene;
   private w = 0;
   private h = 0;
+  private safeBottom = 0;
   private hint = new Hint('swipe across the fruit to slice it', 'knife');
   private turnHint = new Hint('swipe beside the fruit to turn it', 'turn');
   private phase: Phase = 'intro';
@@ -86,6 +89,7 @@ export class SliceRoom implements Scene {
   private hud = new OrderHud();
   private toast = new OrderToast();
   private plus = new Rising();
+  private twinkle = new Twinkle();
   private tag: HTMLElement;
   private tagName: HTMLElement;
   private trailSvg: SVGSVGElement;
@@ -105,7 +109,7 @@ export class SliceRoom implements Scene {
     this.trailPath = document.createElementNS(NS, 'path');
     this.trailSvg.append(this.trailPath);
 
-    this.ui.append(this.trailSvg, this.hud.root, this.toast.root, this.plus.root, this.tag, this.hint.root, this.turnHint.root);
+    this.ui.append(this.trailSvg, this.hud.root, this.toast.root, this.plus.root, this.twinkle.root, this.tag, this.hint.root, this.turnHint.root);
 
     this.s = getSliceScene();
     this.view = this.s.canvas;
@@ -126,9 +130,23 @@ export class SliceRoom implements Scene {
   layout(w: number, h: number, safe: Insets) {
     this.w = w;
     this.h = h;
-    const top = safe.top + 128;
-    const bottom = h - safe.bottom - 64;
-    this.s.resize(w, h, window.devicePixelRatio || 1, top, bottom);
+    this.safeBottom = safe.bottom;
+    let top = safe.top + 128;
+    let bottom = h - safe.bottom - 64;
+    const dpr = window.devicePixelRatio || 1;
+    this.s.resize(w, h, dpr, top, bottom);
+    // Keep clear of the words: the fruit under the order at the top, and the
+    // board's front edge above the fruit's name and the hint beneath it.
+    for (let i = 0; i < 2; i++) {
+      const f = this.s.screenFruit;
+      const over = safe.top + 200 - (f.y - f.r);
+      const under = this.s.boardFront.y + 18 - (h - safe.bottom - TAG_ROOM);
+      if (over <= 1 && under <= 1) break;
+      top += Math.max(0, over);
+      bottom -= Math.max(0, under);
+      if (bottom - top < 160) break;
+      this.s.resize(w, h, dpr, top, bottom);
+    }
     this.trailSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     this.placeTag();
     this.painted = false;
@@ -136,7 +154,7 @@ export class SliceRoom implements Scene {
 
   private placeTag() {
     const y = this.s.boardFront.y;
-    this.tag.style.top = `${Math.round(Math.min(y + 18, this.h - 70))}px`;
+    this.tag.style.top = `${Math.round(Math.min(y + 18, this.h - this.safeBottom - TAG_ROOM))}px`;
   }
 
   enter() {
@@ -349,7 +367,10 @@ export class SliceRoom implements Scene {
     const [title, sub] = verdict(pieces, t);
     this.toast.show(title, sub);
     // Exactly the order: a little fanfare.
-    if (pieces === t) material.tada();
+    if (pieces === t) {
+      material.tada();
+      this.twinkle.burst({ x: this.w / 2, y: this.s.boardFront.y - 46 }, Math.min(this.w * 0.3, 120));
+    }
     this.phase = 'result';
     this.phaseT = 0;
   }

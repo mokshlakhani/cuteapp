@@ -94,10 +94,30 @@ export class App implements RoomNav {
 
   /** Pointer events go to the active scene, never during transitions. */
   private handler = {
-    pointerDown: (p: Pointer) => !this.transition && this.current.pointerDown(p),
+    pointerDown: (p: Pointer) => {
+      if (this.transition) return;
+      if (this.current.id !== 'home') this.ring(p.x, p.y);
+      this.current.pointerDown(p);
+    },
     pointerMove: (p: Pointer) => !this.transition && this.current.pointerMove(p),
     pointerUp: (p: Pointer, c: boolean) => this.current.pointerUp(p, c),
   };
+
+  /** A soft ring where a finger lands in a room (a few, reused in turn). */
+  private rings: HTMLElement[] = [];
+  private ringAt = 0;
+  private ring(x: number, y: number) {
+    if (this.rings.length < 4) {
+      const r = el('div', 'touch-ring', { 'aria-hidden': 'true' });
+      this.rings.push(r);
+      this.layer.append(r);
+    }
+    const r = this.rings[this.ringAt++ % this.rings.length];
+    r.style.translate = `${x.toFixed(0)}px ${y.toFixed(0)}px`;
+    r.classList.remove('is-up');
+    void r.offsetWidth;
+    r.classList.add('is-up');
+  }
 
   private layoutAll() {
     const { width, height, safe } = this.stage;
