@@ -247,14 +247,79 @@ export function clothMesh(kind: ClothKind, radius: number, y = -0.02) {
   g.fillStyle = edge;
   g.fillRect(0, 0, S, S);
   g.globalCompositeOperation = 'source-over';
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(radius, 64), clothMaterial(c));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  mesh.renderOrder = -1;
+  return mesh;
+}
+
+/** Toned down a little, so the cloth sits in the lamplight rather than glowing. */
+function clothMaterial(c: HTMLCanvasElement) {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
-  const mesh = new THREE.Mesh(
-    new THREE.CircleGeometry(radius, 64),
-    // Toned down a little, so it sits in the lamplight rather than glowing.
-    new THREE.MeshStandardMaterial({ map: tex, color: '#D8C2AE', transparent: true, depthWrite: false, roughness: 0.95, metalness: 0, envMapIntensity: 0.25 }),
-  );
+  return new THREE.MeshStandardMaterial({ map: tex, color: '#D8C2AE', transparent: true, depthWrite: false, roughness: 0.95, metalness: 0, envMapIntensity: 0.25 });
+}
+
+/**
+ * A gingham picnic cloth cut to a table that isn't round: `halfW` by `halfD`
+ * (scene units) with rounded corners, the same checks, stitch and soft edge
+ * as the round one. For a table that's taller than it's wide (jelly on a
+ * phone), so nothing set down on it lies off the cloth.
+ */
+export function ginghamSheet(halfW: number, halfD: number, check: number, y = -0.02) {
+  const W = 512;
+  const H = Math.max(64, Math.min(2048, Math.round((W * halfD) / halfW)));
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#F7E7D3';
+  g.fillRect(0, 0, W, H);
+  // Checks of the same size as the round cloth's, centred on the middle.
+  const step = (check / (halfW * 2)) * W;
+  g.fillStyle = 'rgba(196, 96, 72, 0.32)';
+  for (let x = W / 2 - Math.ceil(W / step) * step; x < W; x += step * 2) g.fillRect(x, 0, step, H);
+  for (let z = H / 2 - Math.ceil(H / step) * step; z < H; z += step * 2) g.fillRect(0, z, W, step);
+  g.strokeStyle = 'rgba(120, 60, 40, 0.05)';
+  for (let i = 0; i < W; i += 3) {
+    g.beginPath();
+    g.moveTo(i, 0);
+    g.lineTo(i, H);
+    g.stroke();
+  }
+  const corner = W * 0.22;
+  const rounded = (inset: number) => {
+    g.beginPath();
+    g.roundRect(inset, inset, W - inset * 2, H - inset * 2, Math.max(1, corner - inset));
+  };
+  // A running stitch just inside the edge.
+  g.strokeStyle = 'rgba(176, 84, 66, 0.55)';
+  g.lineWidth = 4;
+  g.setLineDash([14, 10]);
+  rounded(W * 0.07);
+  g.stroke();
+  g.setLineDash([]);
+  // An edge that melts softly into the room: the cloth's own picture, kept in
+  // steps from nothing at the rim to all of it a little way in.
+  const full = document.createElement('canvas');
+  full.width = W;
+  full.height = H;
+  full.getContext('2d')!.drawImage(c, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const STEPS = 14;
+  const soft = W * 0.05;
+  for (let k = 1; k <= STEPS; k++) {
+    g.save();
+    rounded((k / STEPS) * soft);
+    g.clip();
+    g.clearRect(0, 0, W, H);
+    g.globalAlpha = k / STEPS;
+    g.drawImage(full, 0, 0);
+    g.restore();
+  }
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(halfW * 2, halfD * 2), clothMaterial(c));
   mesh.rotation.x = -Math.PI / 2;
   mesh.position.y = y;
   mesh.renderOrder = -1;

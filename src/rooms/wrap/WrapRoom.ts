@@ -13,11 +13,21 @@ import { haptics } from '../../core/haptics';
 import { paintBackdrop } from '../../render/paint';
 import { Particles } from '../../render/particles';
 import { Shake } from '../../render/camera';
-import { el, tactile } from '../../ui/components';
+import { el, Segmented, tactile } from '../../ui/components';
 import { OrderToast } from '../../ui/order';
-import { Sheet, type Bubble } from './Sheet';
+import { Sheet, type Bubble, type BubbleSize } from './Sheet';
 import { FILMS, drawRoll, drawSheet, warmPopped, type Film } from './draw';
 import { flashFor, loadMemory, memoryVerdict, nextSize, pickPattern, saveMemory, scoreMemory } from './memory';
+
+const SIZE_KEY = 'softspot.wrap.size.v1';
+function loadBubbleSize(): BubbleSize {
+  try {
+    const v = localStorage.getItem(SIZE_KEY);
+    return v === 'small' || v === 'jumbo' ? v : 'regular';
+  } catch {
+    return 'regular';
+  }
+}
 
 type Phase = 'unroll' | 'play' | 'away';
 /** A breath before the pattern, the pattern glowing, your go, and how it went. */
@@ -80,6 +90,9 @@ export class WrapRoom implements Scene {
   private chosen = new Set<Bubble>();
   private doneBtn: HTMLButtonElement;
   private toast = new OrderToast();
+  /** The size of bubble on the sheet, picked in the dock and kept between visits. */
+  private bubbleSize: BubbleSize = loadBubbleSize();
+  private sizes: Segmented<BubbleSize>;
 
   constructor(_nav: RoomNav) {
     this.ui = el('div', 'room room-wrap');
@@ -87,7 +100,17 @@ export class WrapRoom implements Scene {
     this.doneBtn = el('button', 'btn wrap-done', { type: 'button', 'aria-label': 'done', disabled: true });
     this.doneBtn.innerHTML = `${icons.check}<span>done</span>`;
     tactile(this.doneBtn, () => this.submit());
-    const dock = el('div', 'dock', {}, [this.doneBtn]);
+    // Which wrap to play on: lots of little bubbles, the usual, or a few big ones.
+    this.sizes = new Segmented<BubbleSize>(
+      [
+        { value: 'small', icon: 'bubblesSmall', label: 'small bubbles' },
+        { value: 'regular', icon: 'bubblesRegular', label: 'regular bubbles' },
+        { value: 'jumbo', icon: 'bubblesJumbo', label: 'big bubbles' },
+      ],
+      this.bubbleSize,
+      (v) => this.setSize(v),
+    );
+    const dock = el('div', 'dock', {}, [this.sizes.root, el('div', 'dock-divider'), this.doneBtn]);
     this.ui.append(this.toast.root, dock);
   }
 
@@ -118,7 +141,7 @@ export class WrapRoom implements Scene {
   private makeSheet(unroll: boolean) {
     const a = this.area;
     this.film = FILMS[this.filmAt++ % FILMS.length];
-    const s = new Sheet(a.w, a.h, 'regular');
+    const s = new Sheet(a.w, a.h, this.bubbleSize);
     s.events = { pop: (b, _cause, order) => this.onPop(b, order) };
     this.sheet = s;
     this.placeSheet();
@@ -172,6 +195,19 @@ export class WrapRoom implements Scene {
       this.makeSheet(true);
       material.rustle(UNROLL);
     }
+  }
+
+  /** A different wrap: the sheet on the table rolls away and one of that size unrolls. */
+  private setSize(v: BubbleSize) {
+    this.bubbleSize = v;
+    try {
+      localStorage.setItem(SIZE_KEY, v);
+    } catch {
+      /* private mode: it just won't be remembered */
+    }
+    haptics.play('tick');
+    this.toast.hide();
+    this.freshSheet();
   }
 
   private releaseAll() {

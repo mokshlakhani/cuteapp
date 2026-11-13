@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Staged, type Build } from '../../core/stages';
-import { gpuReady, roomReflections, clothMesh } from '../../render/table';
+import { gpuReady, roomReflections, clothMesh, ginghamSheet } from '../../render/table';
 import { Face, drawFace } from '../../render/face';
 import { clamp, rand } from '../../core/math';
 import { polyCentroid } from '../../core/geometry';
@@ -80,6 +80,10 @@ export class Lab {
   shared!: SharedUniforms;
   entries: Entry[] = [];
   bounds: Bounds = { minX: -8, maxX: 8, minZ: -9, maxZ: 9 };
+  /** The room's own table cuts its cloth to fit (the home card keeps the round one). */
+  fitCloth = false;
+  private cloth!: THREE.Mesh;
+  private clothKey = '';
   firmness = 0.4;
   dampingAmt = 0.45;
   timeScale = 1;
@@ -151,7 +155,8 @@ export class Lab {
     floor.receiveShadow = true;
     this.scene.add(floor);
     // A picnic cloth under the jellies.
-    this.scene.add(clothMesh('gingham', 9.5));
+    this.cloth = clothMesh('gingham', 9.5);
+    this.scene.add(this.cloth);
     yield;
 
     this.scene.add(this.knife.group);
@@ -203,6 +208,31 @@ export class Lab {
       const halfW = Math.abs(nearL.x - near.x);
       this.bounds = { minX: -halfW, maxX: halfW, minZ: far.z, maxZ: near.z };
     }
+    if (this.fitCloth) this.layCloth();
+  }
+
+  /**
+   * Cut the cloth to the table: on a phone the table is taller than the round
+   * cloth, and a fruit set down near the top or bottom would lie off it.
+   */
+  private layCloth() {
+    const b = this.bounds;
+    const halfW = (b.maxX - b.minX) / 2 + 0.35;
+    const halfD = (b.maxZ - b.minZ) / 2 + 0.5;
+    const key = `${halfW.toFixed(1)}x${halfD.toFixed(1)}`;
+    if (key !== this.clothKey) {
+      this.clothKey = key;
+      this.scene.remove(this.cloth);
+      this.cloth.geometry.dispose();
+      const m = this.cloth.material as THREE.MeshStandardMaterial;
+      m.map?.dispose();
+      m.dispose();
+      // The round cloth's checks: fourteen across its 19 cm.
+      this.cloth = ginghamSheet(halfW, halfD, 19 / 14);
+      this.scene.add(this.cloth);
+    }
+    this.cloth.position.x = (b.minX + b.maxX) / 2;
+    this.cloth.position.z = (b.minZ + b.maxZ) / 2;
   }
 
   /** Move the picture left and up by this much (px), to centre it on a home card. */
@@ -723,6 +753,7 @@ export const labTable = new Staged(
 );
 export function getLab() {
   const lab = labTable.get();
+  lab.fitCloth = true;
   // Dev builds only: a handle for poking at the table from the console.
   if (import.meta.env.DEV) (window as unknown as { __jellyLab: Lab }).__jellyLab = lab;
   return lab;

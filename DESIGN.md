@@ -46,8 +46,8 @@ rest is a short list of rules.
    how many you got (no percentages, no extras, no best); a
    perfect round makes the next pattern a bubble bigger. **Soap** counts the
    bubbles that hold in a row until one pops, under your high score. **Stack**
-   has no goal: only your high score, quietly at the top, to beat if you feel
-   like it._
+   has no goal: how high this tower stands, quietly at the top over your best,
+   to beat if you feel like it._
 4. **Feel over features.** When in doubt, make an existing interaction 20%
    more satisfying instead of adding something.
 5. **Everything is alive.** Toys breathe, blink, wobble and look at your

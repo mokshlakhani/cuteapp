@@ -27,6 +27,10 @@ export const icons = {
     '<path d="M4.6 13.2C5.3 10.8 8.3 9 12 9c2.6 0 4.9.9 6.2 2.3"/><path d="M18.9 8.4l-.5 3.1-3.1-.4"/><path d="M19.4 10.8c-.7 2.4-3.7 4.2-7.4 4.2-2.6 0-4.9-.9-6.2-2.3"/><path d="M5.1 15.6l.5-3.1 3.1.4"/>',
   ),
   slow: wrap('<path d="M4.5 16a7.5 7.5 0 0 1 15 0"/><path d="M12 16l-3.2-4.2"/><circle cx="12" cy="16" r="1.2"/>'),
+  // Bubble wrap in three sizes: lots of little bubbles, a few, or big ones.
+  bubblesSmall: wrap('<g stroke-width="1.8"><circle cx="6.5" cy="6.5" r="1.7"/><circle cx="12" cy="6.5" r="1.7"/><circle cx="17.5" cy="6.5" r="1.7"/><circle cx="6.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="17.5" cy="12" r="1.7"/><circle cx="6.5" cy="17.5" r="1.7"/><circle cx="12" cy="17.5" r="1.7"/><circle cx="17.5" cy="17.5" r="1.7"/></g>'),
+  bubblesRegular: wrap('<circle cx="7.6" cy="7.6" r="3.1"/><circle cx="16.4" cy="7.6" r="3.1"/><circle cx="7.6" cy="16.4" r="3.1"/><circle cx="16.4" cy="16.4" r="3.1"/>'),
+  bubblesJumbo: wrap('<circle cx="12" cy="12" r="7"/><path d="M8.6 10.2a4 4 0 0 1 2-2" stroke-width="1.8"/>'),
   grid: wrap('<path d="M5 9h14M5 15h14M9 5v14M15 5v14"/><rect x="4.5" y="4.5" width="15" height="15" rx="3.5"/>'),
   pause: wrap('<path d="M9 7v10M15 7v10"/>'),
   wave: wrap('<path d="M3.5 13c2.2 0 2.2-3 4.25-3S10 13 12 13s2.2-3 4.25-3S18.5 13 20.5 13"/><path d="M6 17.5h12"/>'),

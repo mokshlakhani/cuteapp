@@ -57,6 +57,7 @@ export const HOWTO: HowTo[] = [
       'Bubbles you got right shine gold, ones you missed get a dashed gold ring, and ones popped by mistake get a coral ring. Up top, it says how many of the pattern you got.',
       'Get every one, with no extras, and the next pattern is a bubble bigger. A fuzzy round makes it a bubble smaller.',
       'The result stays a few seconds before the next sheet; tap anywhere to move on sooner.',
+      'The three buttons beside done pick the wrap: lots of small bubbles, the usual size, or a few big ones. A new sheet of that size unrolls straight away.',
       'Each new sheet comes in a different colour of film.',
     ],
   },

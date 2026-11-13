@@ -159,7 +159,7 @@ export class SliceRoom implements Scene {
   // ——— the order ———
 
   private beginIntro() {
-    this.order = orderFor(Math.random, this.recent);
+    this.order = orderFor(Math.random, this.recent, this.recent.length < 2);
     this.recent = [...this.recent.slice(-5), this.order];
     const fruit = fruitFor(this.s.fruit);
     this.s.setFruit(fruit, INTRO.lift);

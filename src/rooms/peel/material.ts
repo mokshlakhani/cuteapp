@@ -95,16 +95,19 @@ totalEmissiveRadiance += diffuseColor.rgb * max(peeled * 0.08, uStrip * 0.12);
 `;
 
 /** Where the flesh is seen from, and the peel's pale inside, as shares of the way in. */
-const DEPTH: Record<string, number> = { orange: 0.8, lemon: 0.8, apple: 0.86, kiwi: 0.8, peach: 0.84, watermelon: 0.76, cantaloupe: 0.78 };
+// A watermelon and a cantaloupe come out of their skins still wearing some
+// rind (pale over the pink, green-gold over the orange), which is also what
+// tells a peeled melon from a peeled orange or peach.
+const DEPTH: Record<string, number> = { orange: 0.8, lemon: 0.8, apple: 0.86, kiwi: 0.8, peach: 0.84, watermelon: 0.873, cantaloupe: 0.918 };
 /** What ripeness does to each flesh: warmth laid over it. */
 const RIPE: Record<string, [number, number, number]> = {
   orange: [1.06, 0.84, 0.5],
   lemon: [1.06, 1, 0.5],
   apple: [1.05, 0.86, 0.46],
-  kiwi: [0.86, 1.06, 0.56],
-  peach: [1.06, 0.76, 0.46],
-  watermelon: [1.06, 0.72, 0.74],
-  cantaloupe: [1.06, 0.84, 0.62],
+  kiwi: [0.9, 0.98, 0.62],
+  peach: [1.0, 1.22, 2.6],
+  watermelon: [1.03, 0.9, 0.86],
+  cantaloupe: [1.0, 0.97, 0.7],
 };
 const PITH: Record<string, number> = { orange: 0.9, lemon: 0.9, apple: 0.93, kiwi: 0.92, peach: 0.94, watermelon: 0.9, cantaloupe: 0.9 };
 
@@ -133,7 +136,7 @@ export function makePeelMaterial(strip: boolean, shared?: Record<string, THREE.I
       .replace('#include <lights_physical_fragment>', FRAG_WET)
       .replace('#include <emissivemap_fragment>', FRAG_EMISSIVE);
   };
-  mat.customProgramCacheKey = () => `soft-peel-v4-${strip ? 'strip' : 'body'}`;
+  mat.customProgramCacheKey = () => `soft-peel-v5-${strip ? 'strip' : 'body'}`;
   return { mat, uniforms };
 }
 

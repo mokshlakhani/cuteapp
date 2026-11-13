@@ -30,7 +30,7 @@ const OVER = { rewind: 1, clear: 2.8, next: 5 };
  * let go and it drops. The tower stands so long as each stone's weight sits
  * over what's under it, and it sways more as it grows, so a high stone wants
  * a little lead: let go early, or wait for it to come back. There's no goal:
- * the only number on screen is your high score. Once the tower nears the top
+ * the number at the top is how high this tower stands, over your best. Once the tower nears the top
  * of the screen the view climbs with it, one stone for every stone set, so
  * only the top of the tower is in frame. When a stone tips the run ends, the
  * view glides back down what you built, and a new tower begins.
@@ -120,7 +120,8 @@ export class StackRoom implements Scene {
   }
 
   private syncHud(bump: boolean) {
-    this.hud.set(this.best, 'your best', false, false, bump);
+    // How high this tower stands, over the best there is to beat.
+    this.hud.set(this.height, `your best ${this.best}`, false, false, bump);
   }
 
   private get hangY() {
@@ -275,8 +276,8 @@ export class StackRoom implements Scene {
     if (passed) {
       this.best = n;
       saveBest(n);
-      this.syncHud(true);
     }
+    this.syncHud(true);
     if (passed && !this.beaten && this.startBest > 0) {
       this.beaten = true;
       material.sparkle(0);

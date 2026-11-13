@@ -32,8 +32,9 @@ export function slicePreview(): Preview {
     const key = `${Math.round(w)}x${Math.round(h)}`;
     if (key === size) return;
     size = key;
-    // Above the label, with room round it so the fruit never touches the card's edge.
-    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.15, h * 0.85, 1.2);
+    // Above the label, framed on the fruit: the board runs off the card's sides,
+    // as pop's rug does, so the fruit is big enough to tell which one it is.
+    scene.resize(w, h, Math.min(2, window.devicePixelRatio || 1), h * 0.12, h * 0.88, 0.8);
   };
 
   return {

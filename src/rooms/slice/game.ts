@@ -14,7 +14,11 @@ export interface Order {
 }
 
 /** How many cuts an order gives, weighted toward the middle: 2 sometimes, 3–4 mostly, 6 now and then. */
-const CUTS: [number, number][] = [
+const GENTLE: [number, number][] = [
+  [2, 1],
+  [3, 1],
+];
+const ALL_CUTS: [number, number][] = [
   [2, 1],
   [3, 3],
   [4, 3],
@@ -28,7 +32,9 @@ const CUTS: [number, number][] = [
  * a fair challenge. It never repeats the last fruit's number of cuts, nor any
  * of the last few orders, so it keeps changing.
  */
-export function orderFor(rnd = Math.random, recent: Order[] = []): Order {
+export function orderFor(rnd = Math.random, recent: Order[] = [], gentle = false): Order {
+  // The first fruits of a visit are easy ones: two or three cuts, while you find your hand.
+  const CUTS = gentle ? GENTLE : ALL_CUTS;
   for (let tries = 0; ; tries++) {
     const total = CUTS.reduce((a, [, w]) => a + w, 0);
     let r = rnd() * total;

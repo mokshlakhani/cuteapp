@@ -38,7 +38,7 @@ const DROP_G = 46;
 
 /**
  * Room: fruit + rubber bands, in 3D. A fruit lies on the table — a
- * watermelon, a cantaloupe, an orange, a pomegranate, a coconut… — tap it or
+ * watermelon, a cantaloupe, an orange, a kiwi, a peach… — tap it or
  * swipe down across it to snap a band round its middle. It pinches into a
  * peanut, gets nervous, creaks… and at some unknowable point it bursts the
  * way that fruit really would — slow motion, and whatever's inside goes

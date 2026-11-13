@@ -475,7 +475,16 @@ export class SliceScene {
       // Apart, gently: outward from the middle, a little up, a slow tumble.
       const out = c.clone().applyQuaternion(wq).setY(0).normalize();
       const vel = out.multiplyScalar(rand(0.3, 0.9)).add(new THREE.Vector3(0, rand(0.2, 1), 0));
-      const w = new THREE.Vector3(rand(-1.5, 1.5), rand(-0.8, 0.8), rand(-1.5, 1.5));
+      const w = new THREE.Vector3(rand(-0.6, 0.6), rand(-0.5, 0.5), rand(-0.6, 0.6));
+      // It rolls over as it falls so its biggest cut face ends up showing:
+      // the inside is what you cut it to see.
+      const open = widestCut(p);
+      if (open) {
+        const n = new THREE.Vector3(...open).applyQuaternion(wq);
+        const axis = new THREE.Vector3().crossVectors(n, UP);
+        const turn = Math.acos(clamp(n.y, -1, 1));
+        if (axis.lengthSq() > 1e-4 && turn > 0.35) w.addScaledVector(axis.normalize(), turn * rand(1.25, 1.6));
+      }
       this.root.remove(mesh);
       mesh.position.copy(pos);
       mesh.quaternion.copy(wq);
@@ -965,3 +974,35 @@ export function getSliceScene() {
   return sliceScene.get();
 }
 
+
+/** The outward normal of a piece's biggest cut face (in the fruit's own space), if it has one. */
+function widestCut(p: Poly): V3 | null {
+  let best: V3 | null = null;
+  let bestArea = 0;
+  for (const f of p.faces) {
+    if (!f.cut || f.pts.length < 3) continue;
+    let ax = 0;
+    let ay = 0;
+    let az = 0;
+    const o = f.pts[0];
+    for (let i = 1; i + 1 < f.pts.length; i++) {
+      const a = f.pts[i];
+      const b = f.pts[i + 1];
+      const ux = a[0] - o[0];
+      const uy = a[1] - o[1];
+      const uz = a[2] - o[2];
+      const vx = b[0] - o[0];
+      const vy = b[1] - o[1];
+      const vz = b[2] - o[2];
+      ax += uy * vz - uz * vy;
+      ay += uz * vx - ux * vz;
+      az += ux * vy - uy * vx;
+    }
+    const area = Math.hypot(ax, ay, az);
+    if (area > bestArea) {
+      bestArea = area;
+      best = [ax / area, ay / area, az / area];
+    }
+  }
+  return best;
+}

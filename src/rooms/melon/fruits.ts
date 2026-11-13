@@ -12,7 +12,7 @@ import { MELON_A, MELON_R } from './shape';
  * segments, creamy apple, a peach's sunny flesh.
  */
 
-/** What the flesh breaks into: soft lumps, citrus segments, clusters of arils, curls of coconut meat. */
+/** What the flesh breaks into: soft lumps or citrus segments. (Arils and coconut meat are still drawn by the burst, for fruits that may come back.) */
 export type InsideKind = 'lumps' | 'segments' | 'arils' | 'meat';
 /** Seeds: watermelon teardrops, flat melon seeds, juicy arils, tiny black specks, citrus pips. */
 export type SeedKind = 'teardrop' | 'flat' | 'aril' | 'tiny' | 'pip' | 'none';
@@ -210,7 +210,7 @@ export const POP_FRUITS: PopFruit[] = [
     shards: [14, 22],
     chunks: 0.75,
     juice: { color: '#F6E3EC', amount: 0.7, mist: 0.2 },
-    seeds: { kind: 'tiny', color: P.dragonfruit.seed, count: 2.2, size: 0.05 },
+    seeds: { kind: 'tiny', color: P.dragonfruit.seed, count: 2.6, size: 0.028 },
     pulp: { color: '#FFFFFF', count: 0.8, strings: false },
   }),
   fruit('kiwi', {
@@ -232,7 +232,7 @@ export const POP_FRUITS: PopFruit[] = [
     shards: [14, 22],
     chunks: 0.75,
     juice: { color: '#9BD45A', amount: 0.8, mist: 0.3 },
-    seeds: { kind: 'tiny', color: P.kiwi.seed, count: 2.5, size: 0.05 },
+    seeds: { kind: 'tiny', color: P.kiwi.seed, count: 2.8, size: 0.028 },
     pulp: { color: P.kiwi.core, count: 0.6, strings: false },
   }),
 ];

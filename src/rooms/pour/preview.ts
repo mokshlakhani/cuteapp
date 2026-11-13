@@ -40,7 +40,8 @@ export function pourPreview(): Preview {
   const face = new Face();
   const bubbles: { u: number; f: number; sp: number }[] = [];
   let phase: Phase = 'in';
-  let phaseT = 0;
+  // The first glass is already there when home opens: no empty card to begin with.
+  let phaseT = IN;
   let time = 0;
   let tilt = 0;
 

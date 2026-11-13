@@ -119,11 +119,12 @@ export function buildExtras(fruit: SliceFruit): Extra[] {
     case 'lemon': {
       // Its pointed tips, in its own yellow, and a dot of green calyx on top.
       const tipGeo = new THREE.SphereGeometry(1, 14, 10);
-      tipGeo.scale(0.13, 0.2, 0.13);
+      // Broad where they meet the fruit, so they grow out of it rather than sitting on it like beads.
+      tipGeo.scale(0.24, 0.2, 0.24);
       const peel = mat(F.lemon.peel, 0.4);
       for (const sgn of [1, -1]) {
         const tip = new THREE.Mesh(tipGeo, peel);
-        tip.position.set(0, sgn * (ry - 0.02), 0);
+        tip.position.set(0, sgn * (ry - 0.09), 0);
         add(tip, [0, sgn * ry, 0]);
       }
       const dot = calyx(5, 0.1, DARK_GREEN, top.clone().setY(ry + 0.14), 1.0);
@@ -171,15 +172,15 @@ export function buildExtras(fruit: SliceFruit): Extra[] {
       // out in staggered rows; more of them, closer together, at the crown.
       // (None across its face, so it stays easy to read.)
       const bm = (bractMat ??= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0 }));
-      // Broad and short, lying close along the skin with only their tips lifting.
+      // Broad and short, rooted in the skin and curling out from it.
       const big = bractGeo(0.5, 0.3);
       const small = bractGeo(0.36, 0.22);
       const rows = [
-        { th: 0.34, n: 5, geo: small, out: 0.2 },
-        { th: 0.78, n: 7, geo: big, out: 0.22 },
-        { th: 1.25, n: 7, geo: big, out: 0.24 },
-        { th: 1.72, n: 7, geo: big, out: 0.24 },
-        { th: 2.2, n: 6, geo: small, out: 0.22 },
+        { th: 0.34, n: 5, geo: small, out: 0.38 },
+        { th: 0.78, n: 7, geo: big, out: 0.42 },
+        { th: 1.25, n: 7, geo: big, out: 0.45 },
+        { th: 1.72, n: 7, geo: big, out: 0.45 },
+        { th: 2.2, n: 6, geo: small, out: 0.4 },
       ];
       rows.forEach((row, ri) => {
         for (let k = 0; k < row.n; k++) {

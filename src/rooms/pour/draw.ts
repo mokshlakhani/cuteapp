@@ -506,12 +506,13 @@ export function spout(j: JugShape, x: number, y: number, tilt: number) {
 }
 
 /** Pours `d` from whatever it comes in. */
-export function drawJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha = 1) {
+/** `spent` (0..1): how much of it has gone into the glass, so what's left stands lower when it's set upright. */
+export function drawJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha = 1, spent = 0) {
   if (alpha <= 0.01) return;
-  if (j.kind === 'bottle') drawBottle(ctx, t, j, x, y, tilt, d, alpha);
+  if (j.kind === 'bottle') drawBottle(ctx, t, j, x, y, tilt, d, alpha, spent);
   else if (j.kind === 'carton') drawCarton(ctx, t, j, x, y, tilt, alpha);
-  else if (j.kind === 'pitcher') drawPitcher(ctx, t, j, x, y, tilt, d, alpha);
-  else drawGlassJug(ctx, t, j, x, y, tilt, d, alpha);
+  else if (j.kind === 'pitcher') drawPitcher(ctx, t, j, x, y, tilt, d, alpha, spent);
+  else drawGlassJug(ctx, t, j, x, y, tilt, d, alpha, spent);
 }
 
 /**
@@ -541,7 +542,7 @@ function jugBody(j: JugShape) {
   return p;
 }
 
-function drawGlassJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number) {
+function drawGlassJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number, spent = 0) {
   const day = t.light;
   const a = -tilt * TIP.jug;
   const body = jugBody(j);
@@ -581,7 +582,7 @@ function drawGlassJug(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: n
   ctx.save();
   ctx.clip(body);
   ctx.rotate(-a);
-  const level = surfaceY(j, a, tilt, { x: -W * 0.5, y: -H * 0.02 });
+  const level = surfaceY(j, a, tilt, { x: -W * 0.5, y: -H * 0.02 + spent * H * 0.2 });
   const span = W * 2.5;
   const grad = ctx.createLinearGradient(0, level, 0, level + H);
   grad.addColorStop(0, d.color);
@@ -691,7 +692,7 @@ const BEADS = [
  * looped handle, cloudy-bright lemonade inside with lemon wheels drifting in
  * it, and cold beads of condensation on the outside.
  */
-function drawPitcher(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number) {
+function drawPitcher(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number, spent = 0) {
   const day = t.light;
   const a = -tilt * TIP.pitcher;
   const body = pitcherBody(j);
@@ -731,7 +732,7 @@ function drawPitcher(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: nu
   ctx.save();
   ctx.clip(body);
   ctx.rotate(-a);
-  const level = surfaceY(j, a, tilt, { x: -W * 0.5, y: -H * 0.22 });
+  const level = surfaceY(j, a, tilt, { x: -W * 0.5, y: -H * 0.22 + spent * H * 0.3 });
   const span = W * 3;
   const grad = ctx.createLinearGradient(0, level, 0, level + H);
   grad.addColorStop(0, d.color);
@@ -891,7 +892,7 @@ function bottleBody(j: JugShape) {
 }
 
 /** A glass bottle of cola, green-tinted glass with fluting, the drink dark inside. */
-function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number) {
+function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: number, y: number, tilt: number, d: Drink, alpha: number, spent = 0) {
   const day = t.light;
   const a = -tilt * TIP.bottle;
   const { W, H } = j;
@@ -909,7 +910,7 @@ function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: num
   ctx.save();
   ctx.clip(body);
   ctx.rotate(-a);
-  const level = surfaceY(j, a, tilt, { x: 0, y: -H / 2 + H * 0.3 }, H * 0.3);
+  const level = surfaceY(j, a, tilt, { x: 0, y: -H / 2 + H * (0.3 + spent * 0.3) }, H * 0.3);
   const span = H * 2;
   const grad = ctx.createLinearGradient(0, level, 0, level + H * 0.8);
   grad.addColorStop(0, d.color);
@@ -1266,12 +1267,19 @@ export function drawSteam(ctx: CanvasRenderingContext2D, g: GlassShape, glass: G
   const surf = yAt(g, glass.top);
   ctx.save();
   // The mist on the glass, thickest just over the drink.
-  const mist = ctx.createLinearGradient(0, surf, 0, top - g.H * 0.08);
+  const mist = ctx.createLinearGradient(0, surf, 0, top);
   mist.addColorStop(0, rgba('#fff4e8', 0.34 * fog));
   mist.addColorStop(1, rgba('#fff4e8', 0.12 * fog));
   ctx.fillStyle = mist;
+  // Only on the glass itself: it follows the glass's own sides up to its rim.
+  const lo = halfAt(g, clamp(glass.top, 0, 1));
+  const hi = halfAt(g, 1);
   ctx.beginPath();
-  ctx.roundRect(g.cx - g.wt - g.wall * 0.5, top - g.H * 0.08, (g.wt + g.wall * 0.5) * 2, surf - top + g.H * 0.08, 6);
+  ctx.moveTo(g.cx - lo, surf);
+  ctx.lineTo(g.cx - hi, top);
+  ctx.lineTo(g.cx + hi, top);
+  ctx.lineTo(g.cx + lo, surf);
+  ctx.closePath();
   ctx.fill();
   // Wisps: a few soft puffs rising slowly and swaying, fading as they go.
   for (let i = 0; i < 7; i++) {

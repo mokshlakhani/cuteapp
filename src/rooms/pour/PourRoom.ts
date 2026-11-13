@@ -272,7 +272,10 @@ export class PourRoom implements Scene {
 
   /** Holding on: the jug pours for as long as it's held. */
   private press(who: number | 'key') {
-    if (!this.active || this.holder !== null || this.phase !== 'ready') return;
+    if (!this.active || this.holder !== null) return;
+    // A finger that's early, while the glass slides in, pours as soon as it's there.
+    if (this.phase === 'arrive') this.holder = who;
+    if (this.phase !== 'ready') return;
     this.holder = who;
     this.start();
   }
@@ -421,6 +424,7 @@ export class PourRoom implements Scene {
           this.glass.slosh(0.8);
           this.face.set('happy', 0.8);
           this.syncHints();
+          if (this.holder !== null) this.start();
         }
         break;
       case 'pouring':
@@ -430,8 +434,13 @@ export class PourRoom implements Scene {
         if (this.brimT > OVERFLOW_STOP) this.stop();
         break;
       case 'settling':
-        // Stopped before anything really got in: that's short, too.
-        if (this.phaseT > 1.2 && this.glass.level <= 0.04 && !this.drops.length) this.judge('under');
+        // Stopped before anything really got in: a slip of the finger, not a pour.
+        // The glass is still yours to fill, and the streak stands.
+        if (this.phaseT > 0.6 && this.glass.level <= 0.04 && !this.drops.length) {
+          this.poured = Math.max(0, this.poured - 1);
+          this.setPhase('ready');
+          this.syncHints();
+        }
         break;
       case 'result':
         if (this.phaseT >= (this.glass.verdict === 'perfect' ? SHOW_HIT : SHOW_MISS)) {
@@ -718,7 +727,7 @@ export class PourRoom implements Scene {
     drawImpact(ctx, g, this.glass, this.impactX, this.landing, this.time, this.drink);
     drawStream(ctx, this.drops, this.drink);
     const jug = this.jug;
-    drawJug(ctx, t, this.j, jug.x, jug.y, jug.tilt, this.drink, jug.alpha);
+    drawJug(ctx, t, this.j, jug.x, jug.y, jug.tilt, this.drink, jug.alpha, clamp(this.glass.level, 0, 1));
     this.particles.draw(ctx);
     ctx.restore();
   }

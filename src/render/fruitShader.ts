@@ -151,6 +151,8 @@ vec3 fruitColor(vec3 p) {
     c = mix(c, vec3(0.86, 0.9, 0.66), band(ax, 0.4, 0.43, 0.012) * smoothstep(0.75, 0.4, abs(q.y)) * 0.5);
     float core = 0.27 * (0.72 + 0.28 * cos(5.0 * ang)) * (1.0 - q.y * q.y * 1.4);
     c = mix(c, ${col(F.apple.core)}, 1.0 - smoothstep(core - 0.02, core + 0.02, ax));
+    // The core's papery edge, so the star reads on the pale flesh.
+    c = mix(c, vec3(0.8, 0.7, 0.4), band(ax, core - 0.012, core + 0.014, 0.01) * 0.55);
     float pa = abs(fract(ang / TAU * 5.0) - 0.5);
     float pip = 1.0 - smoothstep(0.7, 1.0, (pa * pa) / 0.01 + (ax - 0.17) * (ax - 0.17) / 0.004 + q.y * q.y / 0.05);
     c = mix(c, ${col(F.apple.seed)}, pip);
@@ -187,8 +189,10 @@ vec3 fruitColor(vec3 p) {
     vec3 skin = mix(vec3(1.0, 0.72, 0.36), ${col(F.peach.skin)}, smoothstep(-0.5, 0.6, q.y + sin(ang * 2.0) * 0.25));
     skin = mix(skin, skin * 0.85, specks(q, 40.0, 0.012) * 0.5);
     // Its crease, running down one side from the stem.
-    float side = abs(atan(q.z, q.x)) * length(q.xz);
-    float crease = exp(-side * side / 0.0025) * smoothstep(-0.75, -0.1, q.y);
+    // (Round to the front right, beside its face, where it can be seen.)
+    float ca = atan(q.z, q.x) - 0.62;
+    float side = abs(ca - TAU * floor(ca / TAU + 0.5)) * length(q.xz);
+    float crease = exp(-side * side / 0.004) * smoothstep(-0.8, -0.2, q.y);
     bumpH = -crease * 0.05;
     skin = mix(skin, ${col(F.peach.skin)} * 0.78, crease * 0.6);
     return mix(c, skin, smoothstep(0.96, 0.975, r));
@@ -198,13 +202,18 @@ vec3 fruitColor(vec3 p) {
     vec3 c = ${col(F.dragonfruit.flesh)};
     c = mix(c, ${col(F.dragonfruit.seed)}, specks(q, 16.0, 0.012) * (1.0 - smoothstep(0.84, 0.87, r)));
     c = mix(c, ${col(F.dragonfruit.rim)}, smoothstep(0.87, 0.9, r));
-    float row = q.y * 2.6;
-    float u = ang / TAU * 7.0 + 0.5 * mod(floor(row), 2.0);
+    // Scales painted on the skin: broad leaves in staggered rows, each coming
+    // to a point at the top, darker in the fold beneath it and green at its tip.
+    float row = q.y * 2.3 + 0.2;
+    float u = ang / TAU * 6.0 + 0.5 * mod(floor(row), 2.0);
     vec2 cell = vec2(fract(u) - 0.5, fract(row));
-    float leaf = abs(cell.x) * 2.0 / max(0.05, 1.0 - cell.y * 0.9);
-    float flap = (1.0 - smoothstep(0.75, 0.95, leaf)) * smoothstep(0.05, 0.25, cell.y);
-    bumpH = flap * 0.02;
-    vec3 skin = mix(${col(F.dragonfruit.skin)}, ${col(F.dragonfruit.rim)}, flap * 0.3);
+    float wide = 0.5 * pow(max(0.0, 1.0 - cell.y), 0.75);
+    float flap = (1.0 - smoothstep(wide - 0.07, wide, abs(cell.x))) * smoothstep(0.0, 0.07, cell.y);
+    float tip = flap * smoothstep(0.5, 0.92, cell.y);
+    bumpH = flap * (0.008 + 0.03 * cell.y);
+    vec3 skin = mix(${col(F.dragonfruit.skin)} * 0.8, ${col(F.dragonfruit.skin)}, flap);
+    skin = mix(skin, ${col(F.dragonfruit.rim)}, flap * cell.y * 0.35);
+    skin = mix(skin, vec3(0.62, 0.8, 0.36), tip * 0.9);
     return mix(c, skin, smoothstep(0.935, 0.95, r));
   }
   // Cantaloupe: a netted skin, a pale green rind, orange flesh, a seed hollow in the middle.

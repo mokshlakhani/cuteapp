@@ -418,6 +418,26 @@ export class Explosion {
       const piece = this.addPiece(body, mesh);
       if (i < FACES && hasDom) this.addFace(piece, r);
     }
+    // A peach has one big stone in the middle: it tumbles out with the rest.
+    if (F.id === 'peach') {
+      const r = 0.4;
+      const pit = new THREE.Mesh(pick(this.shapes().lumps), this.seedMat);
+      pit.scale.set(r * 0.85, r * 1.2, r * 0.7);
+      pit.castShadow = true;
+      const c = local(split(0), rand(0, TAU), 0.1);
+      const body = this.debris.add({
+        kind: 'chunk',
+        pos: c.clone().applyMatrix4(M),
+        vel: away(c, rand(4, 8), rand(8, 13)),
+        q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(0, TAU), rand(0, TAU), rand(0, TAU))),
+        w: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).multiplyScalar(rand(6, 12)),
+        rest: r * 0.6,
+        bounce: 0.45,
+        size: r,
+        grip: 3,
+      });
+      this.addPiece(body, pit);
+    }
 
     // ——— juice, a burst of mist, seeds and pulp ———
     const drops = Math.min(MAX_DROPS - 40, Math.round(randInt(170, 230) * mess * F.juice.amount));
@@ -596,7 +616,7 @@ export class Explosion {
         mesh = unit(pick(pool.lumps), mat);
         if (r > 0.25) {
           const kind = F.seeds.kind;
-          if (kind === 'tiny') seed(randInt(6, 12), 0.92, 0.06);
+          if (kind === 'tiny') seed(randInt(12, 20), 0.95, 0.03);
           else if (kind === 'teardrop' || kind === 'flat') seed(randInt(1, 3), 0.78, 0.1);
         }
         return mesh;
@@ -717,7 +737,8 @@ export class Explosion {
     if (this.ring) {
       this.ring.visible = this.bangT < 1;
       this.ring.position.set(this.bangAt.x, 0.01, this.bangAt.z);
-      this.ring.scale.setScalar(MELON_R * (1 + k * 6));
+      // It runs out to the rug's edge and no further: past it there's no table to run across.
+      this.ring.scale.setScalar(MELON_R * (1 + k * 2.3));
       (this.ring.material as THREE.MeshBasicMaterial).opacity = Math.pow(1 - this.bangT, 1.4) * 0.8;
     }
   }
