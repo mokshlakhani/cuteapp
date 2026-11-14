@@ -31,6 +31,8 @@ const DECIDE = 0.1;
 const LEAP = 1.6;
 /** How quickly the fruit catches up with the finger: taken out of touch's unevenness. */
 const FOLLOW = 26;
+/** How long the fruit turns to you, sad, after a snap (s). */
+const SAD = 1.5;
 /** A soft scrape, and a tick, every so far round. */
 const SCRAPE = 0.55;
 const TICK = 0.9;
@@ -70,6 +72,8 @@ export class PeelRoom implements Scene {
   private lean = 0;
   /** Turned by the finger, not yet taken up by the fruit. */
   private turned = 0;
+  /** Seconds left of the sad beat after a snap. */
+  private sadT = 0;
   private scraped = 0;
   private ticked = 0;
   private started = false;
@@ -192,6 +196,7 @@ export class PeelRoom implements Scene {
     this.phase = 'intro';
     this.phaseT = 0;
     this.scraped = this.ticked = this.turned = 0;
+    this.sadT = 0;
     this.tagName.textContent = this.fruit.name;
     this.tag.classList.remove('is-leaving');
     this.ring.classList.remove('is-tight', 'is-done', 'is-back');
@@ -329,6 +334,18 @@ export class PeelRoom implements Scene {
 
   private stepPeel(dt: number) {
     const { s, peeler } = this;
+    // Just snapped: the fruit turns round to you, sad about it, and the peel
+    // waits for that beat (nothing strains, nothing's lost) before it goes on.
+    if (this.sadT > 0) {
+      this.sadT -= dt;
+      this.turned = 0;
+      s.faceForward(dt);
+      peeler.step(0, dt, false);
+      this.showMeter();
+      s.tight = 0;
+      return;
+    }
+    s.settleBack(dt);
     // The fruit follows smoothly, so uneven touches still make an even turn.
     const turned = this.turned * (1 - Math.exp(-dt * FOLLOW));
     this.turned -= turned;
@@ -353,12 +370,19 @@ export class PeelRoom implements Scene {
         haptics.play('tick');
       }
     }
-    if (peeler.tension > 0.55) s.face.set('strain', 0.2);
-    else if (peeler.tension > 0.2) s.face.set('nervous', 0.2);
+    // (Not over a sad face: it gets to be sad until it's done.)
+    const sad = s.face.expression === 'sad';
+    if (peeler.tension > 0.55 && !sad) s.face.set('strain', 0.2);
+    else if (peeler.tension > 0.2 && !sad) s.face.set('nervous', 0.2);
     if (res === 'tore') {
       s.tear();
-      s.face.set('surprised', 0.9);
+      // It's sad about that, for a moment: a downturned mouth, a tear, and a soft "aww".
+      s.face.set('sad', 2.2);
       material.peelSnap(0.3);
+      material.aww(0);
+      // And it sags a little, so it shows whichever way the fruit is facing.
+      s.squash.impulse(3.5);
+      this.sadT = SAD;
       haptics.play('snap');
       this.plus.show('snap!', s.cutAt);
       this.ring.classList.remove('is-tight');

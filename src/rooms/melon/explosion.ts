@@ -787,16 +787,18 @@ export class Explosion {
     const fade = this.clearT >= 0 ? clamp(1 - this.clearT * 1.1, 0, 1) : 1;
     const color = new THREE.Color();
     this.splats.forEach((s, i) => {
-      // Puddles spread out quickly, then creep a little further.
-      const grow = s.t <= 0 ? 0 : 1 - Math.pow(1 - clamp(s.t / 0.2, 0, 1), 3) + Math.min(0.12, s.t * 0.02);
+      // Puddles spread out quickly on impact, then slowly creep and soak into the surface.
+      const soak = s.t <= 0 ? 0 : clamp((s.t - 0.3) / 2.2, 0, 1);
+      const grow = s.t <= 0 ? 0 : 1 - Math.pow(1 - clamp(s.t / 0.22, 0, 1), 3) + soak * 0.2;
       const k = Math.max(0.0001, s.r * grow * fade);
       tmpS.set(k * s.stretch, 1, k / Math.sqrt(s.stretch));
       tmpV.set(s.x, 0.004 + (i % 9) * 0.0005, s.z);
       tmpQ.setFromAxisAngle(UP, -s.ang);
       tmpM.compose(tmpV, tmpQ, tmpS);
       this.splatMesh.setMatrixAt(i, tmpM);
-      // Puddles in the juice's colour, each a slightly different strength.
-      this.splatMesh.setColorAt(i, color.copy(this.juice).lerp(WHITE, 0.18 + s.tint * 0.2));
+      // Fresh puddles gleam with a bright wet highlight, then deepen as they soak in.
+      const wetLift = (0.38 - soak * 0.24) + s.tint * 0.16;
+      this.splatMesh.setColorAt(i, color.copy(this.juice).lerp(WHITE, wetLift));
     });
     this.splatMesh.count = this.splats.length;
     this.splatMesh.instanceMatrix.needsUpdate = true;
@@ -965,15 +967,21 @@ export function* fractureSteps(shape: MelonShape, g: number, fruit: PopFruit = P
     const x = near ? clamp(g + (Math.random() + Math.random() + Math.random() - 1.5) * 0.45, -0.97, 0.97) : rand(-0.97, 0.97);
     sites.push({ x, p: rand(0, TAU) });
   }
-  // The grid nodes, nudged so the cracks wander.
+  // The grid nodes, nudged with organic low-frequency wander so tears curve softly instead of pleating like paper.
   const nodeX = new Float32Array((GX + 1) * GY);
   const nodeP = new Float32Array((GX + 1) * GY);
+  const ph1 = rand(0, TAU);
+  const ph2 = rand(0, TAU);
   for (let i = 0; i <= GX; i++) {
     for (let j = 0; j < GY; j++) {
       const k = i * GY + j;
       const inner = i > 0 && i < GX;
-      nodeX[k] = -1 + (2 * (i + (inner ? rand(-0.38, 0.38) : 0))) / GX;
-      nodeP[k] = (TAU * (j + rand(-0.38, 0.38))) / GY;
+      const u = i / GX;
+      const v = (TAU * j) / GY;
+      const waveX = Math.sin(v * 3 + u * 9 + ph1) * 0.26 + Math.cos(v * 5 - u * 7 + ph2) * 0.14;
+      const waveP = Math.sin(u * 11 + v * 2 + ph2) * 0.26 + Math.cos(u * 7 + v * 4 + ph1) * 0.14;
+      nodeX[k] = -1 + (2 * (i + (inner ? waveX + rand(-0.16, 0.16) : 0))) / GX;
+      nodeP[k] = (TAU * (j + waveP + rand(-0.16, 0.16))) / GY;
     }
   }
   const node = (i: number, j: number) => i * GY + (((j % GY) + GY) % GY);
@@ -1027,8 +1035,10 @@ export function* fractureSteps(shape: MelonShape, g: number, fruit: PopFruit = P
     const outerIdx = new Map<number, number>();
     const innerIdx = new Map<number, number>();
     const vert = (k: number, inset: number, c: THREE.Color) => {
-      const xn = clamp(nodeX[k], -0.999, 0.999);
-      const phi = nodeP[k];
+      // Soft irregular bevel through the rind depth so torn edges look organically ripped, not folded paper.
+      const tearSlope = inset > 0 && inset < thick ? (hash(k * 3.17) - 0.35) * inset * 0.08 : 0;
+      const xn = clamp(nodeX[k] + tearSlope * 0.65, -0.999, 0.999);
+      const phi = nodeP[k] + tearSlope;
       const r = shape.surfaceAt(xn) * (1 - inset);
       const sx = Math.sqrt(Math.max(0, 1 - xn * xn));
       pos.push(xn * L, Math.cos(phi) * r, Math.sin(phi) * r);
@@ -1302,7 +1312,7 @@ export function noodleGeometry(r: number) {
 
 // ——— textures ———
 
-/** A juice puddle: deeper at the rim where it dries, a glossy light in it. */
+/** A juice puddle: deeper at the rim where it dries, a glossy wet highlight in it. */
 function splatTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -1311,18 +1321,31 @@ function splatTexture() {
   const R = m / 1.8; // radius 1 of the blob
   const grad = g.createRadialGradient(m, m, 0, m, m, R * 1.7);
   // Neutral tones: each puddle is tinted with its juice's colour.
-  grad.addColorStop(0, 'rgba(255,255,255,0.72)');
-  grad.addColorStop(0.42, 'rgba(238,238,238,0.8)');
-  grad.addColorStop(0.58, 'rgba(206,206,206,0.92)');
-  grad.addColorStop(0.62, 'rgba(228,228,228,0.85)');
-  grad.addColorStop(1, 'rgba(228,228,228,0.85)');
+  grad.addColorStop(0, 'rgba(248,248,248,0.78)');
+  grad.addColorStop(0.42, 'rgba(232,232,232,0.84)');
+  grad.addColorStop(0.56, 'rgba(192,192,192,0.95)');
+  grad.addColorStop(0.64, 'rgba(224,224,224,0.86)');
+  grad.addColorStop(1, 'rgba(224,224,224,0.84)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
-  const hi = g.createRadialGradient(m - R * 0.3, m - R * 0.35, 0, m - R * 0.3, m - R * 0.35, R * 0.5);
-  hi.addColorStop(0, 'rgba(255,255,255,0.45)');
+  // Soft wet dome sheen + crisp specular highlight crescent and pin dot.
+  const hi = g.createRadialGradient(m - R * 0.28, m - R * 0.34, 0, m - R * 0.28, m - R * 0.34, R * 0.56);
+  hi.addColorStop(0, 'rgba(255,255,255,0.78)');
+  hi.addColorStop(0.5, 'rgba(255,255,255,0.35)');
   hi.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = hi;
   g.fillRect(0, 0, 128, 128);
+  g.save();
+  g.translate(m - R * 0.34, m - R * 0.38);
+  g.rotate(-0.62);
+  g.fillStyle = 'rgba(255,255,255,0.96)';
+  g.beginPath();
+  g.ellipse(0, 0, R * 0.28, R * 0.12, 0, 0, TAU);
+  g.fill();
+  g.beginPath();
+  g.arc(R * 0.38, R * 0.06, R * 0.075, 0, TAU);
+  g.fill();
+  g.restore();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;

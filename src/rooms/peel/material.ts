@@ -24,6 +24,7 @@ uniform float uStrip;
 uniform float uSpin;
 varying vec3 vRest;
 float peeled = 0.0;
+float stripEdge = 0.0;
 ${FRUIT_GLSL}
 // Has band k of the spiral, at this turn f (0..1) round, come off yet?
 // The crown over its first band and the base under its last go along with them.
@@ -45,6 +46,13 @@ float peelMask() {
 const FRAG_COLOR = /* glsl */ `
 #include <color_fragment>
 peeled = uStrip > 0.5 ? (gl_FrontFacing ? 0.0 : 1.0) : peelMask();
+if (uStrip > 0.5) {
+  float thE = acos(clamp(vRest.y / uRad.y, -1.0, 1.0));
+  float phE = atan(vRest.z / uRad.z, vRest.x / uRad.x);
+  float aE = (thE - ${SPIRAL.from.toFixed(5)}) / ${(SPIRAL.to - SPIRAL.from).toFixed(5)} * uTurns;
+  float fE = fract(uSpin * (phE - ${START_LON.toFixed(5)}) / TAU);
+  stripEdge = smoothstep(0.52, 0.98, abs(fract(aE - fE + 0.5) - 0.5) * 2.0);
+}
 vec3 sc = vec3(1.0);
 if (peeled < 0.995) sc = fruitColor(vRest);
 float skinBump = bumpH;
@@ -53,6 +61,11 @@ if (peeled > 0.005) {
   // Ripe: richer and a little brighter than the slice's cut faces.
   if (uStrip < 0.5) inside = clamp(mix(vec3(dot(inside, vec3(0.3, 0.55, 0.15))), inside, 1.42) * uRipe, 0.0, 1.0);
   sc = mix(sc, inside, peeled);
+}
+if (uStrip > 0.5) {
+  // Thin cut edges of the peel ribbon transmit warm pith light.
+  vec3 edgeGlow = mix(sc, vec3(1.0, 0.97, 0.88), 0.55);
+  sc = mix(sc, edgeGlow, stripEdge * 0.42);
 }
 // A soft lit step where skin ends and flesh begins, and a flesh dimpled with juice.
 float dimple = sin(vRest.x * 43.0 + sin(vRest.z * 19.0)) * sin(vRest.y * 47.0 + sin(vRest.x * 17.0)) * sin(vRest.z * 41.0 + sin(vRest.y * 23.0));
@@ -91,7 +104,7 @@ ${FRUIT_BUMP}
 
 const FRAG_EMISSIVE = /* glsl */ `
 #include <emissivemap_fragment>
-totalEmissiveRadiance += diffuseColor.rgb * max(peeled * 0.08, uStrip * 0.12);
+totalEmissiveRadiance += diffuseColor.rgb * max(peeled * 0.08, uStrip * (0.12 + stripEdge * 0.18));
 `;
 
 /** Where the flesh is seen from, and the peel's pale inside, as shares of the way in. */
@@ -122,7 +135,7 @@ export function makePeelMaterial(strip: boolean, shared?: Record<string, THREE.I
   const uniforms: Record<string, THREE.IUniform> = shared
     ? { ...shared, uStrip: { value: strip ? 1 : 0 } }
     : { ...fruitUniforms(), uFace: { value: emptyTex }, uFaceOn: { value: 1 }, uS: { value: 0 }, uTurns: { value: 4 }, uDepth: { value: 0.8 }, uPith: { value: 0.9 }, uRipe: { value: new THREE.Vector3(1, 1, 1) }, uSpin: { value: 1 }, uStrip: { value: strip ? 1 : 0 } };
-  const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 0.4, clearcoatRoughness: 0.2, envMapIntensity: 0.75, side: strip ? THREE.DoubleSide : THREE.FrontSide });
+  const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0, clearcoat: 0.4, clearcoatRoughness: 0.2, envMapIntensity: 0.75, sheen: 0.1, sheenRoughness: 0.55, sheenColor: new THREE.Color('#fff1e0'), side: strip ? THREE.DoubleSide : THREE.FrontSide });
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
@@ -136,7 +149,7 @@ export function makePeelMaterial(strip: boolean, shared?: Record<string, THREE.I
       .replace('#include <lights_physical_fragment>', FRAG_WET)
       .replace('#include <emissivemap_fragment>', FRAG_EMISSIVE);
   };
-  mat.customProgramCacheKey = () => `soft-peel-v5-${strip ? 'strip' : 'body'}`;
+  mat.customProgramCacheKey = () => `soft-peel-v7-${strip ? 'strip' : 'body'}`;
   return { mat, uniforms };
 }
 
@@ -149,4 +162,6 @@ export function dressPeel(mat: THREE.MeshPhysicalMaterial, u: Record<string, THR
   u.uS.value = 0;
   mat.roughness = 0.78 - fruit.shine * 0.46;
   mat.clearcoat = 0.05 + fruit.shine * 0.7;
+  // Velvet and fuzz: a soft sheen at grazing angles on the matte fruits (a peach, a kiwi), next to none on the glossy ones.
+  mat.sheen = 0.06 + (1 - fruit.shine) * 0.6;
 }

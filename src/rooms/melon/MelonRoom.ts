@@ -27,8 +27,8 @@ interface Swipe {
   lastTick: number;
 }
 
-/** Seconds the melon strains before it gives way. */
-const CRITICAL = 0.8;
+/** Seconds the melon strains before it gives way (a full second for cracks to creep outward). */
+const CRITICAL = 1.0;
 /** The burst's slow motion: a long held breath, then time eases back in. */
 const SLOWMO = { scale: 0.1, hold: 0.5, back: 1.0 };
 
@@ -316,7 +316,8 @@ export class MelonRoom implements Scene {
         const T = m.tension;
         m.face.base = T < 0.3 ? 'calm' : T < 0.62 ? 'wide' : T < 0.86 ? 'nervous' : 'strain';
         m.shiver = n >= SUSPENSE_FROM ? 0.45 + 0.15 * Math.sin(this.phaseT * 1.3) : smoothstep(14, SUSPENSE_FROM, n) * 0.25;
-        s.crack = 0;
+        // Faint stress split begins to show once past suspense threshold.
+        s.crack = n >= SUSPENSE_FROM ? smoothstep(SUSPENSE_FROM, SUSPENSE_FROM + 10, n) * 0.16 : 0;
         if (n >= SUSPENSE_FROM) {
           // A slow, soft pulse like breathing, and now and then a quiet creak.
           this.beatT -= realDt;
@@ -342,9 +343,9 @@ export class MelonRoom implements Scene {
       case 'critical': {
         // The last breath: the waist crushes in, the lobes swell, it trembles.
         const k = clamp(this.phaseT / CRITICAL, 0, 1);
-        m.crush = 0.12 * ease.inCubic(k);
-        // The rind cracks open round the split.
-        s.crack = 0.25 + 0.75 * ease.outCubic(k);
+        m.crush = 0.14 * ease.inCubic(k);
+        // The rind cracks open round the split and creeps steadily outward over the last second.
+        s.crack = 0.18 + 0.82 * Math.pow(k, 0.78);
         m.swell.target = 0.05 + 0.06 * k;
         m.shiver = 1.4 + this.phaseT * 7;
         if (this.phaseT > 0.15 && this.phaseT - realDt <= 0.15) haptics.play('tick');

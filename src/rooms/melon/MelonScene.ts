@@ -252,13 +252,14 @@ export class MelonScene {
     let m = this.bandMats.get(color);
     if (!m) {
       const c = new THREE.Color(color);
+      // Matte natural rubber look: high roughness, soft diffuse sheen.
       m = new THREE.MeshStandardMaterial({
         color: c,
-        roughness: 0.45,
+        roughness: 0.82,
         metalness: 0,
         emissive: c,
-        emissiveIntensity: 0.12,
-        envMapIntensity: 0.6,
+        emissiveIntensity: 0.06,
+        envMapIntensity: 0.25,
       });
       this.bandMats.set(color, m);
     }
@@ -450,6 +451,9 @@ export class MelonScene {
     this.root.rotation.x = s.sway.value * 0.035;
     this.stem.position.set(L * 0.99, 0, 0);
     this.tail.position.set(-L * 0.99, 0, 0);
+    // Squash the face harder at the waist as the middle pinches in.
+    const waistPinch = clamp(1 - this.surfaceAt(s.grooveX) / MELON_R, 0, 0.55);
+    this.uniforms.uShape.value.set(MELON_A * this.shape.aspect * (1 + waistPinch * 0.38), MELON_R * (1 - waistPinch * 0.18));
     this.uniforms.uCrack.value = this.crack;
     if (this.crack > 0) {
       // Either side of the band pile, on the straining bulge.

@@ -80,17 +80,43 @@ export function paintPopped(g: CanvasRenderingContext2D, R: number, index: numbe
   smooth(shape, xs, ys);
   g.fillStyle = pal.fill;
   g.fill(shape);
-  g.strokeStyle = pal.rim;
-  g.lineWidth = Math.max(1, R * 0.045);
-  g.stroke(shape);
 
-  // ——— creases, kept inside the plastic ———
+  // ——— plastic film sheen & creases, kept inside the dimple ———
   g.save();
   g.clip(shape);
+  // Keep translucent plastic sheen in the crumpled basin so it never reads as flat grey paper.
+  const basin = g.createRadialGradient(-R * 0.28, -R * 0.32, R * 0.04, 0, 0, R * 1.05);
+  basin.addColorStop(0, rgba('#ffffff', 0.46));
+  basin.addColorStop(0.45, rgba(pal.tint, 0.34));
+  basin.addColorStop(0.82, shadow(0.06));
+  basin.addColorStop(1, rgba('#ffffff', 0.28));
+  g.fillStyle = basin;
+  g.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
+
+  // Diagonal glossy film reflection band across the crumpled plastic.
+  const streak = g.createLinearGradient(-R * 0.85, -R * 0.75, R * 0.75, R * 0.85);
+  streak.addColorStop(0, rgba('#ffffff', 0));
+  streak.addColorStop(0.32, rgba('#ffffff', 0.32));
+  streak.addColorStop(0.48, rgba('#ffffff', 0.04));
+  streak.addColorStop(0.72, rgba('#ffffff', 0.18));
+  streak.addColorStop(1, rgba('#ffffff', 0));
+  g.fillStyle = streak;
+  g.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
+
   g.lineCap = 'round';
   g.lineJoin = 'round';
   for (const c of look.creases) creases(g, GENTLE_CREASE[c] ?? c, R, rnd, shadow);
+
+  // Small glossy plastic glint on the upper-left crumpled rim.
+  g.fillStyle = rgba('#ffffff', 0.48);
+  g.beginPath();
+  g.ellipse(-R * 0.34, -R * 0.36, R * 0.19, R * 0.09, -0.68, 0, TAU);
+  g.fill();
   g.restore();
+
+  g.strokeStyle = pal.rim;
+  g.lineWidth = Math.max(1, R * 0.048);
+  g.stroke(shape);
 
   extra(g, GENTLE_EXTRA[look.extra] ?? look.extra, R, rnd, shadow, pal, shape);
   restingFace(g, R, rnd, pal);
@@ -189,20 +215,20 @@ function smooth(p: Path2D, xs: number[], ys: number[]) {
 
 // ——— creases ———
 
-/** A fold in plastic: a soft dark side and a bright edge. */
+/** A fold in plastic: a soft dark side and a bright specular ridge edge. */
 function crease(g: CanvasRenderingContext2D, path: () => void, R: number, w: number, shadow: (a: number) => string) {
   g.save();
   g.translate(R * 0.03, R * 0.04);
   g.beginPath();
   path();
-  g.strokeStyle = shadow(0.09);
-  g.lineWidth = R * 0.06 * w;
+  g.strokeStyle = shadow(0.1);
+  g.lineWidth = R * 0.062 * w;
   g.stroke();
   g.restore();
   g.beginPath();
   path();
-  g.strokeStyle = rgba('#ffffff', 0.38);
-  g.lineWidth = R * 0.045 * w;
+  g.strokeStyle = rgba('#ffffff', 0.56);
+  g.lineWidth = R * 0.048 * w;
   g.stroke();
 }
 

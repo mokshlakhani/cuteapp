@@ -28,6 +28,9 @@ uniform vec3 uRad;
 uniform vec2 uOutline;
 // Height of the skin's relief here (scene units), for the lighting.
 float bumpH = 0.0;
+// Grazing-angle fuzz/velvet sheen intensity and tint on the skin.
+float skinSheen = 0.0;
+vec3 skinSheenCol = vec3(1.0);
 
 vec3 hash3(vec3 p) {
   p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));
@@ -96,9 +99,20 @@ vec3 citrus(vec3 q, float r, vec3 peel, vec3 pith, vec3 flesh, vec3 membrane, fl
   }
   c = mix(c, pith, smoothstep(0.875, 0.895, r));
   // The peel: oil-gland pores, each a tiny dip that catches the light.
-  float pore = specks(q, 20.0, 0.03);
-  bumpH = -pore * 0.004;
-  vec3 pc = peel * (0.98 - 0.04 * pore);
+  float pore = specks(q, 22.0, 0.032) + 0.45 * specks(q, 38.0, 0.018);
+  bumpH = -pore * 0.0085;
+  vec3 pc = peel * (0.98 - 0.07 * pore);
+  // Navel dimple at the bottom pole of oranges.
+  if (pips < 0.5) {
+    float navR = length(q.xz);
+    float navY = smoothstep(-0.80, -0.96, q.y);
+    float navDimple = (1.0 - smoothstep(0.06, 0.19, navR)) * navY;
+    float navRing = band(navR, 0.11, 0.18, 0.035) * navY;
+    float navCrease = (sin(ang * 7.0) * 0.5 + 0.5) * navDimple;
+    bumpH += (navRing * 0.018 - navDimple * 0.038);
+    pc = mix(pc, peel * 0.72, navDimple * (0.55 + 0.35 * navCrease));
+    pc = mix(pc, pith * 0.92, (1.0 - smoothstep(0.0, 0.055, navR)) * navY * 0.65);
+  }
   c = mix(c, pc, smoothstep(0.935, 0.95, r));
   return c;
 }
@@ -123,14 +137,20 @@ vec4 melonSeeds(vec3 q, float r, float ring, float salt) {
 }
 
 vec3 fruitColor(vec3 p) {
+  bumpH = 0.0;
+  skinSheen = 0.0;
   vec3 q = p / uRad;
   float r = shellR(q);
   float ax = coreR(q);
   float ang = atan(q.z, q.x);
   int f = int(uFruit + 0.5);
   if (f == 0) {
-    // Watermelon: dark stripes running pole to pole, a pale rind, red flesh, seeds in rings.
+    // Watermelon: dark stripes running pole to pole, a pale rind, red flesh with a paler fibrous heart, seeds in rings.
     vec3 c = mix(${col(W.flesh)}, ${col(W.fleshLight)}, smoothstep(0.55, 0.86, r) * 0.6);
+    // Paler rose heart at the center and radial vascular fibres.
+    float heart = (1.0 - smoothstep(0.0, 0.36, r)) * 0.38;
+    float fibre = (sin(ang * 32.0 + sin(r * 22.0 + q.y * 8.0) * 1.5) * 0.5 + 0.5) * band(r, 0.12, 0.78, 0.08);
+    c = mix(c, ${col(W.fleshLight)}, heart + fibre * 0.16);
     c *= 1.0 + 0.05 * sin(q.x * 31.0 + sin(q.z * 23.0)) * sin(q.z * 29.0 + q.y * 9.0);
     vec4 seed = melonSeeds(q, r, 0.64, 0.0);
     c = mix(c, seed.rgb, seed.a);
@@ -146,13 +166,13 @@ vec3 fruitColor(vec3 p) {
   if (f == 1) return citrus(q, r, ${col(F.orange.peel)}, ${col(F.orange.pith)}, ${col(F.orange.flesh)}, ${col(F.orange.membrane)}, 11.0, 0.0);
   if (f == 6) return citrus(q, r, ${col(F.lemon.peel)}, ${col(F.lemon.pith)}, ${col(F.lemon.flesh)}, ${col(F.lemon.membrane)}, 9.0, 1.0);
   if (f == 2) {
-    // Apple: creamy flesh, a faint ring of veins, a five-point core star with brown pips.
+    // Apple: creamy flesh, a distinct ring of veins, a five-point core star with brown pips.
     vec3 c = mix(${col(F.apple.flesh)}, vec3(0.97, 0.98, 0.84), smoothstep(0.5, 0.95, r) * 0.4);
-    c = mix(c, vec3(0.86, 0.9, 0.66), band(ax, 0.4, 0.43, 0.012) * smoothstep(0.75, 0.4, abs(q.y)) * 0.5);
-    float core = 0.27 * (0.72 + 0.28 * cos(5.0 * ang)) * (1.0 - q.y * q.y * 1.4);
-    c = mix(c, ${col(F.apple.core)}, 1.0 - smoothstep(core - 0.02, core + 0.02, ax));
-    // The core's papery edge, so the star reads on the pale flesh.
-    c = mix(c, vec3(0.8, 0.7, 0.4), band(ax, core - 0.012, core + 0.014, 0.01) * 0.55);
+    c = mix(c, vec3(0.80, 0.85, 0.56), band(ax, 0.39, 0.435, 0.014) * smoothstep(0.82, 0.35, abs(q.y)) * 0.72);
+    float core = 0.28 * (0.70 + 0.30 * cos(5.0 * ang)) * (1.0 - q.y * q.y * 1.3);
+    c = mix(c, ${col(F.apple.core)}, 1.0 - smoothstep(core - 0.022, core + 0.022, ax));
+    // The core's papery edge, so the star reads on off-centre cuts too.
+    c = mix(c, vec3(0.74, 0.62, 0.32), band(ax, core - 0.015, core + 0.016, 0.011) * 0.75);
     float pa = abs(fract(ang / TAU * 5.0) - 0.5);
     float pip = 1.0 - smoothstep(0.7, 1.0, (pa * pa) / 0.01 + (ax - 0.17) * (ax - 0.17) / 0.004 + q.y * q.y / 0.05);
     c = mix(c, ${col(F.apple.seed)}, pip);
@@ -165,7 +185,7 @@ vec3 fruitColor(vec3 p) {
     return mix(c, skin, smoothstep(0.955, 0.97, r));
   }
   if (f == 3) {
-    // Kiwi: green flesh with pale rays, a ring of black seeds round a creamy core, fuzzy brown skin.
+    // Kiwi: green flesh with pale rays, a ring of black seeds round a creamy core, warm fuzzy brown skin.
     vec3 c = mix(${col(F.kiwi.flesh)}, mix(${col(F.kiwi.flesh)}, vec3(1.0), 0.35), smoothstep(0.55, 0.22, ax));
     c = mix(c, mix(c, vec3(1.0), 0.25), (sin(ang * 26.0) * 0.5 + 0.5) * band(ax, 0.28, 0.85, 0.05) * 0.5);
     float cr = 0.22 * (1.0 - 0.5 * q.y * q.y);
@@ -173,63 +193,94 @@ vec3 fruitColor(vec3 p) {
     float sm = (1.0 - smoothstep(0.1, 0.22, seedA)) * band(ax, cr + 0.12, cr + 0.21, 0.02);
     c = mix(c, ${col(F.kiwi.seed)}, sm);
     c = mix(c, ${col(F.kiwi.core)}, 1.0 - smoothstep(cr - 0.03, cr + 0.02, ax));
-    // Fine brown fuzz: soft mottling, the faintest relief.
-    float fuzz = specks(q, 46.0, 0.012);
-    bumpH = fuzz * 0.0015;
-    vec3 skin = ${col('#7A5534')} * (0.95 + 0.12 * specks(q, 18.0, 0.04) - 0.06 * fuzz);
-    return mix(c, skin, smoothstep(0.95, 0.965, r));
+    // Warm lighter-brown fuzzy skin with short hair-like relief and grazing-angle fuzz sheen.
+    float fuzz = specks(q, 52.0, 0.013) + 0.5 * specks(q * vec3(1.2, 2.2, 1.2), 38.0, 0.016);
+    float skinMask = smoothstep(0.95, 0.965, r);
+    bumpH = fuzz * 0.0045 * skinMask;
+    skinSheen = skinMask * (0.72 + 0.28 * fuzz);
+    skinSheenCol = vec3(0.92, 0.80, 0.58);
+    vec3 skin = ${col('#9A7348')} * (0.96 + 0.14 * specks(q, 18.0, 0.04) - 0.05 * fuzz);
+    return mix(c, skin, skinMask);
   }
   if (f == 4) {
-    // Peach: sunny flesh, blushing red toward a ridged pit; skin blushes toward its top.
+    // Peach: sunny yellow-gold flesh, blushing red toward a ridged pit; velvet skin with a deep anatomical crease.
     float pr = length(q * vec3(1.0, 0.85, 1.12));
     vec3 c = mix(${col(F.peach.flesh)}, ${col(F.peach.blush)}, smoothstep(0.62, 0.36, pr) * 0.7);
     c = mix(c, ${col(F.peach.blush)} * 0.9, smoothstep(0.5, 0.36, pr) * (sin(ang * 9.0 + q.y * 7.0) * 0.5 + 0.5) * 0.4);
     float ridge = sin(ang * 14.0 + pr * 30.0 + q.y * 6.0) * 0.5 + 0.5;
     c = mix(c, mix(${col(F.peach.pit)}, ${col(F.peach.pit)} * 0.72, ridge), 1.0 - smoothstep(0.33, 0.35, pr));
-    vec3 skin = mix(vec3(1.0, 0.72, 0.36), ${col(F.peach.skin)}, smoothstep(-0.5, 0.6, q.y + sin(ang * 2.0) * 0.25));
-    skin = mix(skin, skin * 0.85, specks(q, 40.0, 0.012) * 0.5);
-    // Its crease, running down one side from the stem.
-    // (Round to the front right, beside its face, where it can be seen.)
+    // Soft, gradual blush gradient from golden-yellow belly to rosy cheek.
+    float blushT = smoothstep(-0.72, 0.78, q.y + sin(ang * 2.0) * 0.28 + cos(ang * 3.0 - 0.5) * 0.14);
+    vec3 skin = mix(vec3(1.0, 0.78, 0.38), ${col(F.peach.skin)}, blushT);
+    float velvet = specks(q, 48.0, 0.011);
+    skin = mix(skin, skin * 0.88, velvet * 0.4);
+    // Deep, sculpted suture crease running down one side from the stem.
     float ca = atan(q.z, q.x) - 0.62;
     float side = abs(ca - TAU * floor(ca / TAU + 0.5)) * length(q.xz);
-    float crease = exp(-side * side / 0.004) * smoothstep(-0.8, -0.2, q.y);
-    bumpH = -crease * 0.05;
-    skin = mix(skin, ${col(F.peach.skin)} * 0.78, crease * 0.6);
-    return mix(c, skin, smoothstep(0.96, 0.975, r));
+    float cleftLen = smoothstep(-0.88, -0.05, q.y);
+    float crease = (exp(-side * side / 0.0075) * 0.7 + exp(-side * side / 0.0016) * 0.55) * cleftLen;
+    float skinMask = smoothstep(0.96, 0.975, r);
+    bumpH = (-crease * 0.095 + velvet * 0.0018) * skinMask;
+    skinSheen = skinMask * 0.88;
+    skinSheenCol = vec3(1.0, 0.90, 0.78);
+    skin = mix(skin, ${col(F.peach.skin)} * 0.66, clamp(crease * 0.75, 0.0, 1.0));
+    return mix(c, skin, skinMask);
   }
   if (f == 5) {
-    // Dragon fruit: snowy flesh full of tiny black seeds, a pink rim, magenta skin (its scales are real leaves; see extras).
+    // Dragon fruit: snowy flesh full of tiny black seeds, a pink rim, magenta skin with long curved bract scales.
     vec3 c = ${col(F.dragonfruit.flesh)};
     c = mix(c, ${col(F.dragonfruit.seed)}, specks(q, 16.0, 0.012) * (1.0 - smoothstep(0.84, 0.87, r)));
     c = mix(c, ${col(F.dragonfruit.rim)}, smoothstep(0.87, 0.9, r));
-    // Scales painted on the skin: broad leaves in staggered rows, each coming
-    // to a point at the top, darker in the fold beneath it and green at its tip.
-    float row = q.y * 2.3 + 0.2;
+    // Longer, gracefully curved scales in staggered rows, with a deep fold shadow beneath each bract and curling green tips.
+    float row = q.y * 1.65 + 0.18;
     float u = ang / TAU * 6.0 + 0.5 * mod(floor(row), 2.0);
     vec2 cell = vec2(fract(u) - 0.5, fract(row));
-    float wide = 0.5 * pow(max(0.0, 1.0 - cell.y), 0.75);
-    float flap = (1.0 - smoothstep(wide - 0.07, wide, abs(cell.x))) * smoothstep(0.0, 0.07, cell.y);
-    float tip = flap * smoothstep(0.5, 0.92, cell.y);
-    bumpH = flap * (0.008 + 0.03 * cell.y);
-    vec3 skin = mix(${col(F.dragonfruit.skin)} * 0.8, ${col(F.dragonfruit.skin)}, flap);
-    skin = mix(skin, ${col(F.dragonfruit.rim)}, flap * cell.y * 0.35);
-    skin = mix(skin, vec3(0.62, 0.8, 0.36), tip * 0.9);
+    // Subtle S-curve and outward flare toward the tip of each scale.
+    float curveX = cell.x - sin(cell.y * 3.14159) * 0.055 * sign(cell.x);
+    float wide = 0.52 * pow(max(0.0, 1.0 - cell.y * 0.92), 0.66);
+    float edgeDist = wide - abs(curveX);
+    float flap = smoothstep(-0.02, 0.055, edgeDist) * smoothstep(0.0, 0.06, cell.y);
+    float midrib = exp(-curveX * curveX / 0.003) * flap * smoothstep(0.1, 0.85, cell.y);
+    // Darker fold shadow immediately outside/beneath each overlapping scale.
+    float foldShadow = smoothstep(-0.09, -0.005, edgeDist) * (1.0 - flap) * smoothstep(0.0, 0.85, cell.y);
+    float baseShadow = (1.0 - smoothstep(0.0, 0.14, cell.y)) * flap;
+    float tip = flap * smoothstep(0.46, 0.88, cell.y);
+    bumpH = flap * (0.01 + 0.042 * cell.y * cell.y + midrib * 0.008) - foldShadow * 0.014;
+    vec3 skin = mix(${col(F.dragonfruit.skin)} * 0.86, ${col(F.dragonfruit.skin)}, flap);
+    skin = mix(skin, ${col(F.dragonfruit.skin)} * 0.58, clamp(foldShadow * 0.85 + baseShadow * 0.45, 0.0, 1.0));
+    skin = mix(skin, ${col(F.dragonfruit.rim)}, (flap * cell.y * 0.35 + midrib * 0.25));
+    skin = mix(skin, vec3(0.58, 0.82, 0.32), tip * 0.94);
     return mix(c, skin, smoothstep(0.935, 0.95, r));
   }
-  // Cantaloupe: a netted skin, a pale green rind, orange flesh, a seed hollow in the middle.
+  // Cantaloupe: a fine raised cork net, pale green rind, salmon-orange flesh, and a real recessed seed hollow with stringy fibres & seeds.
   float hr = length(q * vec3(1.0, 0.8, 1.0));
   vec3 c = mix(${col(F.goldenMelon.flesh)}, ${col(F.goldenMelon.fleshLight)}, smoothstep(0.75, 0.42, r) * 0.7);
-  vec3 hollow = mix(vec3(1.0, 0.68, 0.3), vec3(0.98, 0.6, 0.22), specks(q, 9.0, 0.06));
-  hollow = mix(hollow, vec3(0.98, 0.93, 0.78), specks(q * vec3(1.0, 0.6, 1.0), 7.0, 0.06) * smoothstep(0.18, 0.3, hr));
-  c = mix(c, hollow, 1.0 - smoothstep(0.34, 0.37, hr));
+  // Recessed seed cavity: dark shadowed hollow at the center, stringy orange fibrous webbing, and clustered pale cream seeds.
+  float inHollow = 1.0 - smoothstep(0.33, 0.38, hr);
+  float cavityDepth = 1.0 - smoothstep(0.0, 0.34, hr);
+  float strands = sin(ang * 20.0 + sin(q.y * 16.0 + ang * 5.0) * 2.4) * 0.5 + 0.5;
+  strands = smoothstep(0.35, 0.85, strands) * smoothstep(0.06, 0.32, hr);
+  vec3 hollow = mix(vec3(0.92, 0.48, 0.22), vec3(0.58, 0.24, 0.10), cavityDepth * 0.82);
+  hollow = mix(hollow, vec3(1.0, 0.72, 0.42), strands * 0.75);
+  // Clustered teardrop seeds suspended along the stringy wall of the hollow.
+  float seedRing = band(hr, 0.14, 0.31, 0.04);
+  float seedCluster = specks(q * vec3(1.1, 0.75, 1.1), 11.5, 0.052) * seedRing;
+  hollow = mix(hollow, vec3(0.99, 0.94, 0.78), seedCluster);
+  c = mix(c, hollow, inHollow);
   c = mix(c, vec3(0.8, 0.88, 0.55), smoothstep(0.91, 0.925, r));
-  // A fine raised net of pale cork over greenish-tan skin.
-  float net = 1.0 - smoothstep(0.012, 0.035, cellEdge(q * 9.0));
-  bumpH = net * 0.012;
+  // Finer, raised cork net over sage-tan skin.
+  float edge1 = cellEdge(q * 13.0);
+  float edge2 = cellEdge(q * 21.0 + 3.7);
+  float net = max(1.0 - smoothstep(0.008, 0.026, edge1), (1.0 - smoothstep(0.01, 0.028, edge2)) * 0.65);
+  float skinMask = smoothstep(0.94, 0.955, r);
+  bumpH = mix(-cavityDepth * 0.025 * inHollow, (net * 0.020 - (1.0 - net) * 0.003), skinMask);
   float sut = smoothstep(0.85, 1.0, abs(sin(ang * 5.0)));
-  vec3 skin = mix(${col('#9A915A')}, ${col('#87905A')}, sut * 0.6);
-  skin = mix(skin, ${col('#E6D8B0')}, net * 0.9);
-  return mix(c, skin, smoothstep(0.94, 0.955, r));
+  vec3 skin = mix(${col('#9A915A')}, ${col('#7D8850')}, sut * 0.65);
+  // Subtle dark border right beside each cork ridge so the raised net pops in relief.
+  float netShadow = smoothstep(0.022, 0.045, edge1) * (1.0 - smoothstep(0.045, 0.08, edge1));
+  skin *= 1.0 - 0.14 * netShadow;
+  skin = mix(skin, ${col('#EDE1BE')}, net * 0.94);
+  return mix(c, skin, skinMask);
 }
 `;
 
@@ -244,6 +295,11 @@ export const FRUIT_BUMP = /* glsl */ `
   float det = dot(dpx, r1) * faceDirection;
   vec3 grad = sign(det) * (dh.x * r1 + dh.y * r2);
   normal = normalize(abs(det) * normal - grad);
+  if (skinSheen > 0.001) {
+    float ndv = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
+    float sheenRim = pow(1.0 - ndv, 2.2) * skinSheen;
+    diffuseColor.rgb = mix(diffuseColor.rgb, skinSheenCol, sheenRim * 0.52);
+  }
 }
 `;
 

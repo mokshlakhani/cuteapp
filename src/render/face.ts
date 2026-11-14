@@ -19,12 +19,13 @@ export type Expression =
   | 'surprised' // O o O  (just cut / startled)
   | 'nervous' // • ~ •  + sweat
   | 'strain' // > ~ <  + sweat + tremble
-  | 'sleepy'; // ‿ . ‿
+  | 'sleepy' // ‿ . ‿
+  | 'sad'; // • ︵ •  + a tear
 
 type EyeStyle = 'dot' | 'arc' | 'big' | 'chevron' | 'spiral' | 'closed';
-type MouthStyle = 'smile' | 'open' | 'o' | 'wavy' | 'flat' | 'tiny';
+type MouthStyle = 'smile' | 'open' | 'o' | 'wavy' | 'flat' | 'tiny' | 'frown';
 
-const LOOK: Record<Expression, { eyes: EyeStyle; mouth: MouthStyle; sweat?: boolean; tremble?: number; blush: number }> = {
+const LOOK: Record<Expression, { eyes: EyeStyle; mouth: MouthStyle; sweat?: boolean; tear?: boolean; tremble?: number; blush: number }> = {
   calm: { eyes: 'dot', mouth: 'smile', blush: 0.55 },
   happy: { eyes: 'arc', mouth: 'open', blush: 0.75 },
   wide: { eyes: 'big', mouth: 'o', blush: 0.6 },
@@ -34,6 +35,7 @@ const LOOK: Record<Expression, { eyes: EyeStyle; mouth: MouthStyle; sweat?: bool
   nervous: { eyes: 'dot', mouth: 'flat', sweat: true, blush: 0.7, tremble: 0.2 },
   strain: { eyes: 'chevron', mouth: 'wavy', sweat: true, blush: 1, tremble: 1 },
   sleepy: { eyes: 'closed', mouth: 'tiny', blush: 0.5 },
+  sad: { eyes: 'dot', mouth: 'frown', tear: true, blush: 0.4 },
 };
 
 export class Face {
@@ -113,7 +115,7 @@ export class Face {
     const e = this.expression;
     const look = LOOK[e];
     // Trembles, sweat and dizzy spirals move all the time.
-    const moving = look.tremble || look.sweat || look.eyes === 'spiral' ? Math.floor(this.t * 30) : 0;
+    const moving = look.tremble || look.sweat || look.tear || look.eyes === 'spiral' ? Math.floor(this.t * 30) : 0;
     const q = (v: number, k: number) => Math.round(v * k);
     return `${e}|${q(this.blink, 12)}|${q(this.pop.value, 60)}|${q(this.lookX.value, 24)}|${q(this.lookY.value, 24)}|${moving}`;
   }
@@ -183,6 +185,20 @@ export function drawFace(ctx: CanvasRenderingContext2D, face: Face, s: number, s
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
     ctx.arc(sx - r * 0.3, sy + r * 0.1, r * 0.25, 0, TAU);
+    ctx.fill();
+  }
+  if (look.tear) {
+    // One tear under an eye: it wells up, rolls down the cheek and fades, over and over.
+    const k = (face.time * 0.9) % 1;
+    const r = s * 0.045 * Math.min(1, k * 5);
+    const tx = ex * 0.98;
+    const ty = ey + s * 0.1 + k * k * s * 0.2;
+    ctx.globalAlpha *= 1 - Math.max(0, (k - 0.7) / 0.3);
+    ctx.fillStyle = 'rgba(190,225,245,0.95)';
+    ctx.beginPath();
+    ctx.moveTo(tx, ty - r * 1.6);
+    ctx.bezierCurveTo(tx + r, ty - r * 0.2, tx + r, ty + r, tx, ty + r);
+    ctx.bezierCurveTo(tx - r, ty + r, tx - r, ty - r * 0.2, tx, ty - r * 1.6);
     ctx.fill();
   }
   ctx.restore();
@@ -266,6 +282,15 @@ function drawEye(ctx: CanvasRenderingContext2D, style: EyeStyle, x: number, y: n
 
 function drawMouth(ctx: CanvasRenderingContext2D, style: MouthStyle, x: number, y: number, s: number, face: Face) {
   switch (style) {
+    case 'frown': {
+      // A little downturned mouth.
+      const w = s * 0.065;
+      ctx.beginPath();
+      ctx.moveTo(x - w, y + w * 0.55);
+      ctx.quadraticCurveTo(x, y - w * 0.55, x + w, y + w * 0.55);
+      ctx.stroke();
+      break;
+    }
     case 'smile': {
       const w = s * 0.07;
       ctx.beginPath();

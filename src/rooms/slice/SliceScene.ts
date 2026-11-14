@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { convexHull } from '../../core/geometry';
 import { Staged, type Build } from '../../core/stages';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { clamp, lerp, rand } from '../../core/math';
@@ -8,7 +9,7 @@ import { Face, drawFace } from '../../render/face';
 import { blobTexture, gpuReady, roomReflections, woodTexture, clothMesh } from '../../render/table';
 import { SLICE_FRUITS, type SliceFruit } from './fruits';
 import { MAX_CUTS, dressSlice, makeSliceMaterial, type SliceUniforms } from './material';
-import { corners, cutAll, cutMask, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3 } from './polyhedron';
+import { corners, cutAll, cutMask, faceNormal, massProps, onSkin, outside, revolve, skinNormal, type Poly, type Shape, type V3, repeatsCut, snapPlane, type Plane, shell } from './polyhedron';
 import { buildExtras, disposeExtra, type Extra } from './extras';
 
 /**
@@ -54,6 +55,17 @@ interface Chunk {
   /** Shrinks away when it's cleared (1 → 0). */
   scale: number;
   delay: number;
+  /** Elastic settle wobble as the piece comes to rest on the board. */
+  /** How far it reaches sideways as it lies now (its room on the board). */
+  foot: number;
+  /** The cuts that bound it, facing out, and its middle, both in the fruit's own space (see shove). */
+  planes: Plane[];
+  centre: V3;
+  /** Resting on another piece this step. */
+  propped: boolean;
+  settleWobble: number;
+  settleAge: number;
+  settleAxis: THREE.Vector3;
 }
 
 interface Drop {
@@ -61,6 +73,16 @@ interface Drop {
   vel: THREE.Vector3;
   life: number;
   size: number;
+}
+
+interface Stain {
+  x: number;
+  z: number;
+  rx: number;
+  rz: number;
+  rot: number;
+  scale: number;
+  targetScale: number;
 }
 
 export interface SliceEvents {
@@ -76,6 +98,9 @@ const tmpR = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpM = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
+/** Scratch: where two pieces touch, from each one's middle (see shove). */
+const HIT_A = new THREE.Vector3();
+const HIT_B = new THREE.Vector3();
 /** Scratch: a piece's corners at the board (x, z from its middle), and from its middle to the nearest point of what they span. */
 const SUP = Array.from({ length: 12 }, () => new THREE.Vector2());
 const LEAN = new THREE.Vector2();
@@ -116,8 +141,21 @@ const tmpRay = new THREE.Ray();
 const tmpS = new THREE.Vector3();
 const tmpO = new THREE.Vector3();
 const tmpD = new THREE.Vector3();
-/** The smallest piece that counts, as a share of the whole fruit. */
-const MIN_PIECE = 0.004;
+/**
+ * The smallest piece that counts, as a share of the whole fruit. Small on
+ * purpose: where cuts cross off to one side, the wedges by the skin are slim
+ * but plain to see, and each is a piece. (The specks a near miss would leave
+ * at a crossing never arise: see SNAP.)
+ */
+const MIN_PIECE = 0.0006;
+/**
+ * A cut that comes this near a crossing of two earlier cuts (× the fruit's
+ * radius: about a fingertip on a phone) goes through it; one this near a cut already made is that cut again.
+ */
+const SNAP = 0.17;
+/** Little splats the board can hold at once. */
+const MAX_STAINS = 120;
+const REPEAT = 0.06;
 /** The whole fruit's mesh (smooth), and the faceted solid the knife cuts (finer is smoother pieces, slower cuts). */
 const WHOLE = { lat: 64, lon: 96 };
 const SOLID = { lat: 30, lon: 52 };
@@ -155,11 +193,20 @@ export class SliceScene {
   /** Stems, leaves, tips and scales: on the whole fruit, then on whichever piece they sit on. */
   private extras: Extra[] = [];
   private cuts = 0;
+  /** The cuts made so far, in the fruit's own space. */
+  private planes: Plane[] = [];
   private chunks: Chunk[] = [];
   private chunkGroup = new THREE.Group();
   private drops: Drop[] = [];
   private dropMesh!: THREE.InstancedMesh;
-  private dropMat!: THREE.MeshStandardMaterial;
+  private dropMat!: THREE.MeshPhysicalMaterial;
+  private stains: Stain[] = [];
+  /** The pool each fallen piece leaves under it (see addMark). */
+  private marks: { mesh: THREE.Mesh; scale: number }[] = [];
+  private stainMesh!: THREE.InstancedMesh;
+  private stainMat!: THREE.MeshPhysicalMaterial;
+  /** Brief flutter of a dragon fruit's leafy scales when cut (0..1). */
+  private flutter = 0;
   private ray = new THREE.Raycaster();
   private time = rand(0, 20);
   /** How the fruit is turned: by your finger, plus a slow drift while it's left alone. */
@@ -263,11 +310,38 @@ export class SliceScene {
     this.blob.position.y = BOARD.h + 0.005;
     this.scene.add(this.blob);
 
-    this.dropMat = new THREE.MeshStandardMaterial({ roughness: 0.25, metalness: 0, envMapIntensity: 0.9 });
-    this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), this.dropMat, 48);
+    this.dropMat = new THREE.MeshPhysicalMaterial({
+      roughness: 0.14,
+      metalness: 0,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.08,
+      envMapIntensity: 1.1,
+    });
+    this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), this.dropMat, 96);
     this.dropMesh.count = 0;
     this.dropMesh.frustumCulled = false;
     this.scene.add(this.dropMesh);
+
+    this.stainMat = new THREE.MeshPhysicalMaterial({
+      roughness: 0.12,
+      metalness: 0,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.06,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+      envMapIntensity: 1.0,
+    });
+    const stainGeo = new THREE.CylinderGeometry(1, 1, 0.008, 16);
+    this.stainMesh = new THREE.InstancedMesh(stainGeo, this.stainMat, MAX_STAINS);
+    this.stainMesh.count = 0;
+    this.stainMesh.frustumCulled = false;
+    this.scene.add(this.stainMesh);
+    // The marks pieces leave are single meshes in the same juice: one tiny one
+    // out of sight from the start, so its shader is ready before the first lands.
+    const probe = new THREE.Mesh(new THREE.CircleGeometry(0.01, 3), this.stainMat);
+    probe.position.set(0, -6, 0);
+    this.scene.add(probe);
 
     yield;
     this.setFruit(this.fruit);
@@ -293,6 +367,13 @@ export class SliceScene {
     this.clearParts();
     this.fallen = false;
     this.dropMat.color.set(fruit.juice);
+    this.dropMat.emissive.set(fruit.juice);
+    this.dropMat.emissiveIntensity = 0.18;
+    this.stainMat.color.set(fruit.juice);
+    this.stains = [];
+    this.stainMesh.count = 0;
+    this.clearMarks();
+    this.flutter = 0;
     const [rx, ry, rz] = fruit.radii;
     const g = wholeGeometry(fruit.shape, fruit.radii);
     this.wholeGeo?.dispose();
@@ -301,6 +382,7 @@ export class SliceScene {
     this.pieces = [revolve(fruit.shape, rx, ry, rz, SOLID.lat, SOLID.lon)];
     this.minVolume = massProps(this.pieces[0]).volume * MIN_PIECE;
     this.cuts = 0;
+    this.planes = [];
     // Each fruit arrives facing you, a little turned.
     this.turnQ.setFromEuler(new THREE.Euler(rand(-0.15, 0.15), rand(-0.3, 0.3), rand(-0.12, 0.12)));
     this.spin.yaw = this.spin.pitch = 0;
@@ -363,14 +445,25 @@ export class SliceScene {
     this.splash(at, n, dir);
     this.squash.impulse(-2.2);
     this.sway.impulse(rand(-1, 1) * 1.6);
+    if (this.fruit.id === 'dragonfruit') this.flutter = 1;
     return { added, at, dir };
   }
 
   /** Cut along a plane n·p = d in the fruit's own space. Returns how many pieces it added, or null if it missed. */
   cutLocal(n: V3, d: number) {
     if (this.fallen || this.cuts >= MAX_CUTS) return null;
-    const res = cutAll(this.pieces, { n, d }, this.minVolume, this.cuts);
+    // Lined up with the cuts already made (see polyhedron.ts snapPlane), so
+    // three swipes through one spot are six pieces, not five or seven.
+    const [rx, ry, rz] = this.fruit.radii;
+    const small = Math.min(rx, ry, rz);
+    const raw: Plane = { n, d };
+    if (repeatsCut(raw, this.planes, small, small * REPEAT)) return null;
+    const pl = snapPlane(raw, this.planes, [rx, ry, rz], small * SNAP);
+    n = pl.n;
+    d = pl.d;
+    const res = cutAll(this.pieces, pl, this.minVolume, this.cuts);
     if (!res.split) return null;
+    this.planes.push(pl);
     const added = res.pieces.length - this.pieces.length;
     this.pieces = res.pieces;
     this.syncParts();
@@ -451,21 +544,217 @@ export class SliceScene {
     this.turnQ.premultiply(tmpQ).normalize();
   }
 
-  /** A few drops of juice fly off along the cut. */
+  /** A spray of fruit-coloured juice droplets flying off along the cut seam. */
   private splash(at: THREE.Vector3, n: THREE.Vector3, dir: THREE.Vector3) {
     const R = this.radius;
-    for (let i = 0; i < 14; i++) {
-      if (this.drops.length >= 48) this.drops.shift();
-      const along = rand(-0.9, 0.9) * R;
+    for (let i = 0; i < 28; i++) {
+      if (this.drops.length >= 96) this.drops.shift();
+      const along = rand(-0.95, 0.95) * R;
       const side = Math.random() < 0.5 ? -1 : 1;
-      const pos = at.clone().addScaledVector(dir, along);
+      const pos = at.clone().addScaledVector(dir, along).addScaledVector(n, side * rand(0.02, 0.14));
+      // Spray fans out both perpendicular to the blade and along the swipe direction.
       const vel = n
         .clone()
-        .multiplyScalar(side * rand(1.5, 4))
-        .addScaledVector(dir, rand(1, 4))
-        .add(new THREE.Vector3(0, rand(1, 4), 0));
-      this.drops.push({ pos, vel, life: rand(0.5, 0.9), size: rand(0.035, 0.08) });
+        .multiplyScalar(side * rand(1.4, 5.2))
+        .addScaledVector(dir, rand(0.8, 5.4) * (Math.random() < 0.8 ? 1 : -0.5))
+        .add(new THREE.Vector3(rand(-0.8, 0.8), rand(1.2, 4.8), rand(-0.8, 0.8)));
+      this.drops.push({ pos, vel, life: rand(1.2, 1.8), size: rand(0.032, 0.088) });
     }
+  }
+
+  /**
+   * The mark a piece leaves where it comes to rest: a pool of its juice the
+   * shape of what's lying on the board (its own outline, a little wider and
+   * softened), so a wedge leaves a wedge and a round slice a round.
+   */
+  private addMark(c: Chunk) {
+    // What's down on the board; a piece resting on its round side, the middle of its shadow.
+    const down: { x: number; y: number }[] = [];
+    const all: { x: number; y: number }[] = [];
+    for (const v of c.pts) {
+      tmpR.copy(v).applyQuaternion(c.q);
+      all.push({ x: c.pos.x + tmpR.x, y: c.pos.z + tmpR.z });
+      if (c.pos.y + tmpR.y < BOARD.h + 0.1) down.push({ x: c.pos.x + tmpR.x, y: c.pos.z + tmpR.z });
+    }
+    let hull = down.length >= 3 ? convexHull(down) : [];
+    let grow = 1.12;
+    if (hull.length < 3) {
+      hull = convexHull(all);
+      grow = 0.6;
+    }
+    if (hull.length < 3) return;
+    let cx = 0;
+    let cz = 0;
+    for (const p of hull) {
+      cx += p.x / hull.length;
+      cz += p.y / hull.length;
+    }
+    // Round its corners off and let it wander a little: juice, not a stencil.
+    const ring: [number, number][] = [];
+    const mx = BOARD.w / 2 - 0.06;
+    const mz = BOARD.d / 2 - 0.06;
+    for (let i = 0; i < hull.length; i++) {
+      const a = hull[i];
+      const b = hull[(i + 1) % hull.length];
+      for (const [px, pz, k] of [
+        [a.x, a.y, grow * rand(0.98, 1.1)],
+        [(a.x + b.x) / 2, (a.y + b.y) / 2, grow * rand(1.03, 1.16)],
+      ]) {
+        const dx = px - cx;
+        const dz = pz - cz;
+        const l = Math.hypot(dx, dz) || 1;
+        const x = clamp(cx + dx * k + (dx / l) * 0.035, -mx, mx);
+        const z = clamp(cz + dz * k + (dz / l) * 0.035, -mz, mz);
+        ring.push([x - cx, z - cz]);
+      }
+    }
+    const pos = new Float32Array(ring.length * 9);
+    const nor = new Float32Array(ring.length * 9);
+    for (let i = 0; i < ring.length; i++) {
+      let a = ring[i];
+      let b = ring[(i + 1) % ring.length];
+      // Wound to face up.
+      if (a[1] * b[0] - a[0] * b[1] < 0) [a, b] = [b, a];
+      pos.set([0, 0, 0, a[0], 0, a[1], b[0], 0, b[1]], i * 9);
+      for (let k = 0; k < 3; k++) nor[i * 9 + k * 3 + 1] = 1;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    const mesh = new THREE.Mesh(geo, this.stainMat);
+    mesh.position.set(cx, BOARD.h + 0.003, cz);
+    mesh.scale.setScalar(0.55);
+    mesh.renderOrder = -1;
+    this.scene.add(mesh);
+    this.marks.push({ mesh, scale: 0.55 });
+  }
+
+  /**
+   * Push `a` out of `b` where a corner of it has got inside (and `b` the
+   * other way, unless it's at rest). Only the deepest corner each step: the
+   * rest follow as it moves.
+   */
+  private shove(a: Chunk, b: Chunk) {
+    const [rx, ry, rz] = this.fruit.radii;
+    const shape = this.fruit.shape;
+    const small = Math.min(rx, ry, rz);
+    tmpQ.copy(b.q).invert();
+    let deep = 0.004;
+    let hit = false;
+    for (const v of a.pts) {
+      // The corner, in the fruit's own space as `b` carries it.
+      tmpR.copy(v).applyQuaternion(a.q).add(a.pos).sub(b.pos).applyQuaternion(tmpQ);
+      const qx = tmpR.x + b.centre[0];
+      const qy = tmpR.y + b.centre[1];
+      const qz = tmpR.z + b.centre[2];
+      // Under the skin?
+      const out = shell(shape, qx / rx, qy / ry, qz / rz);
+      if (out >= 1) continue;
+      let depth = (1 - out) * small;
+      let viaSkin = true;
+      let nx = 0;
+      let ny = 0;
+      let nz = 0;
+      // And on the inside of every cut?
+      let inside = true;
+      for (const pl of b.planes) {
+        const d = pl.d - (pl.n[0] * qx + pl.n[1] * qy + pl.n[2] * qz);
+        if (d <= 0) {
+          inside = false;
+          break;
+        }
+        if (d < depth) {
+          depth = d;
+          viaSkin = false;
+          nx = pl.n[0];
+          ny = pl.n[1];
+          nz = pl.n[2];
+        }
+      }
+      if (!inside || depth <= deep) continue;
+      if (viaSkin) {
+        const n = skinNormal(shape, [rx, ry, rz], [qx, qy, qz]);
+        nx = n[0];
+        ny = n[1];
+        nz = n[2];
+      }
+      deep = depth;
+      hit = true;
+      tmpW.set(nx, ny, nz).applyQuaternion(b.q);
+      // Where it touches, from each one's middle.
+      HIT_A.copy(v).applyQuaternion(a.q);
+      HIT_B.copy(HIT_A).add(a.pos).sub(b.pos);
+    }
+    if (!hit) return;
+    const n = tmpW;
+    const wa = a.settled ? 0 : b.settled ? 1 : 0.5;
+    const wb = 1 - wa;
+    const push = Math.min(deep, 0.25) * 0.8;
+    a.pos.addScaledVector(n, push * wa);
+    b.pos.addScaledVector(n, -push * wb);
+    // They stop closing on each other where they touch, and the knock turns
+    // them (a piece that lands on another's edge tips and slides off it,
+    // rather than balancing there).
+    const va = tmpV.crossVectors(a.w, HIT_A).add(a.vel);
+    const vb = tmpS.crossVectors(b.w, HIT_B).add(b.vel);
+    const vn = (va.x - vb.x) * n.x + (va.y - vb.y) * n.y + (va.z - vb.z) * n.z;
+    if (vn < 0) {
+      const ia = 1 / (0.45 * a.gyr * a.gyr);
+      const ib = 1 / (0.45 * b.gyr * b.gyr);
+      const ca = tmpO.crossVectors(HIT_A, n);
+      const cb = tmpD.crossVectors(HIT_B, n);
+      const k = wa * (1 + ia * ca.lengthSq()) + wb * (1 + ib * cb.lengthSq());
+      const jn = -vn / Math.max(1e-4, k);
+      a.vel.addScaledVector(n, jn * wa);
+      a.w.addScaledVector(ca, jn * ia * wa);
+      b.vel.addScaledVector(n, -jn * wb);
+      b.w.addScaledVector(cb, -jn * ib * wb);
+    }
+    if (!a.settled) a.w.multiplyScalar(0.985);
+    if (!b.settled) b.w.multiplyScalar(0.985);
+    // Held up by what's under it: that counts as being down.
+    if (n.y > 0.45 && (b.settled || b.landed)) a.propped = true;
+    if (n.y < -0.45 && (a.settled || a.landed)) b.propped = true;
+  }
+
+  private stepMarks(dt: number) {
+    for (let i = this.marks.length - 1; i >= 0; i--) {
+      const m = this.marks[i];
+      // It seeps out from under the piece; swept away with everything else.
+      m.scale = this.clearing ? m.scale - dt * 2.8 : lerp(m.scale, 1, 1 - Math.exp(-dt * 5));
+      if (m.scale <= 0.02) {
+        this.scene.remove(m.mesh);
+        m.mesh.geometry.dispose();
+        this.marks.splice(i, 1);
+        continue;
+      }
+      m.mesh.scale.set(m.scale, 1, m.scale);
+    }
+  }
+
+  private clearMarks() {
+    for (const m of this.marks) {
+      this.scene.remove(m.mesh);
+      m.mesh.geometry.dispose();
+    }
+    this.marks = [];
+  }
+
+  private addStain(x: number, z: number, r: number) {
+    const marginX = BOARD.w / 2 - 0.35;
+    const marginZ = BOARD.d / 2 - 0.35;
+    if (Math.abs(x) > marginX || Math.abs(z) > marginZ) return;
+    // Full: the oldest little splat makes way.
+    if (this.stains.length >= MAX_STAINS) this.stains.shift();
+    this.stains.push({
+      x,
+      z,
+      rx: r * rand(0.85, 1.35),
+      rz: r * rand(0.75, 1.25),
+      rot: rand(0, Math.PI * 2),
+      scale: 0.2,
+      targetScale: 1,
+    });
   }
 
   /** It falls apart: every piece becomes a body that drops onto the board (the same meshes, no rebuilding). */
@@ -549,8 +838,51 @@ export class SliceScene {
         ground: 0,
         scale: 1,
         delay: 0,
+        foot: reach,
+        planes: cutPlanes(p),
+        centre,
+        propped: false,
+        settleWobble: 0,
+        settleAge: 0,
+        settleAxis: new THREE.Vector3(rand(-1, 1), 0, rand(-1, 1)).normalize(),
       });
     });
+    // Each piece is given its own place on the board before it falls, and
+    // drifts to it on the way down: biggest first, each where it overlaps
+    // the others least and has least far to go. So they land beside one
+    // another, rather than in a heap that has to be pushed apart afterwards.
+    const placed: { x: number; z: number; r: number }[] = [];
+    for (const c of [...this.chunks].sort((a, b) => b.reach - a.reach)) {
+      const r = c.reach * 0.66;
+      const mx = Math.max(0.05, BOARD.w / 2 - r * 0.95);
+      const mz = Math.max(0.05, BOARD.d / 2 - r * 0.95);
+      let bx = 0;
+      let bz = 0;
+      let bestScore = Infinity;
+      for (let k = 0; k < 80; k++) {
+        const x = rand(-mx, mx);
+        const z = rand(-mz, mz);
+        let overlap = 0;
+        for (const p of placed) overlap += Math.max(0, p.r + r - Math.hypot(p.x - x, p.z - z));
+        const score = overlap * 12 + Math.hypot(x - c.pos.x, z - c.pos.z) * 0.25;
+        if (score < bestScore) {
+          bestScore = score;
+          bx = x;
+          bz = z;
+        }
+      }
+      placed.push({ x: bx, z: bz, r });
+      // Apart first (they start pressed together, and are solid to each other),
+      // out from the middle; then drifting toward its place as it falls.
+      const fall = Math.sqrt((2 * Math.max(0.5, c.pos.y - BOARD.h)) / GRAVITY) * 1.25;
+      const ox = c.pos.x - this.root.position.x;
+      const oz = c.pos.z - this.root.position.z;
+      const ol = Math.hypot(ox, oz) || 1;
+      const burst = rand(1.5, 2.3);
+      c.vel.x = (ox / ol) * burst + ((bx - c.pos.x) / fall) * 0.55;
+      c.vel.z = (oz / ol) * burst + ((bz - c.pos.z) / fall) * 0.55;
+      c.vel.y += rand(0.4, 1.2);
+    }
     this.parts.clear();
     this.whole.visible = false;
     this.fallen = true;
@@ -595,6 +927,7 @@ export class SliceScene {
     if (!c) return false;
     c.settled = false;
     c.calm = 0;
+    c.settleWobble = 0;
     c.vel.set(rand(-1.5, 1.5), rand(4, 6), rand(-1.5, 1.5));
     c.w.set(rand(-8, 8), rand(-4, 4), rand(-8, 8));
     this.shadowsDirty = true;
@@ -669,10 +1002,32 @@ export class SliceScene {
     const glow = this.skin.uniforms.uGlow.value;
     for (let i = 0; i < this.cuts; i++) glow[i] = Math.max(0.12 + this.tremble * 0.9, glow[i] - dt * 1.6);
 
+    // Flutter dragon fruit's leafy bract scales briefly on a cut.
+    if (this.flutter > 0) {
+      this.flutter = Math.max(0, this.flutter - dt * 2.2);
+      const fl = Math.sin(this.time * 42) * this.flutter * 0.16;
+      this.extras.forEach((e, idx) => {
+        const s = 1 + Math.sin(this.time * 38 + idx * 1.3) * this.flutter * 0.14;
+        e.obj.scale.set(1, s, 1 + Math.abs(fl));
+      });
+    }
+
     this.stepDrops(dt);
+    this.stepStains(dt);
+    this.stepMarks(dt);
     if (this.chunks.length) {
       const n = Math.max(1, Math.ceil(dt / (1 / 180)));
       for (let i = 0; i < n; i++) this.stepChunks(dt / n);
+      for (const c of this.chunks) {
+        if (c.settleWobble > 0) {
+          c.settleAge += dt;
+          c.settleWobble *= Math.exp(-dt * 5.2);
+          if (c.settleWobble < 0.003) c.settleWobble = 0;
+          const ang = Math.sin(c.settleAge * 23) * c.settleWobble * 0.11;
+          tmpQ.setFromAxisAngle(c.settleAxis, ang);
+          c.mesh.quaternion.copy(c.q).premultiply(tmpQ);
+        }
+      }
       if (this.clearing) this.clearStep(dt);
     }
     this.placeCamera();
@@ -684,15 +1039,58 @@ export class SliceScene {
       p.life -= dt;
       p.vel.y -= GRAVITY * 0.6 * dt;
       p.pos.addScaledVector(p.vel, dt);
+      const gY = this.groundAt(p.pos.x, p.pos.z);
+      if (gY > 0 && p.pos.y <= gY && p.life > 0) {
+        // Every drop that reaches the board leaves its own little splat.
+        this.addStain(p.pos.x, p.pos.z, p.size * rand(1.5, 2.9));
+      }
     }
     this.drops = d.filter((p) => p.life > 0 && p.pos.y > this.groundAt(p.pos.x, p.pos.z));
     const m = this.dropMesh;
     this.drops.forEach((p, i) => {
       const s = p.size * clamp(p.life * 3, 0, 1);
-      tmpM.makeScale(s, s, s).setPosition(p.pos);
+      const spd = p.vel.length();
+      const stretch = clamp(1 + spd * 0.12, 1, 2.1);
+      if (spd > 0.01) {
+        tmpV.copy(p.vel).divideScalar(spd);
+        tmpQ.setFromUnitVectors(UP, tmpV);
+      } else {
+        tmpQ.identity();
+      }
+      tmpS.set(s / Math.sqrt(stretch), s * stretch, s / Math.sqrt(stretch));
+      tmpM.compose(p.pos, tmpQ, tmpS);
       m.setMatrixAt(i, tmpM);
     });
     m.count = this.drops.length;
+    m.instanceMatrix.needsUpdate = true;
+  }
+
+  private stepStains(dt: number) {
+    const m = this.stainMesh;
+    if (!this.stains.length) {
+      m.count = 0;
+      return;
+    }
+    for (let i = this.stains.length - 1; i >= 0; i--) {
+      const st = this.stains[i];
+      if (this.clearing) {
+        st.scale = Math.max(0, st.scale - dt * 2.8);
+        if (st.scale <= 0) {
+          this.stains.splice(i, 1);
+          continue;
+        }
+      } else {
+        st.scale = lerp(st.scale, st.targetScale, 1 - Math.exp(-dt * 10));
+      }
+    }
+    this.stains.forEach((st, i) => {
+      tmpV.set(st.x, BOARD.h + 0.004, st.z);
+      tmpQ.setFromAxisAngle(UP, st.rot);
+      tmpS.set(st.rx * st.scale, 1, st.rz * st.scale);
+      tmpM.compose(tmpV, tmpQ, tmpS);
+      m.setMatrixAt(i, tmpM);
+    });
+    m.count = this.stains.length;
     m.instanceMatrix.needsUpdate = true;
   }
 
@@ -718,12 +1116,14 @@ export class SliceScene {
       let touching = false;
       // What it's standing on: the corners at the board, relative to its middle.
       let nSup = 0;
+      let foot = 0;
       const invI = 1 / (0.45 * c.gyr * c.gyr);
       for (const v of c.pts) {
         tmpR.copy(v).applyQuaternion(c.q);
         const px = c.pos.x + tmpR.x;
         const py = c.pos.y + tmpR.y;
         const pz = c.pos.z + tmpR.z;
+        foot = Math.max(foot, tmpR.x * tmpR.x + tmpR.z * tmpR.z);
         const pen = this.groundAt(px, pz) - py;
         if (pen > -0.03 && nSup < SUP.length) SUP[nSup++].set(tmpR.x, tmpR.z);
         if (pen <= 0) continue;
@@ -752,13 +1152,16 @@ export class SliceScene {
           tmpV.set(fx, 0, fz);
           c.w.addScaledVector(tmpW.crossVectors(tmpR, tmpV), invI);
         }
-        if (!c.landed || -vn > 4) this.events.land?.(c.size, -vn, c.pos);
+        if (!c.landed || -vn > 4) {
+          this.events.land?.(c.size, -vn, c.pos);
+          if (!c.landed) this.addStain(px, pz, clamp(c.size * 0.42, 0.12, 0.34));
+        }
         c.landed = true;
       }
       if (deepest > 0) c.pos.y += deepest * 0.9;
       // A soft rim round the board, so the pieces stay on it: outward drift just stops.
-      const mx = BOARD.w / 2 - c.reach * 0.7;
-      const mz = BOARD.d / 2 - c.reach * 0.7;
+      const mx = BOARD.w / 2 - c.reach * 0.5;
+      const mz = BOARD.d / 2 - c.reach * 0.5;
       if (Math.abs(c.pos.x) > mx) {
         c.pos.x = Math.sign(c.pos.x) * mx;
         if (c.vel.x * c.pos.x > 0) c.vel.x = 0;
@@ -773,6 +1176,7 @@ export class SliceScene {
         c.w.multiplyScalar(Math.exp(-1.6 * dt));
       }
       if (c.landed) c.ground += dt;
+      c.foot = Math.sqrt(foot);
       const slow = c.vel.lengthSq() < 0.03 && c.w.lengthSq() < 0.06;
       // Is its weight over what it stands on? A piece caught balancing on an
       // edge or a corner looks slow, but it isn't at rest: it's mid-tip. It's
@@ -784,44 +1188,41 @@ export class SliceScene {
         c.w.x += -LEAN.y * k;
         c.w.z += LEAN.x * k;
       }
-      c.calm = touching && slow && steady ? c.calm + dt : 0;
-      if (c.calm > 0.3 || (touching && c.ground > 4)) {
+      // Not at rest while it's lying into another piece: it's still being eased off it.
+      const down = touching || c.propped;
+      if (c.propped) c.ground += dt;
+      c.calm = down && slow && (steady || c.propped) ? c.calm + dt : 0;
+      // (Leaning on another piece, it's given longer to be sure it's stopped.)
+      if (c.calm > (c.propped && !touching ? 0.7 : 0.3) || (down && c.ground > 4.5)) {
         c.settled = true;
+        this.addMark(c);
+        c.settleWobble = 1;
+        c.settleAge = 0;
+        if (c.w.lengthSq() > 1e-4) {
+          c.settleAxis.set(c.w.x, 0, c.w.z).normalize();
+          if (c.settleAxis.lengthSq() < 0.1) c.settleAxis.set(1, 0, 0);
+        }
         c.vel.set(0, 0, 0);
         c.w.set(0, 0, 0);
       }
     }
-    // Pieces nudge each other apart sideways, so they spread into a heap
-    // instead of passing through. A piece at rest stays put (it's a wall to
-    // the others, never pushed or woken), so nothing jitters in the pile.
+    // Pieces are solid to each other. A piece is exactly what's left of the
+    // fruit on one side of each cut through it, so "is this corner inside
+    // that piece?" is a handful of sums; a corner that is gets pushed back out
+    // the nearest way (out through a cut face, or the skin). So they pile up
+    // and lean on one another instead of passing through. A piece at rest
+    // stays put (a wall to the others, never pushed or woken), so nothing
+    // jitters in the pile.
+    for (const c of chunks) if (!c.settled) c.propped = false;
     for (let i = 0; i < chunks.length; i++) {
       const a = chunks[i];
       for (let j = i + 1; j < chunks.length; j++) {
         const b = chunks[j];
         if (a.settled && b.settled) continue;
-        const rr = (a.reach + b.reach) * 0.54;
-        const dx = b.pos.x - a.pos.x;
-        const dz = b.pos.z - a.pos.z;
-        const d2 = dx * dx + dz * dz;
-        if (d2 >= rr * rr || d2 < 1e-8) continue;
-        const d = Math.sqrt(d2);
-        const nx = dx / d;
-        const nz = dz / d;
-        // Only part of the overlap per step: a soft, steady push, not a jolt.
-        const push = (rr - d) * 0.25;
-        const wa = a.settled ? 0 : b.settled ? 1 : 0.5;
-        const wb = 1 - wa;
-        a.pos.x -= nx * push * wa;
-        a.pos.z -= nz * push * wa;
-        b.pos.x += nx * push * wb;
-        b.pos.z += nz * push * wb;
-        const rel = (b.vel.x - a.vel.x) * nx + (b.vel.z - a.vel.z) * nz;
-        if (rel < 0) {
-          a.vel.x += nx * rel * wa;
-          a.vel.z += nz * rel * wa;
-          b.vel.x -= nx * rel * wb;
-          b.vel.z -= nz * rel * wb;
-        }
+        const far = a.reach + b.reach;
+        if (a.pos.distanceToSquared(b.pos) >= far * far) continue;
+        this.shove(a, b);
+        this.shove(b, a);
       }
     }
     for (const c of chunks) {
@@ -914,7 +1315,7 @@ export class SliceScene {
     if (!this.fallen) this.drawFace();
     // Once the pieces have come to rest their shadows stay put: each piece
     // is a draw call, and Safari makes those costly.
-    const moving = this.chunks.some((c) => !c.settled);
+    const moving = this.chunks.some((c) => !c.settled || c.settleWobble > 0.005);
     this.renderer.shadowMap.needsUpdate = moving || this.shadowsDirty;
     this.shadowsDirty = false;
     this.renderer.render(this.scene, this.camera);
@@ -1053,4 +1454,19 @@ function widestCut(p: Poly): V3 | null {
     }
   }
   return best;
+}
+
+/** The cut faces of a piece as planes facing out of it (n·p ≤ d inside), one per cut. */
+function cutPlanes(p: Poly): Plane[] {
+  const seen = new Set<number>();
+  const out: Plane[] = [];
+  for (const f of p.faces) {
+    if (!f.cut || f.pts.length < 3) continue;
+    const id = f.plane ?? -1 - out.length;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const n = faceNormal(f.pts);
+    out.push({ n, d: n[0] * f.pts[0][0] + n[1] * f.pts[0][1] + n[2] * f.pts[0][2] });
+  }
+  return out;
 }

@@ -562,6 +562,16 @@ export const material = {
     audio.noise({ dur: 0.1, attack: 0.012, gain: 0.018 + k * 0.03, filter: 'bandpass', freq: lerp(1500, 3400, k / 1.4), q: 1.6, pan });
   },
   /** The strip snapping: a small soft tick and a drop of air. */
+  /**
+   * "Aww": two soft notes stepping down and a third that droops, for a toy
+   * that's just been let down (a peel that snapped). Small and round, never a
+   * buzzer: a sigh, not a scolding.
+   */
+  aww(pan = 0) {
+    audio.tone({ freq: scale(9), decay: 0.34, gain: 0.05, pan, type: 'sine', reverb: 0.5, delay: 0.16 });
+    audio.tone({ freq: scale(7), decay: 0.38, gain: 0.05, pan, type: 'sine', reverb: 0.5, delay: 0.4 });
+    audio.tone({ freq: scale(5), to: scale(4), glide: 0.5, decay: 0.8, gain: 0.055, pan, type: 'sine', reverb: 0.6, delay: 0.66 });
+  },
   peelSnap(pan = 0) {
     audio.noise({ dur: 0.03, attack: 0.001, gain: 0.08, filter: 'bandpass', freq: 2400, q: 1, pan });
     audio.tone({ freq: scale(9), to: scale(6), glide: 0.1, decay: 0.16, gain: 0.05, pan, type: 'triangle', reverb: 0.3 });

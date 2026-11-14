@@ -166,15 +166,22 @@ export class Particles {
       switch (p.kind) {
         case 'drop': {
           if (p.landed) {
-            const a = Math.min(1, k * 1.5) * 0.55;
+            const a = Math.min(1, k * 1.6) * 0.62;
+            const spread = 1.45 + (1 - k) * 0.55;
             ctx.fillStyle = rgba(p.color, a);
             ctx.beginPath();
-            ctx.ellipse(p.x, p.y + 1, p.r * (1.6 - k * 0.3), p.r * 0.45, 0, 0, TAU);
+            ctx.ellipse(p.x, p.y + 1, p.r * spread, p.r * 0.48, 0, 0, TAU);
             ctx.fill();
+            if (k > 0.28) {
+              ctx.fillStyle = rgba('#ffffff', (k - 0.28) * 0.72);
+              ctx.beginPath();
+              ctx.ellipse(p.x - p.r * 0.38, p.y + 0.4, p.r * 0.36, p.r * 0.16, -0.25, 0, TAU);
+              ctx.fill();
+            }
           } else {
-            const a = Math.min(1, k * 3) * 0.9;
+            const a = Math.min(1, k * 3) * 0.92;
             const sp = Math.hypot(p.vx, p.vy);
-            const st = Math.min(1.8, 1 + sp / 900);
+            const st = Math.min(2.05, 1 + sp / 720);
             ctx.save();
             ctx.translate(p.x, p.y);
             ctx.rotate(Math.atan2(p.vy, p.vx));
@@ -182,9 +189,9 @@ export class Particles {
             ctx.beginPath();
             ctx.ellipse(0, 0, p.r * st, p.r / Math.sqrt(st), 0, 0, TAU);
             ctx.fill();
-            ctx.fillStyle = rgba('#ffffff', a * 0.7);
+            ctx.fillStyle = rgba('#ffffff', a * 0.82);
             ctx.beginPath();
-            ctx.arc(-p.r * 0.2, -p.r * 0.35, p.r * 0.32, 0, TAU);
+            ctx.arc(-p.r * 0.22 * st, -p.r * 0.32, p.r * 0.34, 0, TAU);
             ctx.fill();
             ctx.restore();
           }

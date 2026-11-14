@@ -427,7 +427,9 @@ export class PourRoom implements Scene {
     this.steam(dt);
     this.pour(dt);
     this.glass.step(dt);
-    this.extras.update(dt, this.landing);
+    if (this.extras.update(dt, this.landing, this.glass.level)) {
+      material.clink(panFor(this.g.cx, this.w));
+    }
     this.updateBubbles(dt);
     this.react();
   }
@@ -722,7 +724,7 @@ export class PourRoom implements Scene {
       lean: this.lean.value,
       faceAt: this.drink.extra ? Math.max(0.46, this.extras.top + 0.08) : 0.3,
       inside: this.bubbles.length ? (c) => this.drawBubbles(c, g) : undefined,
-      extras: this.extras.kind ? (c) => this.extras.draw(c, g, this.glass, this.time) : undefined,
+      extras: this.extras.kind ? (c) => this.extras.draw(c, g, this.glass, this.time, this.drink) : undefined,
     };
 
     this.drawReflection(ctx, g, look);
@@ -778,6 +780,25 @@ export class PourRoom implements Scene {
     ctx.beginPath();
     ctx.arc(0, 0, g.wt * 3.4, 0, TAU);
     ctx.fill();
+    ctx.restore();
+    // Subtle wood/stone counter grain and bevel edge along the tabletop.
+    const counterH = Math.max(1, this.h - this.floorY);
+    ctx.save();
+    ctx.strokeStyle = rgba(day ? '#5E3D2B' : '#ffffff', day ? 0.055 : 0.035);
+    ctx.lineWidth = 1.2;
+    for (let i = 1; i <= 6; i++) {
+      const gy = this.floorY + Math.pow(i / 6, 1.35) * counterH * 0.85;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.bezierCurveTo(w * 0.3, gy + (i % 2 ? 2.5 : -2), w * 0.7, gy + (i % 2 ? -2 : 2.5), w, gy);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = rgba('#ffffff', day ? 0.32 : 0.12);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, this.floorY + 0.75);
+    ctx.lineTo(w, this.floorY + 0.75);
+    ctx.stroke();
     ctx.restore();
   }
 

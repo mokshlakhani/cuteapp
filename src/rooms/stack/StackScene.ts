@@ -38,6 +38,7 @@ uniform sampler2D uFace;
 uniform float uFaceOn;
 uniform float uSeed;
 varying vec3 vObj;
+float wetMask = 0.0;
 float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 float vnoise(vec3 p) {
   vec3 i = floor(p);
@@ -56,16 +57,40 @@ const FRAG_COLOR = /* glsl */ `
   vec3 q = vObj * 2.6 + uSeed;
   float m = vnoise(q) * 0.6 + vnoise(q * 2.3) * 0.3 + vnoise(q * 5.1) * 0.1;
   diffuseColor.rgb *= 0.86 + m * 0.26;
-  // A pale vein or two, and fine dark grit.
-  float vein = 1.0 - smoothstep(0.0, 0.035, abs(sin(vObj.y * 5.0 + vObj.x * 2.0 + uSeed + vnoise(q) * 3.0)));
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.94, 0.9), vein * 0.28);
-  float grit = smoothstep(0.76, 0.84, vnoise(vObj * 34.0 + uSeed));
-  diffuseColor.rgb *= 1.0 - grit * 0.22;
+  // Per-stone geological character: a sedimentary band, branching quartz veins, or a river-wet patch.
+  float kind = fract(uSeed * 1.37);
+  if (kind < 0.34) {
+    // Sedimentary mineral band wrapping at a tilt across the stone.
+    float coord = vObj.y * 2.4 + vObj.x * 0.65 + (vnoise(q * 1.4) - 0.5) * 0.35;
+    float b1 = smoothstep(0.08, 0.02, abs(coord - 0.06));
+    float b2 = smoothstep(0.18, 0.04, abs(coord + 0.12));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.96, 0.92, 0.85), b1 * 0.45);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.76, b2 * 0.42);
+  } else if (kind < 0.68) {
+    // Distinct branching quartz veins.
+    float v1 = 1.0 - smoothstep(0.0, 0.042, abs(sin(vObj.y * 4.5 + vObj.x * 2.4 + uSeed + vnoise(q) * 3.2)));
+    float v2 = 1.0 - smoothstep(0.0, 0.028, abs(sin(vObj.x * 5.2 - vObj.y * 3.1 + uSeed * 1.7 + vnoise(q * 1.8) * 2.6)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.98, 0.95, 0.91), max(v1, v2 * 0.75) * 0.48);
+  } else {
+    // River-worn wet patch on one shoulder of the stone: darker and glossier.
+    float wp = vnoise(vObj * 1.35 + vec3(uSeed * 2.1, -uSeed, uSeed * 0.7));
+    wetMask = smoothstep(0.52, 0.68, wp);
+    diffuseColor.rgb *= 1.0 - wetMask * 0.22;
+    float vein = 1.0 - smoothstep(0.0, 0.03, abs(sin(vObj.y * 5.0 + vObj.x * 2.0 + uSeed + vnoise(q) * 3.0)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.94, 0.9), vein * 0.24);
+  }
+  float grit = smoothstep(0.74, 0.84, vnoise(vObj * 34.0 + uSeed));
+  diffuseColor.rgb *= 1.0 - grit * 0.24;
   if (uFaceOn > 0.5 && vObj.z > 0.1) {
     vec4 ft = texture2D(uFace, vec2(vObj.x, vObj.y * 1.7) / 1.5 + 0.5);
     diffuseColor.rgb = mix(diffuseColor.rgb, ft.rgb, ft.a * smoothstep(0.1, 0.3, vObj.z));
   }
 }
+`;
+
+const FRAG_ROUGH = /* glsl */ `
+#include <roughnessmap_fragment>
+roughnessFactor = mix(roughnessFactor, 0.14, wetMask);
 `;
 
 interface Piece {
@@ -82,12 +107,24 @@ interface Piece {
   gone: number;
   bounced: boolean;
   scale: number;
+  /** Landing squash-and-shiver spring timer when set down on the tower. */
+  landT: number;
+}
+
+interface DustPuff {
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  age: number;
+  life: number;
+  size: number;
 }
 
 const blobMat = () => new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false, toneMapped: false });
 const tmpV = new THREE.Vector3();
 const tmpP = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
+const tmpM = new THREE.Matrix4();
+const tmpS = new THREE.Vector3();
 
 export class StackScene {
   readonly canvas = document.createElement('canvas');
@@ -104,6 +141,8 @@ export class StackScene {
   private tower: Piece[] = [];
   private held: Piece | null = null;
   private falling: Piece[] = [];
+  private dust: DustPuff[] = [];
+  private dustMesh!: THREE.InstancedMesh;
   private shadow!: THREE.Mesh;
   private heldShadow!: THREE.Mesh;
   private faceCanvas = document.createElement('canvas');
@@ -157,6 +196,17 @@ export class StackScene {
     this.heldShadow.visible = false;
     this.scene.add(this.heldShadow);
 
+    const dustMat = new THREE.MeshBasicMaterial({
+      color: '#F5ECE2',
+      transparent: true,
+      opacity: 0.58,
+      depthWrite: false,
+    });
+    this.dustMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), dustMat, 36);
+    this.dustMesh.count = 0;
+    this.dustMesh.frustumCulled = false;
+    this.scene.add(this.dustMesh);
+
     yield;
 
     // Compile and draw a stone now, not on the first one.
@@ -174,10 +224,13 @@ export class StackScene {
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vObj;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${FRAG_HEAD}`).replace('#include <color_fragment>', FRAG_COLOR);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
+        .replace('#include <color_fragment>', FRAG_COLOR)
+        .replace('#include <roughnessmap_fragment>', FRAG_ROUGH);
     };
-    mat.customProgramCacheKey = () => 'soft-stone-v1';
-    return { stone, mesh: new THREE.Mesh(stoneGeometry(stone), mat), u, level: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), spin: new THREE.Vector3(), sink: false, gone: 0, bounced: false, scale: 1 };
+    mat.customProgramCacheKey = () => 'soft-stone-v2';
+    return { stone, mesh: new THREE.Mesh(stoneGeometry(stone), mat), u, level: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), spin: new THREE.Vector3(), sink: false, gone: 0, bounced: false, scale: 1, landT: 0 };
   }
 
   private free(p: Piece) {
@@ -239,7 +292,7 @@ export class StackScene {
     p.mesh.rotation.set(0, 0, tilt);
   }
 
-  /** The stone in hand settles onto the tower. */
+  /** The stone in hand settles onto the tower: a puff of dust and a shiver through the stack. */
   place(placed: Placed, level: number, impact: number) {
     const p = this.held;
     if (!p) return;
@@ -247,11 +300,33 @@ export class StackScene {
     p.level = level;
     p.u.uFace.value = this.restTex;
     p.scale = 1;
+    p.landT = 1;
+    if (level > 0 && this.tower[level - 1]) this.tower[level - 1].landT = Math.max(this.tower[level - 1].landT, 0.55);
     p.mesh.scale.setScalar(1);
     this.tower[level] = p;
-    this.shake.impulse((Math.random() < 0.5 ? -1 : 1) * impact);
+    const shiverDir = Math.random() < 0.5 ? -1 : 1;
+    this.shake.impulse(shiverDir * Math.max(1.8, impact * 1.65));
+    const sx = placed.x + swayAt(level, this.time, this.sway);
+    const sy = placed.y;
     // Where it really is, sway and all, in case it's knocked straight off.
-    p.mesh.position.set(placed.x + swayAt(level, this.time, this.sway), placed.y, 0);
+    p.mesh.position.set(sx, sy, 0);
+    // Emit a soft ring of dust puffs from the contact seam underneath the stone.
+    const seamY = sy - placed.stone.b * 0.92;
+    const rad = placed.stone.a * 0.72;
+    for (let i = 0; i < 12; i++) {
+      if (this.dust.length >= 36) this.dust.shift();
+      const ang = (i / 12) * Math.PI * 2 + rand(-0.2, 0.2);
+      const ca = Math.cos(ang);
+      const sa = Math.sin(ang);
+      const spd = rand(1.1, 2.4) * (0.8 + Math.min(1, impact * 0.25));
+      this.dust.push({
+        pos: new THREE.Vector3(sx + ca * rad * 0.75, seamY + 0.03, sa * rad * 0.55),
+        vel: new THREE.Vector3(ca * spd, rand(0.18, 0.65), sa * spd * 0.6),
+        age: 0,
+        life: rand(0.32, 0.52),
+        size: rand(0.065, 0.13) * Math.sqrt(placed.stone.a),
+      });
+    }
     this.faceSig = '';
   }
 
@@ -343,17 +418,44 @@ export class StackScene {
     this.shake.update(dt);
     this.look = damp(this.look, this.lookTarget, 2.2, dt);
 
-    // Each stone rides the tower's sway, more the higher it is, plus any shiver.
+    // Each stone rides the tower's sway, more the higher it is, plus any landing shiver and squash.
     const t = this.towerTime;
     this.tower.forEach((p, i) => {
       const q = this.placedAt[i];
       if (!q) return;
+      if (p.landT > 0) p.landT = Math.max(0, p.landT - dt * 4.2);
+      const sq = p.landT > 0 ? Math.sin(p.landT * Math.PI * 2.5) * p.landT * 0.085 : 0;
       // Holds past a point, like the sway, so a tall tower can't lurch.
-      const k = Math.min(i, 16) / 8;
-      const x = q.x + swayAt(i, t, this.sway) + this.shake.value * 0.012 * k * (1 + k * 2);
-      p.mesh.position.set(x, q.y, 0);
-      p.mesh.rotation.set(0, (p.stone.seed % 1) * 0.5 - 0.25, q.lean - this.shake.value * 0.003 * k);
+      const k = Math.min(i + 1, 16) / 8;
+      const x = q.x + swayAt(i, t, this.sway) + this.shake.value * 0.018 * k * (1 + k * 1.8);
+      p.mesh.position.set(x, q.y - sq * p.stone.b * 0.5, 0);
+      p.mesh.scale.set(1 + sq * 0.45, 1 - sq, 1 + sq * 0.45);
+      p.mesh.rotation.set(0, (p.stone.seed % 1) * 0.5 - 0.25, q.lean - this.shake.value * 0.005 * k);
     });
+
+    // Step and render landing dust puffs.
+    for (let i = this.dust.length - 1; i >= 0; i--) {
+      const d = this.dust[i];
+      d.age += dt;
+      if (d.age >= d.life) {
+        this.dust.splice(i, 1);
+        continue;
+      }
+      d.pos.addScaledVector(d.vel, dt);
+      d.vel.multiplyScalar(Math.exp(-5.5 * dt));
+      d.vel.y += 0.4 * dt;
+    }
+    this.dust.forEach((d, i) => {
+      const u = d.age / d.life;
+      const env = Math.sin(u * Math.PI);
+      const s = d.size * (0.55 + u * 0.85) * env;
+      tmpQ.identity();
+      tmpS.set(s * 1.25, s * 0.78, s * 1.25);
+      tmpM.compose(d.pos, tmpQ, tmpS);
+      this.dustMesh.setMatrixAt(i, tmpM);
+    });
+    this.dustMesh.count = this.dust.length;
+    if (this.dust.length > 0 || this.dustMesh.count === 0) this.dustMesh.instanceMatrix.needsUpdate = true;
 
     const h = this.held;
     if (h) {

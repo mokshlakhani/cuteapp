@@ -300,6 +300,83 @@ export function cutAll(pieces: Poly[], pl: Plane, minVolume = 1e-6, id = -1) {
   return { pieces: out, split: split_ };
 }
 
+/**
+ * Line a new cut up with the cuts already made, so a knife that all but
+ * passes through a crossing passes through it exactly.
+ *
+ * Three swipes through one spot are meant as six pieces. Drawn by hand they
+ * never quite meet: the third leaves a tiny triangle between them (a seventh
+ * piece, or, if it's small enough to be thrown away, pieces that end up cut
+ * on one side of the crossing and not the other). So where the new plane
+ * comes within `tol` of the spot where two earlier cuts cross on the skin
+ * (of a fruit with these `radii`), it's turned the little it takes to hold the whole
+ * line they meet along. The nearest such line wins; a cut that's nowhere near
+ * a crossing is left exactly as drawn.
+ */
+export function snapPlane(pl: Plane, cuts: Plane[], radii: V3 | number, tol: number): Plane {
+  const [rx, ry, rz]: V3 = typeof radii === 'number' ? [radii, radii, radii] : radii;
+  let best: { u: V3; p: V3 } | null = null;
+  let bestOff = tol;
+  for (let i = 0; i < cuts.length; i++) {
+    for (let j = i + 1; j < cuts.length; j++) {
+      const a = cuts[i];
+      const b = cuts[j];
+      const x = cross(a.n, b.n);
+      const l = Math.hypot(...x);
+      // Near enough parallel: they don't meet inside the fruit in any useful way.
+      if (l < 0.08) continue;
+      const u: V3 = [x[0] / l, x[1] / l, x[2] / l];
+      // The point on both planes nearest the middle.
+      const k = dot(a.n, b.n);
+      const det = 1 - k * k;
+      const ca = (a.d - b.d * k) / det;
+      const cb = (b.d - a.d * k) / det;
+      const p: V3 = [a.n[0] * ca + b.n[0] * cb, a.n[1] * ca + b.n[1] * cb, a.n[2] * ca + b.n[2] * cb];
+      // Where the line comes out through the skin (the fruit taken as an ellipsoid of its radii).
+      const ps: V3 = [p[0] / rx, p[1] / ry, p[2] / rz];
+      const us: V3 = [u[0] / rx, u[1] / ry, u[2] / rz];
+      const qa = dot(us, us);
+      const qb = 2 * dot(ps, us);
+      const disc = qb * qb - 4 * qa * (dot(ps, ps) - 1);
+      if (disc <= 0) continue;
+      // The crossing you can see is where that line comes out through the
+      // skin: it's how near the new cut passes to that spot (at either end)
+      // that says it was aimed there. The fruit turns between cuts, so a cut
+      // aimed at the spot on the near side won't lie along the whole line;
+      // it's taken as meant for it so long as it runs roughly the line's way.
+      if (Math.abs(dot(pl.n, u)) > 0.42) continue;
+      const root = Math.sqrt(disc);
+      let off = Infinity;
+      for (const t of [(-qb - root) / (2 * qa), (-qb + root) / (2 * qa)]) {
+        const q: V3 = [p[0] + u[0] * t, p[1] + u[1] * t, p[2] + u[2] * t];
+        off = Math.min(off, Math.abs(dot(pl.n, q) - pl.d));
+      }
+      if (off < bestOff) {
+        bestOff = off;
+        best = { u, p };
+      }
+    }
+  }
+  if (!best) return pl;
+  // Turned to lie along the line, then moved onto it.
+  const along = dot(pl.n, best.u);
+  const n = norm([pl.n[0] - best.u[0] * along, pl.n[1] - best.u[1] * along, pl.n[2] - best.u[2] * along]);
+  return { n, d: dot(n, best.p) };
+}
+
+/** Is this cut all but on top of one already made (within `tol` of it right through a fruit of `radius`)? */
+export function repeatsCut(pl: Plane, cuts: Plane[], radius: number, tol: number) {
+  for (const c of cuts) {
+    const k = dot(pl.n, c.n);
+    const s = k < 0 ? -1 : 1;
+    // Their gap at the middle, and how much it opens toward the skin.
+    const gap = Math.abs(pl.d - s * c.d);
+    const open = Math.sqrt(Math.max(0, 1 - k * k)) * radius;
+    if (gap + open < tol) return true;
+  }
+  return false;
+}
+
 /** The cuts that really pass through a piece (it has a face on them), as bits: cut i is bit i. */
 export function cutMask(p: Poly) {
   let m = 0;

@@ -37,10 +37,10 @@ const ROLL_AXIS = new THREE.Vector3(-Math.sin(START_LON), 0, Math.cos(START_LON)
 /** Ribbon sections per turn of the spiral. */
 const PER_TURN = 44;
 /** Over this much strip it lifts from the fruit into its hanging curl. */
-const LIFT = 1.5;
+const LIFT = 1.82;
 /** The hanging curl: its radius, and the gap between its coils, as a share of the strip's width. */
-const CURL = 0.34;
-const GAP = 0.55;
+const CURL = 0.48;
+const GAP = 0.78;
 const MOST_STRIPS = 7;
 /** The way the strip faces as it leaves the fruit: toward you, so it's never seen edge-on. */
 const HEADING = 1.1;
@@ -110,6 +110,9 @@ export class PeelScene {
   private yaw = 0;
   /** How far the finished fruit has rolled back upright (0..1). */
   private upright = 0;
+  /** Smoothed peel progress rate (for lagging ribbon curl). */
+  private prevS = 0;
+  private turnLag = 0;
   private drops: Drop[] = [];
   private dropMesh!: THREE.InstancedMesh;
   private dropMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false });
@@ -195,11 +198,56 @@ export class PeelScene {
   }
 
   private buildKnife() {
-    const blade = new THREE.Mesh(new RoundedBoxGeometry(0.86, 0.17, 0.035, 3, 0.016), new THREE.MeshPhysicalMaterial({ color: '#E9E6EE', metalness: 0.75, roughness: 0.26, envMapIntensity: 1.3 }));
-    blade.position.x = 0.38;
-    const handle = new THREE.Mesh(new RoundedBoxGeometry(1.06, 0.25, 0.17, 5, 0.08), new THREE.MeshPhysicalMaterial({ color: '#E7A4C4', roughness: 0.4, clearcoat: 0.6, clearcoatRoughness: 0.3 }));
-    handle.position.x = 1.28;
-    this.knife.add(blade, handle);
+    const blade = new THREE.Mesh(
+      new RoundedBoxGeometry(0.92, 0.19, 0.036, 3, 0.015),
+      new THREE.MeshPhysicalMaterial({ color: '#E8E5EE', metalness: 0.78, roughness: 0.22, clearcoat: 0.7, clearcoatRoughness: 0.15, envMapIntensity: 1.45 }),
+    );
+    blade.position.x = 0.36;
+    // Bright bevelled cutting edge & spine highlight so the paring blade catches the key light.
+    const edge = new THREE.Mesh(
+      new RoundedBoxGeometry(0.9, 0.048, 0.04, 2, 0.01),
+      new THREE.MeshPhysicalMaterial({
+        color: '#FFFFFF',
+        emissive: '#FFF7EC',
+        emissiveIntensity: 0.28,
+        metalness: 0.92,
+        roughness: 0.08,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.05,
+        envMapIntensity: 1.9,
+      }),
+    );
+    edge.position.set(0.35, -0.072, 0.004);
+    const spine = new THREE.Mesh(
+      new RoundedBoxGeometry(0.88, 0.032, 0.042, 2, 0.01),
+      new THREE.MeshPhysicalMaterial({
+        color: '#FFFDF9',
+        emissive: '#FFF6E8',
+        emissiveIntensity: 0.2,
+        metalness: 0.88,
+        roughness: 0.12,
+        envMapIntensity: 1.6,
+      }),
+    );
+    spine.position.set(0.36, 0.08, 0.003);
+    const bolster = new THREE.Mesh(
+      new RoundedBoxGeometry(0.11, 0.23, 0.12, 3, 0.03),
+      new THREE.MeshPhysicalMaterial({ color: '#DCD8E4', metalness: 0.82, roughness: 0.2, envMapIntensity: 1.4 }),
+    );
+    bolster.position.x = 0.8;
+    const handle = new THREE.Mesh(
+      new RoundedBoxGeometry(1.08, 0.26, 0.175, 5, 0.082),
+      new THREE.MeshPhysicalMaterial({ color: '#E7A4C4', roughness: 0.34, clearcoat: 0.75, clearcoatRoughness: 0.22 }),
+    );
+    handle.position.x = 1.32;
+    const rivetGeo = new THREE.CylinderGeometry(0.028, 0.028, 0.184, 12);
+    rivetGeo.rotateX(Math.PI / 2);
+    const rivetMat = new THREE.MeshPhysicalMaterial({ color: '#F7E7CE', metalness: 0.85, roughness: 0.18 });
+    const r1 = new THREE.Mesh(rivetGeo, rivetMat);
+    r1.position.set(1.1, 0, 0);
+    const r2 = new THREE.Mesh(rivetGeo, rivetMat);
+    r2.position.set(1.48, 0, 0);
+    this.knife.add(blade, edge, spine, bolster, handle, r1, r2);
     this.scene.add(this.knife);
   }
 
@@ -210,6 +258,8 @@ export class PeelScene {
     this.fruit = fruit;
     this.turns = turns;
     this.s = 0;
+    this.prevS = 0;
+    this.turnLag = 0;
     this.spin = 1;
     this.yaw = 0;
     this.upright = 0;
@@ -379,6 +429,13 @@ export class PeelScene {
 
   // ——— simulation ———
 
+  /** Back from facing you to where the peeling had it (after a sad moment). */
+  settleBack(dt: number) {
+    if (this.yaw === 0 && this.upright === 0) return;
+    this.yaw = Math.abs(this.yaw) < 0.002 ? 0 : damp(this.yaw, 0, 5, dt);
+    this.upright = this.upright < 0.002 ? 0 : damp(this.upright, 0, 5, dt);
+  }
+
   /** Roll the finished fruit upright and round to face you, the short way forward. */
   faceForward(dt: number) {
     const whole = this.spin * Math.PI * 2 * this.turns * this.s + this.yaw;
@@ -433,6 +490,10 @@ export class PeelScene {
     this.time += dt;
     this.face.update(dt);
     this.squash.update(dt);
+    const ds = Math.max(0, this.s - this.prevS);
+    this.prevS = this.s;
+    const targetLag = dt > 1e-4 ? clamp((ds / dt) * this.turns * 1.4, 0, 1.35) : 0;
+    this.turnLag = damp(this.turnLag, targetLag, 5.5, dt);
     const t = this.time;
     const q = clamp(this.squash.value * 0.03, -0.14, 0.18);
     const shake = this.tight > 0.25 ? Math.sin(t * 58) * 0.02 * this.tight : 0;
@@ -449,11 +510,15 @@ export class PeelScene {
     // No fruit over the board, no shadow on it.
     (this.blob.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - clamp(this.lift / 5, 0, 1));
 
-    // The knife rests against the cut.
+    // The knife rests against the cut, juddering visibly as pace strain builds.
     this.cutPoint(tmpA);
     const away = this.rest * this.rest;
-    this.knife.position.set(tmpA.x + away * 3.4 + shake, tmpA.y + 0.06 + away * 0.9, tmpA.z);
-    this.knife.rotation.set(0.2, -0.5, 0.42 + Math.sin(t * 2.2) * 0.012);
+    const strain = smoothstep(0.06, 1, this.tight);
+    const judderX = strain * (Math.sin(t * 68) * 0.034 + Math.cos(t * 113) * 0.016);
+    const judderY = strain * Math.sin(t * 89 + 1.1) * 0.026;
+    const judderRot = strain * Math.sin(t * 74 + 0.4) * 0.085;
+    this.knife.position.set(tmpA.x + away * 3.4 + shake + judderX, tmpA.y + 0.06 + away * 0.9 + judderY, tmpA.z);
+    this.knife.rotation.set(0.2 + strain * 0.05, -0.5 + judderRot * 0.4, 0.42 + Math.sin(t * 2.2) * 0.012 + judderRot);
     this.knife.visible = this.rest < 0.995;
 
     const cut = this.cutSection;
@@ -502,28 +567,32 @@ export class PeelScene {
     const nrm = st.nrm.array as Float32Array;
     const half = this.half * st.width;
     const pitch = (this.half * 2 * (1 + GAP)) / (Math.PI * 2 * CURL);
-    const wind = this.half * 0.45;
+    const wind = this.half * 0.62;
     const rad0 = Math.sqrt(CURL * CURL + (LIFT * 0.7 * wind) / Math.PI);
     const sEnd = st.free > 0 ? st.to : this.s * n;
-    let settled = st.free >= 1;
+    const lag = st.free > 0 ? 0 : this.turnLag;
+    let settled = st.free >= 1 && this.turnLag < 0.02;
     for (let i = st.from; i <= st.to; i++) {
       const l = Math.max(0, sEnd - i) * per;
       const k = Math.max(smoothstep(0, LIFT, l), st.free);
-      // An even spiral: each coil a little wider than the last, so it lands as a rose.
-      const rad = Math.sqrt(CURL * CURL + (l * wind) / Math.PI);
-      // Still lifting it keeps one heading, so it can't twist; the curl starts after.
-      const ang = HEADING - (Math.max(rad, rad0) - rad0) * (Math.PI * 2) / wind;
-      const axis = -CURL + (st.out + CURL) * Math.min(1, k * 1.3);
-      const ax = c.x + dx * axis + Math.sin(this.time * 0.8 + l * 0.2) * 0.02 * Math.min(1, l);
-      const az = c.z + dz * axis * 0.4;
-      const hang = c.y - st.fall - Math.min(l, LIFT) * 0.28 - Math.max(0, l - LIFT) * pitch;
+      // An even, looser spiral: each coil widens gently and lags behind the fruit's turn.
+      const rad = Math.sqrt(CURL * CURL + (l * wind) / Math.PI) * (1 + lag * 0.14 * smoothstep(0.4, 3.2, l));
+      // Still lifting it keeps one heading, so it can't twist; the curl starts after, trailing softly when spinning.
+      const lagAng = lag * 0.55 * smoothstep(0.3, 3.5, l);
+      const ang = HEADING - ((Math.max(rad, rad0) - rad0) * (Math.PI * 2)) / wind + lagAng;
+      const axis = -CURL + (st.out + CURL) * Math.min(1, k * 1.22);
+      const sway = (0.032 + lag * 0.045) * Math.min(1, l * 0.65);
+      const ax = c.x + dx * axis + Math.sin(this.time * 1.35 - l * 0.42) * sway;
+      const az = c.z + dz * axis * 0.45 + Math.cos(this.time * 1.1 - l * 0.36) * sway * 0.75 * this.spin;
+      const springBounce = Math.sin(this.time * 2.4 - l * 0.55) * 0.035 * lag * Math.min(1, l * 0.5);
+      const hang = c.y - st.fall - Math.min(l, LIFT) * 0.31 - Math.max(0, l - LIFT) * pitch + springBounce;
       if (hang > floorY) settled = false;
       const hy = Math.max(floorY, hang);
       const cx = Math.cos(ang);
       // Mirrored for a fruit turned the other way, so the skin stays on the outside.
       const sz = Math.sin(ang) * this.spin;
-      // Down on the board its upper edge falls open, like a petal.
-      const open = (1 - smoothstep(floorY, floorY + 0.9, hang)) * (0.72 + 0.28 * Math.sin(l * 2.6));
+      // Down on the board its upper edge falls open loosely like a soft ribbon petal.
+      const open = (1 - smoothstep(floorY, floorY + 1.15, hang)) * (0.78 + 0.22 * Math.sin(l * 2.1));
       const wy = half * (1 - open * 0.36);
       const wr = half * open * 0.66;
       const hx = Math.min(ax, BOARD.w / 2 - 0.15 - rad) + cx * rad;

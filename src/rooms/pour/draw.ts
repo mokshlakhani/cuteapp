@@ -123,6 +123,12 @@ function edge(p: Path2D, g: GlassShape, glass: Glass, f: number, side: number, b
 
 const flat = () => 0;
 
+/** The meniscus: the drink curves and climbs the glass where it meets the wall. */
+const meniscus = (u: number) => {
+  const e = Math.min(u, 1 - u) / 0.15;
+  return e >= 1 ? 0 : 4.6 * Math.pow(1 - e, 2.2);
+};
+
 /** The table under the glass: a warm shadow, and the drink's light thrown through it. */
 function drawCounter(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape, glass: Glass, d: Drink) {
   const W = g.wt * 2;
@@ -188,23 +194,32 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
   const level = glass.level;
   if (level > 0.002) {
     const body = new Path2D();
-    edge(body, g, glass, level, 1, flat);
+    edge(body, g, glass, level, 1, meniscus);
     body.lineTo(g.cx + g.wt + 4, g.bottom + 4);
     body.lineTo(g.cx - g.wt - 4, g.bottom + 4);
     body.closePath();
-    const vy = ctx.createLinearGradient(0, yAt(g, level), 0, g.bottom);
-    vy.addColorStop(0, d.color);
-    vy.addColorStop(1, d.deep);
+    const vy = ctx.createLinearGradient(0, yAt(g, level) - 4, 0, g.bottom);
+    // Luminous near the surface where the lamp gets in; noticeably deeper and richer toward the bottom.
+    vy.addColorStop(0, mix(d.color, '#ffffff', 0.22));
+    vy.addColorStop(0.24, d.color);
+    vy.addColorStop(0.72, d.deep);
+    vy.addColorStop(1, mix(d.deep, '#1A0C06', 0.28));
     ctx.fillStyle = vy;
     ctx.fill(body);
     // Round, not flat: deeper toward the walls, deepest on the side away from the lamp.
     const vx = ctx.createLinearGradient(g.cx - g.wt, 0, g.cx + g.wt, 0);
     const sh = day ? 1.5 : 1;
-    vx.addColorStop(0, rgba(d.deep, 0.32 * sh));
-    vx.addColorStop(0.2, rgba(d.deep, 0));
-    vx.addColorStop(0.62, rgba(d.deep, 0));
-    vx.addColorStop(1, rgba(d.deep, Math.min(1, 0.5 * sh)));
+    vx.addColorStop(0, rgba(d.deep, 0.36 * sh));
+    vx.addColorStop(0.18, rgba(d.deep, 0));
+    vx.addColorStop(0.6, rgba(d.deep, 0));
+    vx.addColorStop(1, rgba(d.deep, Math.min(1, 0.55 * sh)));
     ctx.fillStyle = vx;
+    ctx.fill(body);
+    // Soft upward bounce of refracted light at the bottom of the drink.
+    const bounce = ctx.createLinearGradient(0, g.bottom - g.H * 0.08, 0, g.bottom);
+    bounce.addColorStop(0, rgba(d.color, 0));
+    bounce.addColorStop(1, rgba(mix(d.color, '#ffffff', 0.35), day ? 0.24 : 0.14));
+    ctx.fillStyle = bounce;
     ctx.fill(body);
     if (look.inside) {
       ctx.save();
@@ -212,26 +227,55 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
       look.inside(ctx);
       ctx.restore();
     }
-    // The top of the drink, seen from a little above, lit by the lamp.
+    // The top of the drink, seen from a little above, with a curved meniscus at the walls.
     const face = new Path2D();
-    edge(face, g, glass, level, -1, flat);
-    edge(face, g, glass, level, 1, flat, false, true);
+    edge(face, g, glass, level, -1, meniscus);
+    edge(face, g, glass, level, 1, meniscus, false, true);
     face.closePath();
     const half = halfAt(g, level);
-    const tg = ctx.createLinearGradient(g.cx - half, 0, g.cx + half, 0);
-    tg.addColorStop(0, mix(d.color, '#ffffff', 0.5));
-    tg.addColorStop(1, mix(d.color, d.deep, 0.15));
+    const surfY = yAt(g, level);
+    const tg = ctx.createLinearGradient(g.cx - half, surfY - ryAt(g, level), g.cx + half, surfY + ryAt(g, level));
+    tg.addColorStop(0, mix(d.color, '#ffffff', 0.54));
+    tg.addColorStop(0.55, mix(d.color, '#ffffff', 0.22));
+    tg.addColorStop(1, mix(d.color, d.deep, 0.22));
     ctx.fillStyle = tg;
     ctx.fill(face);
-    // The meniscus: the near edge catches a line of light.
+    // The lamp on the drink's surface: a bright surface highlight lozenge + crisp specular crescent.
+    const sheen = ctx.createRadialGradient(g.cx - half * 0.34, surfY, 0, g.cx - half * 0.34, surfY, half * 0.58);
+    sheen.addColorStop(0, rgba('#ffffff', day ? 0.68 : 0.42));
+    sheen.addColorStop(0.5, rgba('#ffffff', day ? 0.25 : 0.14));
+    sheen.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = sheen;
+    ctx.fill(face);
+    ctx.save();
+    ctx.clip(face);
+    ctx.fillStyle = rgba('#ffffff', day ? 0.52 : 0.32);
+    ctx.beginPath();
+    ctx.ellipse(g.cx - half * 0.28, surfY - ryAt(g, level) * 0.12, half * 0.34, Math.max(1.5, ryAt(g, level) * 0.44), -0.04, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+    // Translucent meniscus wall fillets where the liquid climbs the left and right glass walls.
+    const menBand = ctx.createLinearGradient(g.cx - half, 0, g.cx + half, 0);
+    menBand.addColorStop(0, rgba('#ffffff', day ? 0.55 : 0.35));
+    menBand.addColorStop(0.14, rgba(d.color, 0));
+    menBand.addColorStop(0.86, rgba(d.color, 0));
+    menBand.addColorStop(1, rgba(mix(d.color, '#ffffff', 0.4), day ? 0.42 : 0.26));
+    ctx.fillStyle = menBand;
+    ctx.fill(face);
+    // The meniscus rim: the near and far edges catch a bright line of light.
+    const far = new Path2D();
+    edge(far, g, glass, level, -1, meniscus);
+    ctx.strokeStyle = rgba('#ffffff', day ? 0.38 : 0.24);
+    ctx.lineWidth = 1.0;
+    ctx.stroke(far);
     const near = new Path2D();
-    edge(near, g, glass, level, 1, flat);
-    ctx.strokeStyle = rgba('#ffffff', day ? 0.75 : 0.55);
-    ctx.lineWidth = 1.4;
+    edge(near, g, glass, level, 1, meniscus);
+    ctx.strokeStyle = rgba('#ffffff', day ? 0.85 : 0.62);
+    ctx.lineWidth = 1.65;
     ctx.stroke(near);
   }
   if (glass.foam > 0.004) {
-    // Froth: a soft, lumpy collar riding on the drink, with its own lit top.
+    // Froth: a soft, lumpy collar riding on the drink, with mixed bubble sizes and a few popping.
     const ftop = level + glass.foam;
     const amp = Math.min(3, glass.foam * 40);
     const lumps = (u: number) => (Math.sin(u * 19 + look.time * 2.2) * 0.5 + Math.sin(u * 7.3 - look.time * 1.3) * 0.5) * amp;
@@ -247,13 +291,45 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
     cap.closePath();
     ctx.fillStyle = mix(d.foam, '#ffffff', 0.5);
     ctx.fill(cap);
-    ctx.fillStyle = rgba(mix(d.foam, d.color, 0.4), 0.55);
     const half = halfAt(g, level);
-    for (let i = 0; i < 11; i++) {
-      const u = (i + 0.5) / 11;
+    const bubbleRadii = [0.65, 1.8, 1.0, 2.5, 0.8, 1.4, 2.9, 0.7, 1.9, 1.2, 2.2, 0.85, 1.6, 2.4];
+    for (let i = 0; i < bubbleRadii.length; i++) {
+      const u = (i + 0.45) / bubbleRadii.length;
+      const bx = g.cx - half + u * half * 2;
+      const by = yAt(g, level + glass.foam * (0.22 + ((i * 7) % 6) * 0.12)) + ryAt(g, level) * front(u);
+      const br = bubbleRadii[i];
+      ctx.fillStyle = rgba(mix(d.foam, d.color, 0.38), 0.52);
       ctx.beginPath();
-      ctx.arc(g.cx - half + u * half * 2, yAt(g, level + glass.foam * 0.45) + ryAt(g, level) * front(u), 1.2 + (i % 3) * 0.55, 0, TAU);
+      ctx.arc(bx, by, br, 0, TAU);
       ctx.fill();
+      if (br > 1.5) {
+        ctx.fillStyle = rgba('#ffffff', 0.65);
+        ctx.beginPath();
+        ctx.arc(bx - br * 0.28, by - br * 0.28, br * 0.32, 0, TAU);
+        ctx.fill();
+      }
+    }
+    // A few tiny foam bubbles popping along the top of the collar.
+    for (let p = 0; p < 3; p++) {
+      const cycle = (look.time * (1.35 + p * 0.3) + p * 0.37) % 1;
+      const u = 0.2 + ((p * 0.29 + Math.floor(look.time * (1.35 + p * 0.3)) * 0.17) % 0.6);
+      const px = g.cx - half + u * half * 2;
+      const py = yAt(g, ftop) + ryAt(g, ftop) * front(u) * 0.5 - cycle * 3.5;
+      if (cycle < 0.65) {
+        const r = (1.2 + p * 0.4) * (0.6 + cycle * 0.6);
+        ctx.fillStyle = rgba(mix(d.foam, '#ffffff', 0.65), 0.85);
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, TAU);
+        ctx.fill();
+      } else {
+        const popK = (cycle - 0.65) / 0.35;
+        const r = (1.6 + p * 0.4) * (1 + popK * 0.9);
+        ctx.strokeStyle = rgba('#ffffff', (1 - popK) * 0.8);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, TAU);
+        ctx.stroke();
+      }
     }
   }
   look.extras?.(ctx);
@@ -292,7 +368,7 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
   ctx.fillStyle = fr;
   ctx.fill(walls, 'evenodd');
 
-  // The foot: a thick lens of glass, tinted by what's above it.
+  // The foot: a thick lens of glass, tinted by what's above it, with a clear refraction band.
   const footPath = new Path2D();
   const fr2 = g.wb * 0.3;
   footPath.moveTo(g.cx - g.wb - g.wall, g.bottom - g.wb * 0.05);
@@ -303,16 +379,36 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
   footPath.lineTo(g.cx + g.wb + g.wall, g.bottom - g.wb * 0.05);
   footPath.closePath();
   const fg = ctx.createLinearGradient(0, g.bottom, 0, floor);
-  const tint = level > 0.01 ? mix('#ffffff', d.color, 0.45) : '#ffffff';
-  fg.addColorStop(0, rgba(tint, day ? 0.5 : 0.2));
-  fg.addColorStop(1, rgba(tint, day ? 0.22 : 0.08));
+  const tint = level > 0.01 ? mix('#ffffff', d.color, 0.5) : '#ffffff';
+  fg.addColorStop(0, rgba(tint, day ? 0.58 : 0.26));
+  fg.addColorStop(0.55, rgba(mix(tint, day ? t.ink : '#ffffff', 0.18), day ? 0.32 : 0.16));
+  fg.addColorStop(1, rgba(tint, day ? 0.28 : 0.12));
   ctx.fillStyle = fg;
   ctx.fill(footPath);
-  // The inside floor of the glass, and the foot's lower edge, catch light.
-  ctx.strokeStyle = rgba('#ffffff', day ? 0.6 : 0.28);
-  ctx.lineWidth = 1.2;
+  // Base refraction band: a luminous internal lens band across the thick glass base.
+  ctx.save();
+  ctx.clip(footPath);
+  const refY = g.bottom + g.base * 0.48;
+  const refGrad = ctx.createLinearGradient(g.cx - g.wb, 0, g.cx + g.wb, 0);
+  refGrad.addColorStop(0, rgba('#ffffff', day ? 0.65 : 0.34));
+  refGrad.addColorStop(0.35, rgba(tint, day ? 0.82 : 0.42));
+  refGrad.addColorStop(0.75, rgba(level > 0.01 ? d.deep : t.ink, day ? 0.26 : 0.18));
+  refGrad.addColorStop(1, rgba('#ffffff', day ? 0.55 : 0.28));
+  ctx.fillStyle = refGrad;
   ctx.beginPath();
-  ctx.ellipse(g.cx, g.bottom, g.wb * 0.86, ryAt(g, 0), 0, 0.15, Math.PI - 0.15);
+  ctx.ellipse(g.cx, refY, g.wb * 0.94, Math.max(2.2, g.base * 0.26), 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = rgba('#ffffff', day ? 0.78 : 0.42);
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.ellipse(g.cx, g.bottom + g.base * 0.72, g.wb * 0.82, Math.max(1.2, ryAt(g, 0) * 0.75), 0, 0.1, Math.PI - 0.1);
+  ctx.stroke();
+  ctx.restore();
+  // The inside floor of the glass, and the foot's lower edge, catch light.
+  ctx.strokeStyle = rgba('#ffffff', day ? 0.72 : 0.36);
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.ellipse(g.cx, g.bottom, g.wb * 0.88, ryAt(g, 0), 0, 0.12, Math.PI - 0.12);
   ctx.stroke();
 
   // Silhouette and the near half of the rim: a dark edge with a bright inner
@@ -338,14 +434,29 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
   }
 
   if (!mirror) {
-    // The long window highlight down the lamp side, and a thin rim light on the other.
+    // Crisp rim highlights: main lamp glint on the left-front lip and a secondary glint on the right-back lip.
+    ctx.strokeStyle = rgba('#ffffff', day ? 0.98 : 0.78);
+    ctx.lineWidth = 2.9;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.ellipse(g.cx, top, g.wt + g.wall * 0.5, rimRy, 0, Math.PI * 0.64, Math.PI * 0.88);
+    ctx.stroke();
+    ctx.strokeStyle = rgba('#ffffff', day ? 0.72 : 0.48);
+    ctx.lineWidth = 1.9;
+    ctx.beginPath();
+    ctx.ellipse(g.cx, top, g.wt + g.wall * 0.5, rimRy, 0, Math.PI * 0.08, Math.PI * 0.24);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(g.cx, top, g.wt + g.wall * 0.5, rimRy, 0, Math.PI * 1.18, Math.PI * 1.36);
+    ctx.stroke();
+    // Primary window highlight down the lamp side.
     const hx = g.cx - g.wt * 0.74;
     const h0 = yAt(g, 0.9);
     const h1 = yAt(g, 0.12);
     const hl = ctx.createLinearGradient(0, h0, 0, h1);
     hl.addColorStop(0, rgba('#ffffff', 0));
-    hl.addColorStop(0.18, rgba('#ffffff', day ? 0.62 : 0.32));
-    hl.addColorStop(0.7, rgba('#ffffff', day ? 0.32 : 0.14));
+    hl.addColorStop(0.18, rgba('#ffffff', day ? 0.65 : 0.35));
+    hl.addColorStop(0.7, rgba('#ffffff', day ? 0.35 : 0.16));
     hl.addColorStop(1, rgba('#ffffff', 0));
     ctx.fillStyle = hl;
     ctx.beginPath();
@@ -355,8 +466,21 @@ export function drawGlass(ctx: CanvasRenderingContext2D, t: Theme, g: GlassShape
     ctx.beginPath();
     ctx.roundRect(hx + W * 0.055, yAt(g, 0.82), W * 0.016, g.H * 0.16, W * 0.008);
     ctx.fill();
-    ctx.strokeStyle = rgba('#ffffff', day ? 0.4 : 0.18);
-    ctx.lineWidth = 1;
+    // Second soft vertical reflection band on the right side of the tumbler.
+    const rx2 = g.cx + g.wt * 0.56;
+    const r0 = yAt(g, 0.84);
+    const r1 = yAt(g, 0.16);
+    const rl = ctx.createLinearGradient(0, r0, 0, r1);
+    rl.addColorStop(0, rgba('#ffffff', 0));
+    rl.addColorStop(0.25, rgba('#ffffff', day ? 0.34 : 0.18));
+    rl.addColorStop(0.75, rgba('#ffffff', day ? 0.2 : 0.1));
+    rl.addColorStop(1, rgba('#ffffff', 0));
+    ctx.fillStyle = rl;
+    ctx.beginPath();
+    ctx.roundRect(rx2 - W * 0.018, r0, W * 0.036, r1 - r0, W * 0.018);
+    ctx.fill();
+    ctx.strokeStyle = rgba('#ffffff', day ? 0.48 : 0.22);
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
     ctx.moveTo(g.cx + g.wt - g.wall * 0.2, yAt(g, 0.88));
     ctx.lineTo(g.cx + g.wb + (g.wt - g.wb) * 0.2 - g.wall * 0.2, yAt(g, 0.2));
@@ -461,7 +585,7 @@ export interface JugShape {
 }
 
 export function jugShape(glassW: number, kind: Pourer = 'jug'): JugShape {
-  if (kind === 'bottle') return { kind, W: glassW * 1.12, H: glassW * 1.16 };
+  if (kind === 'bottle') return { kind, W: glassW * 1.24, H: glassW * 1.28 };
   if (kind === 'carton') return { kind, W: glassW, H: glassW * 0.74 };
   if (kind === 'pitcher') return { kind, W: glassW * 0.74, H: glassW * 1.06 };
   return { kind, W: glassW * 0.8, H: glassW * 0.99 };
@@ -945,6 +1069,47 @@ function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: num
       ctx.stroke();
     }
   }
+  // A wrap-around contoured paper label band round the bottle's waist: warm crimson with cream borders and ribbon wave.
+  const l0 = -H / 2 + 0.505 * H;
+  const lh = 0.135 * H;
+  const labelDip = W * 0.022;
+  const labelPath = new Path2D();
+  labelPath.moveTo(-W * 0.22, l0);
+  labelPath.quadraticCurveTo(0, l0 + labelDip, W * 0.22, l0);
+  labelPath.lineTo(W * 0.22, l0 + lh);
+  labelPath.quadraticCurveTo(0, l0 + lh + labelDip, -W * 0.22, l0 + lh);
+  labelPath.closePath();
+  const labelGrad = ctx.createLinearGradient(-W * 0.16, 0, W * 0.16, 0);
+  labelGrad.addColorStop(0, '#DF5C44');
+  labelGrad.addColorStop(0.5, '#C84833');
+  labelGrad.addColorStop(1, '#9E3422');
+  ctx.fillStyle = labelGrad;
+  ctx.fill(labelPath);
+  // Cream-gold top and bottom trim bands on the label:
+  ctx.strokeStyle = rgba('#FFF3E0', 0.92);
+  ctx.lineWidth = Math.max(1.2, lh * 0.1);
+  ctx.beginPath();
+  ctx.moveTo(-W * 0.2, l0 + lh * 0.14);
+  ctx.quadraticCurveTo(0, l0 + lh * 0.14 + labelDip, W * 0.2, l0 + lh * 0.14);
+  ctx.moveTo(-W * 0.2, l0 + lh * 0.86);
+  ctx.quadraticCurveTo(0, l0 + lh * 0.86 + labelDip, W * 0.2, l0 + lh * 0.86);
+  ctx.stroke();
+  // Classic dynamic wave ribbon across the middle of the label:
+  ctx.strokeStyle = rgba('#FFFDF8', 0.95);
+  ctx.lineWidth = Math.max(1.6, lh * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(-W * 0.2, l0 + lh * 0.62);
+  ctx.quadraticCurveTo(-W * 0.04, l0 + lh * 0.24, W * 0.02, l0 + lh * 0.52);
+  ctx.quadraticCurveTo(W * 0.09, l0 + lh * 0.8, W * 0.2, l0 + lh * 0.38);
+  ctx.stroke();
+  // Neck foil/collar band just below the lip:
+  const n0 = -H / 2 + 0.095 * H;
+  const nh = 0.032 * H;
+  ctx.fillStyle = '#D6523B';
+  ctx.fillRect(-W * 0.1, n0, W * 0.2, nh);
+  ctx.strokeStyle = rgba('#FFF3E0', 0.85);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-W * 0.1, n0, W * 0.2, nh);
   // Round: the side away from the lamp in shade, and a thick heel of glass.
   const sh = ctx.createLinearGradient(-W * 0.17, 0, W * 0.17, 0);
   sh.addColorStop(0, rgba(t.ink, 0));
@@ -956,7 +1121,7 @@ function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: num
   ctx.fillRect(-W * 0.2, H / 2 - H * 0.04, W * 0.4, H * 0.05);
   ctx.restore();
 
-  // Silhouette, a bright inner edge, the lamp's long highlight, and the lip.
+  // Silhouette, a bright inner edge, the lamp's long highlight, and the lip + crimped crown cap.
   ctx.lineJoin = 'round';
   ctx.strokeStyle = day ? rgba(mix(t.ink, glassTint, 0.3), 0.42) : rgba(mix(glassTint, '#ffffff', 0.5), 0.5);
   ctx.lineWidth = 1.5;
@@ -989,6 +1154,33 @@ function drawBottle(ctx: CanvasRenderingContext2D, t: Theme, j: JugShape, x: num
   ctx.roundRect(-lipW / 2, -H / 2 - lipH * 0.4, lipW, lipH, lipH * 0.45);
   ctx.fill();
   ctx.stroke();
+  // Crimped metallic crown cap: sits snug on the bottle top at rest, and hinges open on the right as it tips to pour.
+  const openAngle = smoothstep(0.08, 0.36, tilt) * 1.45;
+  ctx.save();
+  ctx.translate(lipW * 0.48, -H / 2 - lipH * 0.2);
+  ctx.rotate(openAngle);
+  const capW = lipW * 1.12;
+  const capH = lipH * 0.95;
+  ctx.fillStyle = '#D94B38';
+  ctx.strokeStyle = day ? rgba(t.ink, 0.38) : rgba('#ffffff', 0.5);
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.roundRect(-capW, -capH * 0.85, capW, capH, [capH * 0.42, capH * 0.42, 2, 2]);
+  ctx.fill();
+  ctx.stroke();
+  // Silver crimped skirt teeth along the lower edge of the crown cap:
+  ctx.fillStyle = '#EAE6DF';
+  for (let i = 0; i < 5; i++) {
+    const tx = -capW * (0.9 - i * 0.2);
+    ctx.beginPath();
+    ctx.arc(tx, -capH * 0.05, capW * 0.08, 0, TAU);
+    ctx.fill();
+  }
+  ctx.fillStyle = rgba('#ffffff', 0.65);
+  ctx.beginPath();
+  ctx.roundRect(-capW * 0.82, -capH * 0.7, capW * 0.35, capH * 0.28, 1.5);
+  ctx.fill();
+  ctx.restore();
   ctx.restore();
 }
 
@@ -1228,32 +1420,113 @@ export interface Drop {
   brk?: boolean;
 }
 
-/** The stream: drops left in order, joined into one soft ribbon with a lit edge. */
+/** The stream: drops joined into one smooth, tapering pour ribbon with a single continuous highlight. */
 export function drawStream(ctx: CanvasRenderingContext2D, drops: Drop[], d: Drink) {
+  if (drops.length < 2) return;
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // It thins as it falls and speeds up, like a real pour.
-  const width = (b: Drop) => b.w * clamp(Math.sqrt(160 / Math.max(1, Math.hypot(b.vx, b.vy))), 0.42, 1);
-  const passes: [string, (w: number) => number, (w: number) => number][] = [
-    [d.deep, (w) => w + 1, () => 0.6],
-    [d.color, (w) => w, () => 0],
-    [rgba('#ffffff', 0.55), (w) => Math.max(0.7, w * 0.22), (w) => -w * 0.22],
-  ];
-  for (const [color, lw, off] of passes) {
-    ctx.strokeStyle = color;
-    for (let i = 1; i < drops.length; i++) {
-      const a = drops[i - 1];
-      const b = drops[i];
-      if (!a.alive || !b.alive || b.brk || Math.hypot(a.x - b.x, a.y - b.y) > 40) continue;
-      const w = width(b);
-      ctx.lineWidth = lw(w);
-      const o = off(w);
-      ctx.beginPath();
-      ctx.moveTo(a.x + o, a.y);
-      ctx.lineTo(b.x + o, b.y);
-      ctx.stroke();
+  // Drink-specific stream thickness: thicker and wobblier for bubble tea, thin and silky for milk.
+  const drinkScale = d.id === 'boba' ? 1.32 : d.id === 'milk' ? 0.74 : d.id === 'cocoa' ? 1.12 : d.id === 'cola' ? 0.94 : 1.04;
+  // Break active drops into continuous runs (normally 1 run, or 2 during lemonade glugs).
+  const runs: Drop[][] = [];
+  let cur: Drop[] = [];
+  for (let i = 0; i < drops.length; i++) {
+    const b = drops[i];
+    if (!b.alive) {
+      if (cur.length > 1) runs.push(cur);
+      cur = [];
+      continue;
     }
+    if (cur.length > 0) {
+      const a = cur[cur.length - 1];
+      if (b.brk || Math.hypot(a.x - b.x, a.y - b.y) > 42) {
+        if (cur.length > 1) runs.push(cur);
+        cur = [b];
+        continue;
+      }
+      // Skip near-duplicate points from substeps so normals stay rock-solid.
+      if (Math.hypot(a.x - b.x, a.y - b.y) < 1.5 && i < drops.length - 1) continue;
+    }
+    cur.push(b);
+  }
+  if (cur.length > 1) runs.push(cur);
+
+  for (const run of runs) {
+    const n = run.length;
+    const pts = run.map((b, idx) => {
+      const speed = Math.hypot(b.vx, b.vy);
+      // Smoothly tapers as gravity accelerates the stream downward; boba has a subtle organic wobble.
+      const taper = clamp(Math.pow(135 / Math.max(40, speed), 0.56), 0.36, 1.05);
+      const wobble = d.id === 'boba' ? 1 + 0.1 * Math.sin(b.y * 0.085 + idx * 0.35) : 1;
+      const r = Math.max(1.1, b.w * 0.5 * drinkScale * taper * wobble);
+      const wobbleX = d.id === 'boba' ? Math.sin(b.y * 0.065) * 1.1 * (1 - taper * 0.5) : 0;
+      return { x: b.x + wobbleX, y: b.y, r };
+    });
+
+    const left: { x: number; y: number }[] = [];
+    const right: { x: number; y: number }[] = [];
+    const hi: { x: number; y: number }[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[Math.max(0, i - 1)];
+      const p1 = pts[Math.min(n - 1, i + 1)];
+      let tx = p1.x - p0.x;
+      let ty = p1.y - p0.y;
+      const tl = Math.hypot(tx, ty) || 1;
+      tx /= tl;
+      ty /= tl;
+      // Normal pointing to the right of the falling stream.
+      const nx = -ty;
+      const ny = tx;
+      const p = pts[i];
+      left.push({ x: p.x - nx * p.r, y: p.y - ny * p.r });
+      right.push({ x: p.x + nx * p.r, y: p.y + ny * p.r });
+      hi.push({ x: p.x - nx * p.r * 0.42, y: p.y - ny * p.r * 0.42 });
+    }
+
+    // Build one smooth closed ribbon polygon for the stream.
+    const ribbon = new Path2D();
+    ribbon.moveTo(left[0].x, left[0].y);
+    for (let i = 1; i < n; i++) {
+      const prev = left[i - 1];
+      const curr = left[i];
+      ribbon.quadraticCurveTo(prev.x, prev.y, (prev.x + curr.x) * 0.5, (prev.y + curr.y) * 0.5);
+    }
+    ribbon.lineTo(left[n - 1].x, left[n - 1].y);
+    const tail = pts[n - 1];
+    ribbon.arc(tail.x, tail.y, tail.r, Math.atan2(left[n - 1].y - tail.y, left[n - 1].x - tail.x), Math.atan2(right[n - 1].y - tail.y, right[n - 1].x - tail.x), true);
+    for (let i = n - 2; i >= 0; i--) {
+      const prev = right[i + 1];
+      const curr = right[i];
+      ribbon.quadraticCurveTo(prev.x, prev.y, (prev.x + curr.x) * 0.5, (prev.y + curr.y) * 0.5);
+    }
+    ribbon.lineTo(right[0].x, right[0].y);
+    const head = pts[0];
+    ribbon.arc(head.x, head.y, head.r, Math.atan2(right[0].y - head.y, right[0].x - head.x), Math.atan2(left[0].y - head.y, left[0].x - head.x), true);
+    ribbon.closePath();
+
+    // Rich cross-stream shading: luminous on the lamp side, deeper on the shadow edge.
+    const mid = pts[Math.floor(n / 2)];
+    const sg = ctx.createLinearGradient(mid.x - mid.r * 1.4, mid.y, mid.x + mid.r * 1.4, mid.y);
+    sg.addColorStop(0, mix(d.color, '#ffffff', 0.16));
+    sg.addColorStop(0.55, d.color);
+    sg.addColorStop(1, d.deep);
+    ctx.fillStyle = sg;
+    ctx.fill(ribbon);
+
+    // One smooth, continuous specular highlight line along the lit edge of the tapering stream.
+    ctx.strokeStyle = rgba('#ffffff', 0.68);
+    ctx.lineWidth = Math.max(1.2, head.r * 0.28);
+    ctx.beginPath();
+    ctx.moveTo(hi[0].x, hi[0].y);
+    for (let i = 1; i < n; i++) {
+      const prev = hi[i - 1];
+      const curr = hi[i];
+      ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + curr.x) * 0.5, (prev.y + curr.y) * 0.5);
+    }
+    ctx.lineTo(hi[n - 1].x, hi[n - 1].y);
+    ctx.stroke();
   }
   ctx.restore();
 }
@@ -1299,24 +1572,39 @@ export function drawSteam(ctx: CanvasRenderingContext2D, g: GlassShape, glass: G
   ctx.restore();
 }
 
-/** Where the stream meets the drink: a small ring of ripples, and a bead of light. */
+/** Where the stream meets the drink: expanding concentric surface ripple rings and a lively splash crown. */
 export function drawImpact(ctx: CanvasRenderingContext2D, g: GlassShape, glass: Glass, x: number, k: number, time: number, d: Drink) {
   if (k <= 0.02) return;
   const f = glass.top;
   const y = yAt(g, f);
   const half = halfAt(g, f);
-  const rx = Math.min(half * 0.55, 6 + k * 10);
+  const maxRx = Math.min(half * 0.82, 12 + k * 24);
   ctx.save();
   ctx.beginPath();
-  ctx.rect(g.cx - half, y - 20, half * 2, 40);
+  ctx.rect(g.cx - half + 2, y - 24, half * 2 - 4, 48);
   ctx.clip();
-  for (let i = 0; i < 2; i++) {
-    const p = (time * 2.6 + i * 0.5) % 1;
-    ctx.strokeStyle = rgba(mix(d.color, '#ffffff', 0.7), (1 - p) * 0.75 * k);
-    ctx.lineWidth = 1.2;
+  // Four expanding concentric ripple rings with a dark trough and bright crest.
+  for (let i = 0; i < 4; i++) {
+    const p = (time * 2.4 + i * 0.25) % 1;
+    const rx = maxRx * (0.18 + p * 0.92);
+    const ry = Math.max(1.2, rx * VIEW * 2.35);
+    const fade = (1 - p) * (1 - p * 0.35) * k;
+    ctx.strokeStyle = rgba(d.deep, fade * 0.38);
+    ctx.lineWidth = 1.8 * (1 - p * 0.4);
     ctx.beginPath();
-    ctx.ellipse(x, y, rx * (0.5 + p), rx * (0.5 + p) * VIEW * 2.2, 0, 0, TAU);
+    ctx.ellipse(x, y + 0.8, rx * 0.95, ry * 0.95, 0, 0, TAU);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(mix(d.color, '#ffffff', 0.78), fade * 0.88);
+    ctx.lineWidth = 1.35 * (1 - p * 0.35);
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
     ctx.stroke();
   }
+  // Bright central dimple / crown bead right where the stream plunges in.
+  const crownR = (3.2 + k * 3.5) * (0.88 + 0.12 * Math.sin(time * 28));
+  ctx.fillStyle = rgba('#ffffff', 0.75 * k);
+  ctx.beginPath();
+  ctx.ellipse(x, y, crownR, Math.max(1.2, crownR * VIEW * 2.6), 0, 0, TAU);
+  ctx.fill();
   ctx.restore();
 }

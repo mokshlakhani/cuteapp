@@ -29,6 +29,71 @@ const ELEV = 8;
 const POOL = 7;
 const DROPS = 72;
 
+const WATER_VERT = /* glsl */ `
+varying vec2 vUv2;
+void main() {
+  vUv2 = position.xy / 1.36;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const WATER_FRAG = /* glsl */ `
+uniform float uTime;
+uniform float uRipple;
+uniform float uRippleAge;
+uniform vec2 uRippleAt;
+uniform float uBubbleR;
+varying vec2 vUv2;
+
+void main() {
+  vec2 p = vUv2;
+  float r = length(p);
+  if (r > 1.0) discard;
+
+  // Concentric ripples from wand movement / dips and from popping bubbles.
+  float dWand = length(p - uRippleAt);
+  float wave1 = sin(dWand * 22.0 - uRippleAge * 16.0) * exp(-dWand * 1.8) * uRipple;
+  float dMid = length(p);
+  float wave2 = sin(dMid * 16.0 - uTime * 2.1) * 0.08 * (1.0 - r);
+  float h = wave1 + wave2;
+  vec2 grad = normalize(p - uRippleAt + vec2(1e-4)) * cos(dWand * 22.0 - uRippleAge * 16.0) * uRipple * 0.45
+            + normalize(p + vec2(1e-4)) * cos(dMid * 16.0 - uTime * 2.1) * 0.05;
+
+  // Base soapy water depth: richer aqua in the deep middle, pale mint at the porcelain wall.
+  vec3 deep = vec3(0.66, 0.88, 0.90);
+  vec3 shallow = vec3(0.87, 0.97, 0.98);
+  vec3 col = mix(deep, shallow, smoothstep(0.15, 0.92, r));
+
+  // Faint iridescent soap-film swirl floating on the water surface.
+  float swirl = sin(p.x * 4.5 + p.y * 3.2 + uTime * 0.45 + sin(p.y * 5.0 - uTime * 0.3));
+  vec3 irid = 0.5 + 0.5 * cos(6.28318 * (swirl * 0.35 + vec3(0.0, 0.33, 0.67)));
+  col = mix(col, mix(col, irid, 0.32), (0.35 + 0.35 * swirl) * (1.0 - r * 0.6));
+
+  // Soft reflection of the overhead bubble & wand in the center of the dish.
+  float bubRef = smoothstep(uBubbleR * 0.65, 0.0, length(p - vec2(0.04, -0.08) + grad * 0.12));
+  col = mix(col, vec3(0.98, 0.90, 0.96), bubRef * 0.35);
+
+  // Upper-left key lamp reflection pool on the water surface, perturbed by ripples.
+  vec2 rp = p + grad * 0.16;
+  float spec1 = smoothstep(0.36, 0.02, length((rp - vec2(-0.36, 0.28)) * vec2(1.0, 1.45)));
+  float spec2 = smoothstep(0.14, 0.01, length(rp - vec2(-0.46, 0.12)));
+  col = mix(col, vec3(1.0, 0.99, 0.98), spec1 * 0.68 + spec2 * 0.78);
+
+  // Bright ripple crests and soft teal troughs.
+  float crest = clamp(h * 1.1, 0.0, 1.0);
+  float trough = clamp(-h * 0.9, 0.0, 1.0);
+  col = mix(col, vec3(0.52, 0.78, 0.82), trough * 0.45);
+  col = mix(col, vec3(1.0), crest * 0.72);
+
+  // Meniscus rim highlight and shadow where the water meets the dish wall.
+  float meniscus = smoothstep(0.88, 0.96, r) * (1.0 - smoothstep(0.96, 1.0, r));
+  col = mix(col, vec3(1.0), meniscus * 0.55);
+  col *= 1.0 - smoothstep(0.95, 1.0, r) * 0.14;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
 const VERT = /* glsl */ `
 uniform float uTime;
 uniform float uSeed;
@@ -181,6 +246,11 @@ export class SoapScene {
   private film!: THREE.Mesh;
   private filmMat!: THREE.ShaderMaterial;
   private filmK = new Spring(1, springs.soft);
+  private wandGroup = new THREE.Group();
+  private wandDip = new Spring(0, { stiffness: 280, damping: 15 });
+  private waterMat!: THREE.ShaderMaterial;
+  private waterRipple = 0;
+  private waterRippleAge = 0;
   private pool: Bubble[] = [];
   private live: Bubble | null = null;
   private lastFilm: Film | undefined;
@@ -241,7 +311,7 @@ export class SoapScene {
     this.film.position.y = RING.y;
     this.film.scale.y = 0.03;
     this.film.renderOrder = 1;
-    this.scene.add(this.film);
+    this.wandGroup.add(this.film);
 
     this.dropMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: '#f4fbff', transparent: true, opacity: 0.7, depthWrite: false }), DROPS);
     this.dropMesh.count = 0;
@@ -279,30 +349,100 @@ export class SoapScene {
     ].map(([x, y]) => new THREE.Vector2(x, y));
     const dish = new THREE.Mesh(
       new THREE.LatheGeometry(new THREE.SplineCurve(pts).getPoints(40), 56),
-      new THREE.MeshPhysicalMaterial({ color: '#F6E2E6', roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.8 }),
+      new THREE.MeshPhysicalMaterial({ color: '#F6E2E6', roughness: 0.28, clearcoat: 0.75, clearcoatRoughness: 0.18, envMapIntensity: 0.9 }),
     );
     this.scene.add(dish);
-    const water = new THREE.Mesh(
-      new THREE.CircleGeometry(1.36, 48),
-      new THREE.MeshPhysicalMaterial({ color: '#CDEBF0', roughness: 0.18, clearcoat: 1, envMapIntensity: 1.1 }),
-    );
+
+    // Reflective, rippling soapy water inside the dish.
+    this.waterMat = new THREE.ShaderMaterial({
+      vertexShader: WATER_VERT,
+      fragmentShader: WATER_FRAG,
+      uniforms: {
+        uTime: { value: 0 },
+        uRipple: { value: 0 },
+        uRippleAge: { value: 0 },
+        uRippleAt: { value: new THREE.Vector2(0.42, -0.06) },
+        uBubbleR: { value: 0.6 },
+      },
+    });
+    const water = new THREE.Mesh(new THREE.CircleGeometry(1.36, 56), this.waterMat);
     water.rotation.x = -Math.PI / 2;
     water.position.y = 0.4;
     this.scene.add(water);
 
-    // The wand: a soft ring on a curved stem, in one candy colour.
-    const plastic = new THREE.MeshPhysicalMaterial({ color: '#F2A9BC', roughness: 0.36, clearcoat: 0.7, clearcoatRoughness: 0.25, envMapIntensity: 0.8 });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(RING.r, 0.065, 16, 64), plastic);
+    // Clusters of glossy white foam suds along the dish's inner rim and round the wand stem.
+    const sudMat = new THREE.MeshPhysicalMaterial({
+      color: '#FFFFFF',
+      roughness: 0.12,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.06,
+      iridescence: 0.65,
+      iridescenceIOR: 1.33,
+      envMapIntensity: 1.3,
+    });
+    const sudCount = 46;
+    const suds = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 8), sudMat, sudCount);
+    const m4 = new THREE.Matrix4();
+    const posV = new THREE.Vector3();
+    const sclV = new THREE.Vector3();
+    const qId = new THREE.Quaternion();
+    let si = 0;
+    // Rim sud clusters: grouped into 5 natural foam patches around the water's edge + a few around the wand base.
+    const clusters = [0.2, 1.05, 2.15, 3.55, 4.85];
+    for (let c = 0; c < clusters.length; c++) {
+      const baseA = clusters[c];
+      const countInCluster = c % 2 === 0 ? 9 : 7;
+      for (let k = 0; k < countInCluster && si < sudCount - 6; k++) {
+        const a = baseA + (k - countInCluster * 0.5) * 0.085 + Math.sin(k * 2.7 + c) * 0.03;
+        const rad = 1.24 - (k % 3) * 0.055 - Math.abs(Math.cos(k * 1.9)) * 0.04;
+        const sr = 0.038 + ((k * 7 + c * 3) % 5) * 0.013;
+        posV.set(Math.cos(a) * rad, 0.4 + sr * 0.35, Math.sin(a) * rad);
+        sclV.set(sr * 1.1, sr * 0.72, sr * 1.1);
+        m4.compose(posV, qId, sclV);
+        suds.setMatrixAt(si++, m4);
+      }
+    }
+    // A little collar of suds where the wand stem meets the water.
+    for (let k = 0; si < sudCount; k++) {
+      const a = (k / 6) * TAU + 0.4;
+      const sr = 0.034 + (k % 3) * 0.012;
+      posV.set(0.62 + Math.cos(a) * 0.1, 0.4 + sr * 0.35, 0.1 + Math.sin(a) * 0.1);
+      sclV.set(sr * 1.1, sr * 0.7, sr * 1.1);
+      m4.compose(posV, qId, sclV);
+      suds.setMatrixAt(si++, m4);
+    }
+    suds.instanceMatrix.needsUpdate = true;
+    this.scene.add(suds);
+
+    // The wand: a glossy candy-pink plastic ring on a curved stem, dipping slightly between bubbles.
+    const plastic = new THREE.MeshPhysicalMaterial({
+      color: '#F49EB4',
+      roughness: 0.15,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.07,
+      sheen: 0.35,
+      sheenRoughness: 0.3,
+      sheenColor: new THREE.Color('#FFF0F5'),
+      envMapIntensity: 1.4,
+    });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(RING.r, 0.068, 18, 64), plastic);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = RING.y;
-    this.scene.add(ring);
+    this.wandGroup.add(ring);
     const stem = new THREE.CatmullRomCurve3([
       new THREE.Vector3(RING.r + 0.04, RING.y, 0),
       new THREE.Vector3(RING.r + 0.32, RING.y - 0.3, 0),
       new THREE.Vector3(RING.r + 0.28, 1.05, 0),
-      new THREE.Vector3(0.62, 0.34, 0.1),
+      new THREE.Vector3(0.62, 0.22, 0.1),
     ]);
-    this.scene.add(new THREE.Mesh(new THREE.TubeGeometry(stem, 36, 0.058, 12, false), plastic));
+    this.wandGroup.add(new THREE.Mesh(new THREE.TubeGeometry(stem, 36, 0.06, 12, false), plastic));
+    this.scene.add(this.wandGroup);
+  }
+
+  private triggerWaterRipple(x = 0.42, z = -0.06, strength = 1) {
+    this.waterRipple = Math.min(1.4, Math.max(this.waterRipple * 0.5, strength));
+    this.waterRippleAge = 0;
+    (this.waterMat.uniforms.uRippleAt.value as THREE.Vector2).set(clamp(x / 1.36, -0.7, 0.7), clamp(-z / 1.36, -0.7, 0.7));
   }
 
   // ——— the bubble on the wand ———
@@ -336,6 +476,7 @@ export class SoapScene {
     this.blown = 0;
     this.film.visible = false;
     this.faceSig = '';
+    this.triggerWaterRipple(0.45, 0.08, 0.55);
   }
 
   /** Every bubble's film is its own. */
@@ -390,6 +531,9 @@ export class SoapScene {
     this.film.visible = true;
     this.filmK.snap(0.05);
     this.filmK.target = 1;
+    // Small dip of the wand toward the dish between bubbles, stirring a ripple in the water.
+    this.wandDip.impulse(-2.2);
+    this.triggerWaterRipple(0.45, 0.08, 0.95);
   }
 
   // ——— free bubbles ———
@@ -424,6 +568,7 @@ export class SoapScene {
       });
     }
     this.events.burst?.(b.pos, clamp((b.r - RADIUS.min) / (RADIUS.max - RADIUS.min), 0, 1));
+    this.triggerWaterRipple(clamp(b.pos.x * 0.4, -0.5, 0.5), clamp(b.pos.z * 0.4, -0.5, 0.5), 1.15);
   }
 
   /** Burst the floating bubble under a screen point, if there is one. */
@@ -485,9 +630,22 @@ export class SoapScene {
     this.time += dt;
     this.face.update(dt);
     this.filmK.update(dt);
+    this.wandDip.update(dt);
     const t = this.time;
+    const dip = clamp(this.wandDip.value, -0.32, 0.14);
+    this.wandGroup.position.y = dip * 0.75;
+    this.wandGroup.rotation.z = dip * 0.14;
     this.film.scale.x = this.film.scale.z = Math.max(0.02, this.filmK.value);
     this.filmMat.uniforms.uTime.value = t;
+    if (this.waterRipple > 0) {
+      this.waterRippleAge += dt;
+      this.waterRipple *= Math.exp(-dt * 1.9);
+      if (this.waterRipple < 0.005) this.waterRipple = 0;
+    }
+    this.waterMat.uniforms.uTime.value = t;
+    this.waterMat.uniforms.uRipple.value = this.waterRipple;
+    this.waterMat.uniforms.uRippleAge.value = this.waterRippleAge;
+    this.waterMat.uniforms.uBubbleR.value = this.live ? this.live.r * this.dome : 0.45;
 
     const live = this.live;
     if (live) {

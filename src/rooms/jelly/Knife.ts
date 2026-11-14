@@ -20,64 +20,142 @@ const SCALE = 0.82;
 const HOVER = 4.6;
 /** Blade leaned back (rad) while aiming, so its face shows from above. */
 const AIM_TILT = -1.2;
-const CHOP_T = 0.14;
+const CHOP_T = 0.21;
+const WINDUP_U = 0.32;
 const BOUNCE_T = 0.62;
 const LIFT_T = 0.45;
 
 type Phase = 'hidden' | 'aiming' | 'chop' | 'hold' | 'bounce' | 'lift';
 export type CutResult = 'cut' | 'bounce' | 'none';
 
-/** Blade height of the butter knife: a gentle, even width all the way. */
-const BUTTER_H = 2.2;
+/** Blade height at the heel: tapers to a sharp point at the tip. */
+const BUTTER_H = 2.45;
 
 /**
- * A butter knife's blade: a straight edge and spine, a soft round end, and
- * nothing pointed anywhere. It still cuts jelly (jelly is very forgiving).
+ * A sharp chef/slicing knife blade: a pointed drop-point tip, swept belly,
+ * razor-thin V-ground cutting edge bevel, crisp grind shoulder line, satin
+ * flat with diagonal specular sheen, and a polished spine ridge with distal taper.
  */
 function bladeGeometry() {
-  const s = new THREE.Shape();
-  const r = 0.28; // soft heel corners
-  const R = BUTTER_H / 2; // the round end
-  s.moveTo(0, r);
-  s.quadraticCurveTo(0, 0, r, 0);
-  s.lineTo(BLADE_L - R, 0);
-  s.absarc(BLADE_L - R, R, R, -Math.PI / 2, Math.PI / 2, false);
-  s.lineTo(r, BUTTER_H);
-  s.quadraticCurveTo(0, BUTTER_H, 0, BUTTER_H - r);
-  s.lineTo(0, r);
-  const depth = 0.16;
-  const geo = new THREE.ExtrudeGeometry(s, {
-    depth,
-    bevelEnabled: true,
-    bevelThickness: 0.04,
-    bevelSize: 0.04,
-    bevelSegments: 2,
-    curveSegments: 8,
-  });
-  geo.translate(0, 0, -depth / 2);
-  // A soft, rounded edge: the blade thins a little toward it and catches a
-  // gentle line of light, but nothing is ground sharp.
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const col = new Float32Array(pos.count * 3);
-  const flat = new THREE.Color('#e6ddd2');
-  const polished = new THREE.Color('#fffaf2');
-  const spine = new THREE.Color('#d2c6b8');
-  const c = new THREE.Color();
-  const GRIND = 0.95;
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    const d = y;
-    const u = Math.max(0, Math.min(1, d / GRIND));
-    const s = u * u * (3 - 2 * u);
-    pos.setZ(i, pos.getZ(i) * (0.55 + 0.45 * s));
-    c.copy(polished).lerp(flat, s);
-    // A faint darker band toward the spine gives the flat some depth.
-    const toSpine = Math.max(0, Math.min(1, (y - (BUTTER_H - 0.8)) / 0.8));
-    c.lerp(spine, toSpine * 0.6);
-    col.set([c.r, c.g, c.b], i * 3);
+  const NX = 56;
+  const heelR = 0.22;
+  const halfT = 0.115;
+  const tipY = BUTTER_H * 0.34;
+
+  // Cross-section profile from razor cutting edge (v=0, z=0) across the primary
+  // V-bevel (v=0..0.30), satin flat (v=0.30..0.86), to the spine ridge (v=0.86..1.0).
+  const prof: { v: number; z: number; ny: number; nz: number; kind: 'bevel' | 'flat' | 'spine' }[] = [
+    { v: 0.0, z: 0.0, ny: -0.74, nz: 0.673, kind: 'bevel' },
+    { v: 0.06, z: halfT * 0.22, ny: -0.66, nz: 0.751, kind: 'bevel' },
+    { v: 0.3, z: halfT * 0.94, ny: -0.44, nz: 0.898, kind: 'bevel' },
+    { v: 0.3, z: halfT * 0.94, ny: 0.02, nz: 0.999, kind: 'flat' },
+    { v: 0.58, z: halfT, ny: 0.0, nz: 1.0, kind: 'flat' },
+    { v: 0.86, z: halfT * 1.05, ny: -0.04, nz: 0.999, kind: 'flat' },
+    { v: 0.86, z: halfT * 1.05, ny: 0.48, nz: 0.877, kind: 'spine' },
+    { v: 0.95, z: halfT * 0.78, ny: 0.82, nz: 0.572, kind: 'spine' },
+    { v: 1.0, z: 0.0, ny: 1.0, nz: 0.0, kind: 'spine' },
+  ];
+  const NV = prof.length;
+
+  const spanAt = (x: number): [number, number, number] => {
+    const u = Math.min(1, Math.max(0, x / BLADE_L));
+    // Spine drops gracefully toward the sharp point at x = BLADE_L.
+    const yMax = BUTTER_H - Math.pow(u, 1.85) * (BUTTER_H - tipY);
+    if (x < heelR) {
+      const hu = x / heelR;
+      const choil = heelR * 0.45 * (1 - Math.sqrt(Math.max(0, 1 - (1 - hu) * (1 - hu))));
+      return [choil, yMax - choil * 0.3, -0.45 * (1 - hu)];
+    }
+    // Straight razor edge from heel to 58% length, then a curved belly sweeping up to a sharp point.
+    const bellyStart = 0.56;
+    if (u > bellyStart) {
+      const bu = (u - bellyStart) / (1 - bellyStart);
+      const yMin = Math.pow(bu, 2.2) * tipY;
+      const slopeX = (2.2 * Math.pow(bu, 1.2) * tipY) / ((1 - bellyStart) * BLADE_L);
+      return [yMin, Math.max(yMin + 0.002, yMax), slopeX];
+    }
+    return [0, yMax, 0];
+  };
+
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+
+  const cRazorEdge = new THREE.Color('#ffffff');
+  const cBevelTop = new THREE.Color('#eef2f7');
+  const cGrindLine = new THREE.Color('#8c827a');
+  const cFlatBase = new THREE.Color('#d8d2cb');
+  const cFlatShade = new THREE.Color('#bfb6ad');
+  const cReflect = new THREE.Color('#ffffff');
+  const cSpine = new THREE.Color('#ffffff');
+  const tmp = new THREE.Color();
+
+  for (const side of [1, -1]) {
+    const baseIdx = pos.length / 3;
+    for (let i = 0; i <= NX; i++) {
+      const u = i / NX;
+      // Cluster samples toward the heel and the sharp point.
+      const x = BLADE_L * (0.5 - 0.5 * Math.cos(u * Math.PI));
+      const [y0, y1, nxTip] = spanAt(x);
+      // Distal taper: blade thins steadily to a needle point at x = BLADE_L.
+      const distal = Math.max(0.03, 1 - 0.95 * Math.pow(x / BLADE_L, 1.45));
+      for (let j = 0; j < NV; j++) {
+        const p = prof[j];
+        const y = y0 + p.v * (y1 - y0);
+        const z = side * p.z * distal;
+        pos.push(x, y, z);
+
+        const nx = nxTip * p.nz;
+        const ny = p.ny;
+        const nz = side * p.nz;
+        const nl = Math.hypot(nx, ny, nz) || 1;
+        nrm.push(nx / nl, ny / nl, nz / nl);
+
+        // Diagonal specular reflection across the blade + high-contrast razor bevel.
+        const diag = (x / BLADE_L) * 1.35 + p.v * 0.55;
+        const d1 = (diag - 0.66) / 0.19;
+        const d2 = (diag - 1.12) / 0.1;
+        const sheen = Math.exp(-(d1 * d1)) * 0.65 + Math.exp(-(d2 * d2)) * 0.42;
+
+        if (p.kind === 'bevel') {
+          const bv = p.v / 0.3;
+          // Gleaming white razor edge line right at v=0, shading across the ground bevel.
+          tmp.copy(cRazorEdge).lerp(cBevelTop, Math.pow(bv, 0.6) * 0.65);
+          tmp.lerp(cReflect, sheen * 0.6);
+        } else if (p.kind === 'flat') {
+          const fv = (p.v - 0.3) / (0.86 - 0.3);
+          tmp.copy(cFlatBase).lerp(cFlatShade, fv * 0.72);
+          // Crisp dark grind shoulder line right where the flat meets the primary bevel.
+          if (fv < 0.06) tmp.lerp(cGrindLine, 0.7);
+          tmp.lerp(cReflect, sheen * 0.78);
+        } else {
+          tmp.copy(cSpine);
+        }
+        col.push(tmp.r, tmp.g, tmp.b);
+      }
+    }
+
+    for (let i = 0; i < NX; i++) {
+      for (let j = 0; j < NV - 1; j++) {
+        // Skip degenerate triangles at the duplicated normal-split seams (j=1 and j=4).
+        if (prof[j].v === prof[j + 1].v) continue;
+        const a = baseIdx + i * NV + j;
+        const b = baseIdx + (i + 1) * NV + j;
+        const c = baseIdx + (i + 1) * NV + (j + 1);
+        const d = baseIdx + i * NV + (j + 1);
+        if (side > 0) idx.push(a, b, c, a, c, d);
+        else idx.push(a, c, b, a, d, c);
+      }
+    }
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  geo.computeVertexNormals();
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  geo.computeBoundingSphere();
   return geo;
 }
 
@@ -109,15 +187,15 @@ export class Knife {
   onLand: (() => void) | null = null;
 
   constructor() {
-    // Satin steel: soft and warm, not a mirror.
+    // Polished high-carbon steel with razor bevel and spine highlights.
     const steel = new THREE.MeshPhysicalMaterial({
-      color: '#fff6ea',
+      color: '#fbfcfe',
       vertexColors: true,
-      metalness: 0.7,
-      roughness: 0.32,
-      clearcoat: 0.5,
-      clearcoatRoughness: 0.2,
-      envMapIntensity: 3,
+      metalness: 0.84,
+      roughness: 0.16,
+      clearcoat: 0.9,
+      clearcoatRoughness: 0.08,
+      envMapIntensity: 4.2,
       transparent: true,
     });
     const fittings = new THREE.MeshPhysicalMaterial({
@@ -156,7 +234,14 @@ export class Knife {
     handle.position.set(-0.35 - HL / 2, handleY, 0);
     const bolster = new THREE.Mesh(new RoundedBoxGeometry(0.55, 1.5, 1.02, 3, 0.22), fittings);
     bolster.position.set(-0.12, handleY, 0);
-    body.add(blade, handle, bolster);
+    // Two small polished rivets on the handle.
+    const rivetGeo = new THREE.CylinderGeometry(0.16, 0.16, 1.01, 12);
+    rivetGeo.rotateX(Math.PI / 2);
+    const r1 = new THREE.Mesh(rivetGeo, fittings);
+    r1.position.set(-0.35 - HL * 0.32, handleY, 0);
+    const r2 = new THREE.Mesh(rivetGeo, fittings);
+    r2.position.set(-0.35 - HL * 0.7, handleY, 0);
+    body.add(blade, handle, bolster, r1, r2);
     // The body is built heel-at-origin (edge along 0..BLADE_L). Pivot the
     // wobble at the heel and put the heel at −BLADE_L/2, so the edge is
     // centred on x = 0, over the middle of the line you drew.
@@ -236,15 +321,23 @@ export class Knife {
       case 'chop': {
         const u = Math.min(1, this.t / CHOP_T);
         const from = HOVER;
-        this.y = from * (1 - ease.inCubic(u));
-        if (!this.didCut && this.y < 3.2) {
-          this.didCut = true;
-          if (this.onCut?.() === 'bounce') {
-            // Too small to cut: the blade springs back off it.
-            this.phase = 'bounce';
-            this.t = 0;
-            this.fromY = this.y;
-            break;
+        if (u < WINDUP_U) {
+          // Small anticipatory wind-up lift and cock-back before the downward chop.
+          const wu = u / WINDUP_U;
+          this.y = from + 1.55 * Math.sin(wu * Math.PI * 0.5);
+          wobble = 0.065 * Math.sin(wu * Math.PI * 0.5);
+        } else {
+          const du = (u - WINDUP_U) / (1 - WINDUP_U);
+          this.y = (from + 1.55) * (1 - ease.inCubic(du));
+          if (!this.didCut && this.y < 3.2) {
+            this.didCut = true;
+            if (this.onCut?.() === 'bounce') {
+              // Too small to cut: the blade springs back off it.
+              this.phase = 'bounce';
+              this.t = 0;
+              this.fromY = this.y;
+              break;
+            }
           }
         }
         if (u >= 1) {
@@ -284,8 +377,15 @@ export class Knife {
     // then swings upright as it chops.
     let tilt = 0;
     if (this.phase === 'aiming') tilt = AIM_TILT;
-    else if (this.phase === 'chop') tilt = AIM_TILT * Math.pow(1 - Math.min(1, this.t / CHOP_T), 2);
-    else if (this.phase === 'lift') tilt = AIM_TILT * ease.inOutSine(Math.min(1, this.t / LIFT_T));
+    else if (this.phase === 'chop') {
+      const u = Math.min(1, this.t / CHOP_T);
+      if (u < WINDUP_U) {
+        tilt = AIM_TILT - 0.24 * Math.sin((u / WINDUP_U) * Math.PI * 0.5);
+      } else {
+        const du = (u - WINDUP_U) / (1 - WINDUP_U);
+        tilt = (AIM_TILT - 0.24) * Math.pow(1 - du, 2);
+      }
+    } else if (this.phase === 'lift') tilt = AIM_TILT * ease.inOutSine(Math.min(1, this.t / LIFT_T));
     this.tilt += (tilt - this.tilt) * (this.phase === 'aiming' ? 1 - Math.exp(-dt * 14) : 1);
     this.group.position.set(this.pos.x, this.y, this.pos.z + this.y * this.viewCot);
     this.group.rotation.set(0, this.yaw, 0);

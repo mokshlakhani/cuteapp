@@ -51,6 +51,7 @@ uniform float uCutMask;
 varying vec3 vRest;
 float seamGlow = 0.0;
 float inside = 0.0;
+float wetCell = 0.0;
 ${FRUIT_GLSL}
 `;
 
@@ -83,8 +84,9 @@ for (int i = 0; i < MAX_CUTS; i++) {
 }
 sc = mix(sc, vec3(1.0, 0.97, 0.9), seam * (1.0 - inside));
 seamGlow *= 1.0 - inside;
-// Relief only on the skin, and smoothed out under the seams.
-bumpH *= (1.0 - inside) * (1.0 - seam);
+// Skin relief on the outside; subtle wet cellular micro-relief on cut faces so they catch glistening highlights.
+wetCell = sin(vRest.x * 28.0 + sin(vRest.z * 22.0) * 1.6) * cos(vRest.y * 26.0 + vRest.x * 13.0);
+bumpH = mix(bumpH * (1.0 - seam), wetCell * 0.0028, inside);
 diffuseColor.rgb = sc;
 `;
 
@@ -95,15 +97,24 @@ ${FRUIT_BUMP}
 
 const FRAG_ROUGH = /* glsl */ `
 #include <roughnessmap_fragment>
-// Cut flesh is wet and glossy, whatever the skin is like.
-roughnessFactor = mix(roughnessFactor, 0.34, inside);
+// Cut flesh is freshly sliced, wet and glossy.
+roughnessFactor = mix(roughnessFactor, 0.12, inside);
+`;
+
+const FRAG_CLEARCOAT = /* glsl */ `
+#include <lights_physical_fragment>
+material.clearcoat = mix(material.clearcoat, 1.0, inside);
+material.clearcoatRoughness = mix(material.clearcoatRoughness, 0.06, inside);
 `;
 
 const FRAG_EMISSIVE = /* glsl */ `
 #include <emissivemap_fragment>
 totalEmissiveRadiance += vec3(1.0, 0.95, 0.85) * seamGlow;
-// A little light in the flesh, so cut faces glow like fresh fruit.
-totalEmissiveRadiance += diffuseColor.rgb * inside * 0.1;
+// Wet specular sheen and subsurface juice glow on cut faces.
+vec3 viewDir = normalize(vViewPosition);
+vec3 halfKey = normalize(viewDir + normalize(vec3(-0.45, 0.8, 0.42)));
+float wetSpec = pow(clamp(dot(normal, halfKey), 0.0, 1.0), 20.0) * (0.75 + 0.25 * wetCell);
+totalEmissiveRadiance += diffuseColor.rgb * inside * 0.12 + vec3(1.0, 0.98, 0.94) * inside * wetSpec * 0.48;
 `;
 
 const emptyTex = (() => {
@@ -148,9 +159,10 @@ export function makeSliceMaterial(shared?: SliceUniforms) {
       .replace('#include <color_fragment>', FRAG_COLOR)
       .replace('#include <normal_fragment_maps>', FRAG_NORMAL)
       .replace('#include <roughnessmap_fragment>', FRAG_ROUGH)
+      .replace('#include <lights_physical_fragment>', FRAG_CLEARCOAT)
       .replace('#include <emissivemap_fragment>', FRAG_EMISSIVE);
   };
-  mat.customProgramCacheKey = () => 'soft-slice-v3';
+  mat.customProgramCacheKey = () => 'soft-slice-v4';
   return { mat, uniforms };
 }
 

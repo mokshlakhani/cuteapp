@@ -39,7 +39,7 @@ export const SLICE_FRUITS: SliceFruit[] = [
   // Round, a little lopsided by its crease.
   { id: 'peach', name: 'peach', code: 4, radii: [1.5, 1.46, 1.42], shape: { e: 2.05, taper: -0.04 }, shine: 0.15, blush: '#FF8F80', juice: F.peach.flesh },
   // An egg, wider below, under its scales.
-  { id: 'dragonfruit', name: 'dragon fruit', code: 5, radii: [1.28, 1.66, 1.28], shape: { e: 1.9, taper: -0.1 }, shine: 0.6, blush: '#FF9ACB', juice: F.dragonfruit.flesh },
+  { id: 'dragonfruit', name: 'dragon fruit', code: 5, radii: [1.28, 1.66, 1.28], shape: { e: 1.9, taper: -0.1 }, shine: 0.6, blush: '#FF9ACB', juice: F.dragonfruit.rim },
   // Pointed at both ends (its little tips are in extras).
   { id: 'lemon', name: 'lemon', code: 6, radii: [1.2, 1.52, 1.2], shape: { e: 1.6, taper: 0 }, shine: 0.55, blush: '#FFA98A', juice: F.lemon.flesh },
   { id: 'cantaloupe', name: 'cantaloupe', code: 7, radii: [1.68, 1.58, 1.68], shape: { e: 2.05, taper: 0 }, shine: 0.2, blush: '#FF8C7A', juice: F.goldenMelon.flesh },

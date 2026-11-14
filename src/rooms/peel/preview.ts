@@ -50,17 +50,44 @@ export function peelPreview(): Preview {
     g.rotate(-0.22);
     g.fillStyle = F.orange.pith;
     g.fillRect(-R * 1.3, -R * 1.2, R * 2.6, R * 0.74);
-    g.fillRect(-R * 1.3, -R * 0.1 - R * 0.34, R * 2.6, 0);
-    g.strokeStyle = 'rgba(190,110,40,0.4)';
-    g.lineWidth = Math.max(1, R * 0.03);
+    g.fillStyle = 'rgba(255, 224, 150, 0.35)';
+    g.fillRect(-R * 1.3, -R * 0.56, R * 2.6, R * 0.1);
+    g.strokeStyle = 'rgba(175, 92, 24, 0.55)';
+    g.lineWidth = Math.max(1.2, R * 0.038);
     g.beginPath();
     g.moveTo(-R * 1.3, -R * 0.46);
     g.lineTo(R * 1.3, -R * 0.46);
     g.stroke();
+    g.strokeStyle = 'rgba(255, 255, 255, 0.62)';
+    g.lineWidth = Math.max(1, R * 0.022);
+    g.beginPath();
+    g.moveTo(-R * 1.3, -R * 0.43);
+    g.lineTo(R * 1.3, -R * 0.43);
+    g.stroke();
     g.rotate(0.22);
-    shade(g, theme.current, 0, 0, R, 0.3, 0.2, F.orange.peel);
+    // Stronger 3D sphere shading + subtle orange peel pores + bottom navel dimple.
+    shade(g, theme.current, 0, 0, R, 0.48, 0.38, F.orange.peel);
+    g.fillStyle = 'rgba(165, 78, 12, 0.18)';
+    for (let i = 0; i < 18; i++) {
+      const a = i * 2.39996;
+      const rr = Math.sqrt((i + 0.5) / 18) * R * 0.78;
+      const px = Math.cos(a) * rr;
+      const py = Math.sin(a) * rr + R * 0.18;
+      if (py > -R * 0.32 && Math.hypot(px, py) < R * 0.88) {
+        g.beginPath();
+        g.arc(px, py, Math.max(0.8, R * 0.022), 0, TAU);
+        g.fill();
+      }
+    }
+    g.strokeStyle = 'rgba(130, 58, 10, 0.32)';
+    g.lineWidth = Math.max(1, R * 0.032);
+    g.beginPath();
+    g.arc(0, 0, R * 0.985, 0, TAU);
+    g.stroke();
     g.restore();
-    gloss(g, -R * 0.42, R * 0.02, R * 0.24, R * 0.1, 0.55);
+    // Stronger primary specular highlight + secondary wet crown glint.
+    gloss(g, -R * 0.42, -R * 0.02, R * 0.29, R * 0.13, 0.84);
+    gloss(g, -R * 0.25, -R * 0.62, R * 0.2, R * 0.085, 0.72);
     return c;
   };
 
@@ -82,7 +109,8 @@ export function peelPreview(): Preview {
       const cx = x + w / 2;
       const bob = reducedMotion ? 0 : Math.sin(time * 1.1) * R * 0.02;
       const cy = y + h * 0.5 + bob;
-      contactShadow(ctx, theme.current, cx + R * 0.1, y + h * 0.5 + R * 1.16, R * 1.1, R * 0.17, 0.26);
+      contactShadow(ctx, theme.current, cx + R * 0.12, y + h * 0.5 + R * 1.16, R * 1.18, R * 0.2, 0.42);
+      contactShadow(ctx, theme.current, cx + R * 0.05, y + h * 0.5 + R * 1.13, R * 0.72, R * 0.11, 0.26);
       // The curl of peel, hanging from the cut.
       const sway = swing.value * R * 0.07;
       const px = cx + R * 0.86;
@@ -94,17 +122,19 @@ export function peelPreview(): Preview {
       ctx.setLineDash([shown * R * STRIP, R * STRIP * 2]);
       ctx.translate(0, ease.inOutCubic(off) * R * 0.9);
       ctx.globalAlpha = shown > 0 ? 1 - off : 0;
-      for (const [col, wd] of [
-        [F.orange.peel, 0.17],
-        [F.orange.pith, 0.08],
-      ] as [string, number][]) {
+      for (const [col, wd, ox, oy] of [
+        ['rgba(90, 48, 22, 0.24)', 0.19, R * 0.03, R * 0.05],
+        [F.orange.peel, 0.17, 0, 0],
+        [F.orange.pith, 0.085, 0, 0],
+        ['rgba(255, 255, 255, 0.55)', 0.035, -R * 0.02, -R * 0.02],
+      ] as [string, number, number, number][]) {
         ctx.strokeStyle = col;
-        ctx.lineWidth = Math.max(2, R * wd);
+        ctx.lineWidth = Math.max(1.4, R * wd);
         ctx.beginPath();
-        ctx.moveTo(px, py);
-        ctx.bezierCurveTo(px + R * 0.6, py + R * 0.1, px + R * 0.46 + sway, py + R * 0.55, px + R * 0.08 + sway, py + R * 0.56);
-        ctx.bezierCurveTo(px - R * 0.2 + sway, py + R * 0.58, px - R * 0.06 + sway, py + R * 0.96, px + R * 0.26 + sway * 1.4, py + R * 0.98);
-        ctx.bezierCurveTo(px + R * 0.46 + sway * 1.4, py + R * 1, px + R * 0.3 + sway * 1.5, py + R * 1.28, px + R * 0.14 + sway * 1.6, py + R * 1.3);
+        ctx.moveTo(px + ox, py + oy);
+        ctx.bezierCurveTo(px + R * 0.6 + ox, py + R * 0.1 + oy, px + R * 0.46 + sway + ox, py + R * 0.55 + oy, px + R * 0.08 + sway + ox, py + R * 0.56 + oy);
+        ctx.bezierCurveTo(px - R * 0.2 + sway + ox, py + R * 0.58 + oy, px - R * 0.06 + sway + ox, py + R * 0.96 + oy, px + R * 0.26 + sway * 1.4 + ox, py + R * 0.98 + oy);
+        ctx.bezierCurveTo(px + R * 0.46 + sway * 1.4 + ox, py + R * 1 + oy, px + R * 0.3 + sway * 1.5 + ox, py + R * 1.28 + oy, px + R * 0.14 + sway * 1.6 + ox, py + R * 1.3 + oy);
         ctx.stroke();
       }
       ctx.restore();

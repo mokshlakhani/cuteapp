@@ -80,6 +80,9 @@ export interface Band {
   x: Spring;
   /** 1 = loose ring flying on, 0 = snug. Overshoots below 0 when it snaps. */
   loose: Spring;
+  /** Decaying transverse twang ripple triggered when the band snaps onto the rind. */
+  twang: number;
+  twangAge: number;
   /** Tilt of the ring (rad) and which way it leans. */
   tilt: number;
   lean: number;
@@ -158,6 +161,8 @@ export class MelonShape {
     const b: Band = {
       x: new Spring(from, { stiffness: 160, damping: 15 }),
       loose: new Spring(1, springs.snap),
+      twang: 1,
+      twangAge: 0,
       tilt: rand(0.015, 0.12) * (Math.random() < 0.5 ? -1 : 1),
       lean: rand(0, TAU),
       color,
@@ -197,6 +202,11 @@ export class MelonShape {
     for (const b of this.bands) {
       b.x.update(dt);
       b.loose.update(dt);
+      if (b.twang > 0) {
+        b.twangAge += dt;
+        b.twang = Math.max(0, Math.exp(-b.twangAge * 6.5));
+        if (b.twang < 0.005) b.twang = 0;
+      }
     }
     this.squash.update(dt);
     this.sway.update(dt);

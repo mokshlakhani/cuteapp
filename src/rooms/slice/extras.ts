@@ -172,9 +172,9 @@ export function buildExtras(fruit: SliceFruit): Extra[] {
       // out in staggered rows; more of them, closer together, at the crown.
       // (None across its face, so it stays easy to read.)
       const bm = (bractMat ??= new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0 }));
-      // Broad and short, rooted in the skin and curling out from it.
-      const big = bractGeo(0.5, 0.3);
-      const small = bractGeo(0.36, 0.22);
+      // Longer, curved bracts rooted in the skin and curling out at their tips.
+      const big = bractGeo(0.62, 0.29);
+      const small = bractGeo(0.45, 0.21);
       const rows = [
         { th: 0.34, n: 5, geo: small, out: 0.38 },
         { th: 0.78, n: 7, geo: big, out: 0.42 },
@@ -214,7 +214,7 @@ export function buildExtras(fruit: SliceFruit): Extra[] {
   return out;
 }
 
-/** A dragon fruit scale: a soft pointed leaf shaded magenta → pale pink → green at the tip. */
+/** A dragon fruit scale: a soft pointed leaf shaded magenta → pale pink → green at the tip, with an outward curl. */
 function bractGeo(len: number, wid: number) {
   const g = leafGeo(len, wid);
   const p = g.attributes.position;
@@ -225,10 +225,15 @@ function bractGeo(len: number, wid: number) {
   const tmp = new THREE.Color();
   for (let i = 0; i < p.count; i++) {
     const t = p.getY(i) / len;
-    if (t < 0.55) tmp.copy(base).lerp(mid, t / 0.55);
-    else tmp.copy(mid).lerp(tip, (t - 0.55) / 0.45);
+    const x = p.getX(i);
+    // Cup the scale slightly and curl its tip outward.
+    const curlZ = -t * t * t * len * 0.24 + (x * x) / (wid * wid + 0.001) * 0.035;
+    p.setZ(i, p.getZ(i) + curlZ);
+    if (t < 0.52) tmp.copy(base).lerp(mid, t / 0.52);
+    else tmp.copy(mid).lerp(tip, (t - 0.52) / 0.48);
     c.set([tmp.r, tmp.g, tmp.b], i * 3);
   }
+  g.computeVertexNormals();
   g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   return g;
 }

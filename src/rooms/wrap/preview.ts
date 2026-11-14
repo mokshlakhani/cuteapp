@@ -4,6 +4,7 @@ import { rand, smoothstep } from '../../core/math';
 import { rgba } from '../../core/color';
 import { material } from '../../core/sounds';
 import { reducedMotion } from '../../render/camera';
+import { contactShadow } from '../../render/paint';
 import { Sheet, type Bubble } from './Sheet';
 import { drawSheet, FILMS } from './draw';
 
@@ -99,7 +100,19 @@ export function wrapPreview(): Preview {
         t = 0;
       }
       sheet.moveTo(x + (w - sheet.W) / 2, y + h * 0.5 - sheet.H / 2);
-      drawSheet(ctx, theme.current, FILMS[0], sheet);
+      const th = theme.current;
+      // Stronger grounded shadow and top-left rim highlight so the sprite tile pops like the 3D tiles.
+      contactShadow(ctx, th, sheet.x0 + sheet.W * 0.53, sheet.y0 + sheet.H * 0.96, sheet.W * 0.52, sheet.H * 0.14, 0.34);
+      drawSheet(ctx, th, FILMS[0], sheet);
+      ctx.save();
+      ctx.strokeStyle = rgba('#ffffff', th.light ? 0.85 : 0.4);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sheet.x0 + 12, sheet.y0 + 1.5);
+      ctx.lineTo(sheet.x0 + sheet.W * 0.65, sheet.y0 + 1.5);
+      ctx.stroke();
+      ctx.restore();
       // The glowing ones, fading in and out.
       const a = Math.min(smoothstep(0, 0.25, t), 1 - smoothstep(GLOW - 0.3, GLOW, t));
       if (a > 0.01)

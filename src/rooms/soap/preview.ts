@@ -2,9 +2,10 @@ import type { Preview } from '../../app/scene';
 import { clamp, lerp, rand, TAU } from '../../core/math';
 import { ease, Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
+import { theme } from '../../design/theme';
 import { reducedMotion } from '../../render/camera';
 import { drawFace, Face } from '../../render/face';
-import { gloss } from '../../render/paint';
+import { contactShadow, gloss } from '../../render/paint';
 
 /** Seconds: blowing up, resting on the ring, floating off, and the pause before the next. */
 const GROW = 3.4;
@@ -38,31 +39,39 @@ export function soapPreview(): Preview {
     c.width = c.height = Math.ceil(size * dpr);
     const g = c.getContext('2d')!;
     g.setTransform(dpr, 0, 0, dpr, (size * dpr) / 2, (size * dpr) / 2);
-    const body = g.createRadialGradient(0, 0, R * 0.55, 0, 0, R);
-    body.addColorStop(0, 'rgba(255,255,255,0.05)');
-    body.addColorStop(0.72, 'rgba(255,255,255,0.1)');
-    body.addColorStop(1, 'rgba(255,255,255,0.5)');
+    const body = g.createRadialGradient(-R * 0.22, -R * 0.24, R * 0.12, 0, 0, R);
+    body.addColorStop(0, 'rgba(255,255,255,0.16)');
+    body.addColorStop(0.62, 'rgba(245,235,255,0.14)');
+    body.addColorStop(0.88, 'rgba(195,170,220,0.34)');
+    body.addColorStop(1, 'rgba(255,255,255,0.68)');
     g.fillStyle = body;
     g.beginPath();
     g.arc(0, 0, R, 0, TAU);
     g.fill();
+    // Subtle outer contrast rim so the bubble separates crisply from the card.
+    g.strokeStyle = 'rgba(110, 82, 130, 0.26)';
+    g.lineWidth = Math.max(1, R * 0.035);
+    g.beginPath();
+    g.arc(0, 0, R * 0.985, 0, TAU);
+    g.stroke();
     // Film colours gathered round the rim.
     const film: [string, number, number][] = [
-      ['rgba(255,150,205,0.55)', -2.3, 1.5],
-      ['rgba(130,225,235,0.55)', -0.5, 1.4],
-      ['rgba(255,232,150,0.5)', 1.0, 1.2],
-      ['rgba(175,160,255,0.5)', 2.2, 1.3],
+      ['rgba(255,140,202,0.72)', -2.3, 1.55],
+      ['rgba(115,222,238,0.72)', -0.5, 1.45],
+      ['rgba(255,228,135,0.68)', 1.0, 1.25],
+      ['rgba(170,152,255,0.68)', 2.2, 1.35],
     ];
     g.lineCap = 'round';
     for (const [col, a, len] of film) {
       g.strokeStyle = col;
-      g.lineWidth = R * 0.075;
+      g.lineWidth = R * 0.088;
       g.beginPath();
-      g.arc(0, 0, R * 0.95, a, a + len);
+      g.arc(0, 0, R * 0.94, a, a + len);
       g.stroke();
     }
-    gloss(g, -R * 0.42, -R * 0.5, R * 0.3, R * 0.14, 0.9);
-    gloss(g, R * 0.46, R * 0.5, R * 0.15, R * 0.06, 0.45);
+    gloss(g, -R * 0.42, -R * 0.48, R * 0.34, R * 0.16, 0.96);
+    gloss(g, -R * 0.14, -R * 0.62, R * 0.12, R * 0.065, 0.82);
+    gloss(g, R * 0.46, R * 0.5, R * 0.18, R * 0.075, 0.62);
     return c;
   };
 
@@ -90,10 +99,31 @@ export function soapPreview(): Preview {
       const up = clamp((clock - GROW - HOLD) / RISE, 0, 1);
       const cy = ringY - r * 0.92 - ease.inOutSine(up) * h * 0.4;
       const bx = cx + Math.sin(up * TAU) * R * 0.12;
-      // The wand: its stem and the ring's far side, under the bubble.
+      const bubbleAlpha = clamp(clock / 0.5, 0, 1) * clamp((0.65 - up) / 0.4, 0, 1);
+      // Grounded shadow beneath the wand & floating bubble on the card.
+      contactShadow(ctx, theme.current, cx + R * 0.12, ringY + R * 0.62, R * 0.92, R * 0.16, 0.34);
+      contactShadow(ctx, theme.current, bx + R * 0.08, ringY + R * 0.58, r * 0.72, R * 0.11, 0.22 * bubbleAlpha);
+      // The wand: its stem and the ring's far side, under the bubble, with 3D shading and specular highlight.
+      const ww = Math.max(3.2, R * 0.115);
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#F2A9BC';
-      ctx.lineWidth = Math.max(3, R * 0.11);
+      ctx.strokeStyle = 'rgba(110, 62, 85, 0.26)';
+      ctx.lineWidth = ww * 1.15;
+      ctx.beginPath();
+      ctx.moveTo(cx + R * 0.42, ringY + 2.5);
+      ctx.quadraticCurveTo(cx + R * 0.72, ringY + R * 0.2 + 2.5, cx + R * 0.34, ringY + R * 0.56 + 2.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(cx, ringY + 2, R * 0.42, R * 0.1, 0, Math.PI, TAU);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#DF8CA5';
+      ctx.lineWidth = ww;
+      ctx.beginPath();
+      ctx.moveTo(cx + R * 0.42, ringY + 1);
+      ctx.quadraticCurveTo(cx + R * 0.72, ringY + R * 0.2 + 1, cx + R * 0.34, ringY + R * 0.56 + 1);
+      ctx.stroke();
+      ctx.strokeStyle = '#F4B0C3';
+      ctx.lineWidth = ww * 0.88;
       ctx.beginPath();
       ctx.moveTo(cx + R * 0.42, ringY);
       ctx.quadraticCurveTo(cx + R * 0.72, ringY + R * 0.2, cx + R * 0.34, ringY + R * 0.56);
@@ -101,20 +131,35 @@ export function soapPreview(): Preview {
       ctx.beginPath();
       ctx.ellipse(cx, ringY, R * 0.42, R * 0.1, 0, Math.PI, TAU);
       ctx.stroke();
+
       const s = paint(Math.round(R));
       const d = r * 2.3;
       ctx.save();
       // Faded away well before the card's edge, so it never looks cut off.
-      ctx.globalAlpha = clamp(clock / 0.5, 0, 1) * clamp((0.65 - up) / 0.4, 0, 1);
+      ctx.globalAlpha = bubbleAlpha;
       ctx.drawImage(s, bx - d / 2, cy - d / 2, d, d);
       ctx.translate(bx, cy + r * 0.02);
       drawFace(ctx, face, r * 0.98, { ink: '#3A2340', blush: '#FF9AAE' });
       ctx.restore();
-      // The ring's near side, over it.
-      ctx.strokeStyle = '#F2A9BC';
-      ctx.lineWidth = Math.max(3, R * 0.11);
+      // The ring's near side, over it, with a glossy plastic highlight ridge.
+      ctx.strokeStyle = '#DF8CA5';
+      ctx.lineWidth = ww;
+      ctx.beginPath();
+      ctx.ellipse(cx, ringY + 1, R * 0.42, R * 0.1, 0, 0, Math.PI);
+      ctx.stroke();
+      ctx.strokeStyle = '#F4B0C3';
+      ctx.lineWidth = ww * 0.88;
       ctx.beginPath();
       ctx.ellipse(cx, ringY, R * 0.42, R * 0.1, 0, 0, Math.PI);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+      ctx.lineWidth = Math.max(1.2, ww * 0.28);
+      ctx.beginPath();
+      ctx.ellipse(cx, ringY - 0.8, R * 0.38, R * 0.09, 0, 0.12 * Math.PI, 0.88 * Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + R * 0.44, ringY + R * 0.02);
+      ctx.quadraticCurveTo(cx + R * 0.66, ringY + R * 0.19, cx + R * 0.37, ringY + R * 0.5);
       ctx.stroke();
     },
     poke() {

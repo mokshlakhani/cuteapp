@@ -6,10 +6,11 @@ import { rgba } from '../../core/color';
 import { material } from '../../core/sounds';
 import { reducedMotion } from '../../render/camera';
 import { Face } from '../../render/face';
+import { contactShadow } from '../../render/paint';
 import { Glass } from './Glass';
 import { DRINKS, type Drink } from './drinks';
 import { GlassExtras } from './extras';
-import { drawGlass, drawJug, glassShape, halfAt, hover, jugShape, spout, yAt, type GlassShape } from './draw';
+import { drawGlass, drawImpact, drawJug, glassShape, halfAt, hover, jugShape, spout, yAt, type GlassShape } from './draw';
 
 /** How far each tips while it pours, and where its stream lands (× glass width). */
 const TILT = 0.92;
@@ -153,6 +154,9 @@ export function pourPreview(): Preview {
       ctx.rect(x, y, w, h);
       ctx.clip();
       ctx.globalAlpha = fade;
+      // Stronger grounded contact shadow under the tumbler on the home card.
+      contactShadow(ctx, t, g.cx + gW * 0.08, floor + 2, g.wb * 1.48, gW * 0.16, 0.42);
+      contactShadow(ctx, t, g.cx + gW * 0.03, floor + 1, g.wb * 0.92, gW * 0.09, 0.28);
       const lineIn = phase === 'in' ? ease.outCubic(clamp((phaseT - IN * 0.4) / (IN * 0.6), 0, 1)) : 1;
       const glint = phase === 'ting' ? ease.inOutSine(clamp(phaseT / TING, 0, 1)) : 0;
       const lit = phase === 'ting' ? clamp(phaseT / (TING * 0.4), 0, 1) : phase === 'admire' || phase === 'out' ? 1 : 0;
@@ -175,24 +179,37 @@ export function pourPreview(): Preview {
             c.fill();
           }
         },
-        extras: drink.extra ? (c) => extras.draw(c, g, glass, time) : undefined,
+        extras: drink.extra ? (c) => extras.draw(c, g, glass, time, drink) : undefined,
       });
       extras.drawRim(ctx, g);
 
-      // The stream, from the mouth down to the drink.
+      // The stream, from the mouth down to the drink: smooth tapering ribbon + surface ripples.
       if (tilt > 0.6 && phase === 'pour') {
         const lip = spout(j, jx, jy, tilt);
         const sy = yAt(g, glass.top);
-        ctx.strokeStyle = drink.color;
-        ctx.lineCap = 'round';
-        ctx.lineWidth = lerp(1.5, 3, clamp((tilt - 0.6) / 0.3, 0, 1));
+        const rate = clamp((tilt - 0.6) / 0.3, 0, 1);
+        const hitX = g.cx + gW * AIM;
+        const drinkScale = drink.id === 'boba' ? 1.3 : drink.id === 'milk' ? 0.76 : drink.id === 'cocoa' ? 1.12 : 0.96;
+        const rTop = lerp(1.1, 2.2, rate) * drinkScale;
+        const rBot = rTop * 0.56;
+        const cpx = lip.x + lip.dx * 4;
+        const cpy = (lip.y + sy) / 2;
+        ctx.fillStyle = drink.color;
         ctx.beginPath();
-        ctx.moveTo(lip.x, lip.y);
-        ctx.quadraticCurveTo(lip.x + lip.dx * 4, (lip.y + sy) / 2, g.cx + gW * AIM, sy);
+        ctx.moveTo(lip.x - rTop, lip.y);
+        ctx.quadraticCurveTo(cpx - (rTop + rBot) * 0.5, cpy, hitX - rBot, sy);
+        ctx.lineTo(hitX + rBot, sy);
+        ctx.quadraticCurveTo(cpx + (rTop + rBot) * 0.5, cpy, lip.x + rTop, lip.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = rgba('#ffffff', 0.62);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = Math.max(0.8, rTop * 0.42);
+        ctx.beginPath();
+        ctx.moveTo(lip.x - rTop * 0.35, lip.y);
+        ctx.quadraticCurveTo(cpx - rBot * 0.35, cpy, hitX - rBot * 0.3, sy);
         ctx.stroke();
-        ctx.strokeStyle = rgba('#ffffff', 0.45);
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
+        drawImpact(ctx, g, glass, hitX, rate * 0.7, time, drink);
       }
       ctx.globalAlpha = 1;
       drawJug(ctx, t, j, jx, jy - lift * gW * 0.9 + bob, tilt, drink, 1 - clamp(lift, 0, 1));

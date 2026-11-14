@@ -87,33 +87,44 @@ const FRAG_COLOR = /* glsl */ `
   sq /= max(0.05, shellR(sq));
   diffuseColor.rgb = fruitColor(sq * uRad);
 
-  // Cracks: jagged lines running round the rind either side of the band
-  // pile, where the bulge strains hardest, with the pink flesh showing through.
+  // Cracks: jagged splits creeping outward from the waist either side of the
+  // band pile, with a pale rind lip and bright juice-lit flesh gleaming inside.
   if (uCrack > 0.0) {
-    float w = 0.003 + 0.007 * uCrack;
     float line = 0.0;
+    float coreGlow = 0.0;
+    float pithRim = 0.0;
     float edge = 0.0;
     for (int k = 0; k < 2; k++) {
       float cx = k == 0 ? uCrackX.x : uCrackX.y;
       float seed = k == 0 ? 3.1 : 8.7;
-      // Each crack starts on the side facing you and runs part way round,
-      // unevenly, growing as the moment comes.
-      float start = 1.1 + (k == 0 ? -0.25 : 0.3);
-      float len = uCrack * (k == 0 ? 2.1 : 1.6);
+      // Each crack starts on the front bulge and creeps outward round the fruit
+      // over the last second, widening at the waist as the tip advances.
+      float start = 1.15 + (k == 0 ? -0.22 : 0.25);
+      float len = (0.18 + 0.82 * uCrack) * (k == 0 ? 2.65 : 2.15);
       float a = abs(phi - start);
-      float along = 1.0 - smoothstep(len - 0.25, len, a);
-      float d = abs(p.x - cx - crackPath(phi, seed));
-      // A side branch splitting off now and then.
-      float bphi = phi * 2.0 + seed;
-      float twig = abs(p.x - cx - crackPath(phi, seed) - 0.07 * (fract(bphi) - 0.5) * sign(sin(bphi * 3.1)));
-      float twigOn = step(0.72, hash1(floor(bphi))) * step(0.45, uCrack);
-      line = max(line, (1.0 - smoothstep(w, w + 0.004, d)) * along);
-      line = max(line, (1.0 - smoothstep(w * 0.6, w * 0.6 + 0.003, twig)) * along * twigOn);
-      edge = max(edge, (1.0 - smoothstep(w + 0.003, w + 0.016, d)) * along);
+      float along = clamp(1.0 - smoothstep(max(0.0, len - 0.42), len, a), 0.0, 1.0);
+      float taper = smoothstep(len, max(0.0, len - 0.55), a);
+      float w = (0.0045 + 0.020 * uCrack) * (0.25 + 0.75 * taper);
+      float path = crackPath(phi, seed);
+      float d = abs(p.x - cx - path);
+      // Forking side branches that creep out as tension mounts.
+      float bphi = phi * 2.4 + seed;
+      float branchDir = sign(sin(bphi * 3.1));
+      float twig = abs(p.x - cx - path - 0.095 * (fract(bphi) - 0.35) * branchDir);
+      float twigOn = step(0.58, hash1(floor(bphi))) * smoothstep(0.22, 0.55, uCrack) * taper;
+      float mainTear = (1.0 - smoothstep(w * 0.7, w + 0.004, d)) * along;
+      float twigTear = (1.0 - smoothstep(w * 0.45, w * 0.45 + 0.0035, twig)) * along * twigOn;
+      line = max(line, max(mainTear, twigTear));
+      coreGlow = max(coreGlow, (1.0 - smoothstep(0.0, w * 0.48, d)) * along);
+      pithRim = max(pithRim, (1.0 - smoothstep(w, w + 0.007, d)) * (1.0 - mainTear) * along);
+      edge = max(edge, (1.0 - smoothstep(w + 0.003, w + 0.022, d)) * along);
+      edge = max(edge, (1.0 - smoothstep(w * 0.45 + 0.002, w * 0.45 + 0.014, twig)) * along * twigOn * 0.7);
     }
-    diffuseColor.rgb = mix(diffuseColor.rgb, uSkinC * 0.5, edge * 0.5);
-    bumpH *= 1.0 - edge;
-    diffuseColor.rgb = mix(diffuseColor.rgb, uFlesh, line);
+    diffuseColor.rgb = mix(diffuseColor.rgb, uSkinC * 0.32, edge * 0.68);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.97, 0.98, 0.86), pithRim * 0.82);
+    bumpH = mix(bumpH, -0.042, clamp(edge * 0.85 + line, 0.0, 1.0));
+    vec3 wetJuice = mix(uFlesh, vec3(1.0, 0.94, 0.90), 0.42 + 0.38 * coreGlow) * (1.18 + 0.25 * uCrack);
+    diffuseColor.rgb = mix(diffuseColor.rgb, wetJuice, line);
   }
 
   if (uFaceOn > 0.5) {
@@ -166,7 +177,7 @@ export function makeMelonMaterial(withFace: boolean): { mat: THREE.MeshPhysicalM
       .replace('#include <color_fragment>', FRAG_COLOR)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${FRUIT_BUMP}`);
   };
-  mat.customProgramCacheKey = () => 'soft-fruit-v6';
+  mat.customProgramCacheKey = () => 'soft-fruit-v7';
   return { mat, uniforms };
 }
 
@@ -179,6 +190,8 @@ export function dressSkin(mat: THREE.MeshPhysicalMaterial, u: MelonUniforms, fru
   mat.roughness = 0.78 - fruit.look.shine * 0.46;
   mat.clearcoat = 0.05 + fruit.look.shine * 0.7;
   mat.clearcoatRoughness = 0.18;
+  // Velvet and fuzz: a soft sheen at grazing angles on the matte fruits (a peach, a kiwi), next to none on the glossy ones.
+  mat.sheen = 0.06 + (1 - fruit.look.shine) * 0.6;
 }
 
 /** Flesh with the rind showing at the cut (uses vertex colours). */

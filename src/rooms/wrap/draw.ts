@@ -1,6 +1,6 @@
 import { pastel, type Theme } from '../../design/tokens';
 import { mix, rgba } from '../../core/color';
-import { clamp, TAU } from '../../core/math';
+import { clamp, smoothstep, TAU } from '../../core/math';
 import { gloss, roundRect } from '../../render/paint';
 import { ease } from '../../design/motion';
 import { drawFace } from '../../render/face';
@@ -110,7 +110,13 @@ function fullSprite(t: Theme, f: Film, r: number, cheeks: boolean) {
       }
     }
 
-    gloss(g, -R * 0.42, -R * 0.44, R * 0.3, R * 0.17, 0.9);
+    gloss(g, -R * 0.42, -R * 0.44, R * 0.3, R * 0.17, 0.92);
+    // Second, smaller highlight for a wetter plastic dome look.
+    gloss(g, -R * 0.13, -R * 0.57, R * 0.11, R * 0.068, 0.86);
+    g.fillStyle = rgba('#ffffff', 0.55);
+    g.beginPath();
+    g.arc(R * 0.46, R * 0.48, R * 0.048, 0, TAU);
+    g.fill();
   });
 }
 
@@ -119,8 +125,8 @@ function flatSprite(t: Theme, f: Film, r: number, look: number) {
   const key = `flat|${t.name}|${f.id}|${r}|${look}|${dprNow()}`;
   return sprite(key, r, (g, R) =>
     paintPopped(g, R, look, {
-      fill: rgba(mix(f.tint, '#ffffff', 0.35), 0.5),
-      rim: rgba(mix(deep(f.tint), '#5E4B42', 0.3), 0.3),
+      fill: rgba(mix(f.tint, '#ffffff', 0.24), 0.58),
+      rim: rgba(mix(deep(f.tint), '#5E4B42', 0.28), 0.36),
       shadowRgb: t.shadowRgb,
       shadowStrength: t.shadowStrength,
       tint: f.tint,
@@ -174,8 +180,29 @@ export function drawBubble(ctx: CanvasRenderingContext2D, t: Theme, f: Film, b: 
   if (b.popped) {
     const k = clamp(b.popT / BURST, 0, 1);
     if (k < 1) blit(ctx, fullSprite(t, f, R, !!b.face), k0 * (1 + k * 0.25), 1 - k);
+    // Brief crinkle after the pop: the deflated plastic film shimmers and relaxes into its creases.
+    const crinkle = b.popT < 0.44 ? Math.exp(-Math.max(0, b.popT - 0.05) * 9.5) * smoothstep(0.01, 0.07, b.popT) : 0;
+    const crinkleWave = crinkle > 0.005 ? Math.sin(b.popT * 58 + b.u * 0.17 + b.v * 0.13) * crinkle : 0;
     const FR = flatR(b.r);
+    ctx.save();
+    if (crinkle > 0.005) {
+      ctx.rotate(crinkleWave * 0.085);
+      ctx.scale(1 + crinkleWave * 0.055, 1 - crinkleWave * 0.055);
+    }
     blit(ctx, flatSprite(t, f, FR, b.crumple), (b.r / FR) * (1.04 + b.wobble.value * 0.05), k);
+    if (crinkle > 0.02) {
+      ctx.strokeStyle = rgba('#ffffff', 0.62 * crinkle);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(1, b.r * 0.055);
+      const a0 = (b.crumple * 1.7 + b.popT * 14) % TAU;
+      ctx.beginPath();
+      ctx.arc(0, 0, b.r * 0.52, a0, a0 + 1.15);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, b.r * 0.32, a0 + 2.4, a0 + 3.35);
+      ctx.stroke();
+    }
+    ctx.restore();
     if (b.popT < RING) {
       // The puff of air leaving, as a soft ring.
       const q = b.popT / RING;
@@ -313,12 +340,53 @@ export function drawSheet(ctx: CanvasRenderingContext2D, t: Theme, f: Film, shee
 
   ctx.save();
   ctx.clip(path);
-  // A long soft sheen across the plastic.
+  // Subtle heat-weld seam grid between bubbles + welded cell rings on the film.
+  const { nx, ny, px, py } = sheet;
+  ctx.beginPath();
+  for (let j = 1; j < ny - 1; j++) {
+    const k0 = j * nx;
+    ctx.moveTo(px[k0], py[k0]);
+    for (let i = 1; i < nx; i++) ctx.lineTo(px[k0 + i], py[k0 + i]);
+  }
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const k = j * nx + i;
+      if ((i + j) % 2 === 0) {
+        ctx.moveTo(px[k], py[k]);
+        ctx.lineTo(px[k + nx + 1], py[k + nx + 1]);
+      } else {
+        ctx.moveTo(px[k + 1], py[k + 1]);
+        ctx.lineTo(px[k + nx], py[k + nx]);
+      }
+    }
+  }
+  ctx.strokeStyle = rgba(mix(deep(f.tint), '#5E4B42', 0.2), t.light ? 0.1 : 0.08);
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+  ctx.strokeStyle = rgba('#ffffff', t.light ? 0.24 : 0.1);
+  ctx.lineWidth = 0.75;
+  ctx.stroke();
+
+  // Faint heat-sealed weld rings around each bubble seat.
+  ctx.beginPath();
+  for (const b of sheet.bubbles) {
+    const wr = b.r * 1.07;
+    ctx.moveTo(b.x + wr, b.y);
+    ctx.arc(b.x, b.y, wr, 0, TAU);
+  }
+  ctx.strokeStyle = rgba('#ffffff', t.light ? 0.22 : 0.09);
+  ctx.lineWidth = 0.85;
+  ctx.stroke();
+
+  // A glossy diagonal plastic sheen streak across the film sheet.
   const sheen = ctx.createLinearGradient(minX, minY, maxX, maxY);
   sheen.addColorStop(0, rgba('#ffffff', 0));
-  sheen.addColorStop(0.3, rgba('#ffffff', 0.22));
-  sheen.addColorStop(0.42, rgba('#ffffff', 0));
-  sheen.addColorStop(0.7, rgba('#ffffff', 0.1));
+  sheen.addColorStop(0.22, rgba('#ffffff', 0.06));
+  sheen.addColorStop(0.31, rgba('#ffffff', t.light ? 0.34 : 0.18));
+  sheen.addColorStop(0.39, rgba('#ffffff', 0.04));
+  sheen.addColorStop(0.64, rgba('#ffffff', 0));
+  sheen.addColorStop(0.72, rgba('#ffffff', t.light ? 0.18 : 0.1));
+  sheen.addColorStop(0.8, rgba('#ffffff', 0));
   sheen.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = sheen;
   ctx.fillRect(minX, minY, maxX - minX, maxY - minY);

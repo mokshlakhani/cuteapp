@@ -135,25 +135,121 @@ export function blobTexture() {
   return tex;
 }
 
-/** Pale, soft wood: long grain and a few darker streaks. */
+/** Warm butcher-block cutting board: plank staves, rich grain, end-grain edges, juice groove and soft knife score marks. */
 export function woodTexture() {
   const c = document.createElement('canvas');
   c.width = 512;
   c.height = 344;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = '#D9A774';
-  ctx.fillRect(0, 0, c.width, c.height);
-  for (let i = 0; i < 90; i++) {
-    const y = Math.random() * c.height;
-    ctx.strokeStyle = `rgba(${Math.random() < 0.5 ? '150,92,50' : '246,204,156'},${rand(0.08, 0.22)})`;
-    ctx.lineWidth = rand(0.6, 2.6);
+  const W = c.width;
+  const H = c.height;
+  ctx.fillStyle = '#D9A673';
+  ctx.fillRect(0, 0, W, H);
+
+  // Four horizontal butcher-block staves with subtle warm tonal variation.
+  const staves = 4;
+  const staveH = H / staves;
+  const staveTones = ['#DDA975', '#D39E6A', '#DFAD7B', '#D5A06D'];
+  for (let s = 0; s < staves; s++) {
+    ctx.fillStyle = staveTones[s];
+    ctx.fillRect(0, s * staveH, W, staveH);
+    if (s > 0) {
+      ctx.strokeStyle = 'rgba(122, 74, 38, 0.22)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(0, s * staveH);
+      ctx.lineTo(W, s * staveH);
+      ctx.stroke();
+    }
+  }
+
+  // Long wavy grain lines and warm cathedral arches within each stave.
+  for (let i = 0; i < 160; i++) {
+    const y = Math.random() * H;
+    const dark = Math.random() < 0.58;
+    ctx.strokeStyle = `rgba(${dark ? '138,80,40' : '250,214,170'},${rand(0.1, 0.28)})`;
+    ctx.lineWidth = rand(0.7, 2.8);
+    const freq = rand(0.008, 0.02);
+    const phase = rand(0, Math.PI * 2);
+    const amp = rand(1.5, 5.5);
     ctx.beginPath();
     ctx.moveTo(0, y);
-    for (let x = 0; x <= c.width; x += 32) ctx.lineTo(x, y + Math.sin(x * 0.01 + i) * rand(1, 4));
+    for (let x = 0; x <= W; x += 24) {
+      ctx.lineTo(x, y + Math.sin(x * freq + phase) * amp);
+    }
     ctx.stroke();
   }
+
+  // Darker end-grain bands along the left and right edges of the board.
+  const endW = 26;
+  for (const side of [0, W - endW]) {
+    const eg = ctx.createLinearGradient(side, 0, side + endW, 0);
+    if (side === 0) {
+      eg.addColorStop(0, 'rgba(120, 68, 34, 0.34)');
+      eg.addColorStop(0.75, 'rgba(120, 68, 34, 0.16)');
+      eg.addColorStop(1, 'rgba(120, 68, 34, 0)');
+    } else {
+      eg.addColorStop(0, 'rgba(120, 68, 34, 0)');
+      eg.addColorStop(0.25, 'rgba(120, 68, 34, 0.16)');
+      eg.addColorStop(1, 'rgba(120, 68, 34, 0.34)');
+    }
+    ctx.fillStyle = eg;
+    ctx.fillRect(side, 0, endW, H);
+    // Tight curved annual growth rings in the end-grain bands.
+    for (let s = 0; s < staves; s++) {
+      const cy = (s + 0.5) * staveH;
+      for (let r = 6; r < staveH * 0.9; r += 5) {
+        ctx.strokeStyle = 'rgba(110, 62, 30, 0.22)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.arc(side === 0 ? 4 : W - 4, cy, r, -Math.PI * 0.45, Math.PI * 0.45, side !== 0);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Recessed perimeter juice groove inset from the board's rim.
+  const gx = 32;
+  const gy = 24;
+  const gw = W - gx * 2;
+  const gh = H - gy * 2;
+  ctx.strokeStyle = 'rgba(124, 72, 36, 0.28)';
+  ctx.lineWidth = 5.5;
+  ctx.beginPath();
+  ctx.roundRect(gx, gy, gw, gh, 18);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255, 228, 192, 0.35)';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.roundRect(gx + 1.5, gy + 1.5, gw - 3, gh - 3, 17);
+  ctx.stroke();
+
+  // Soft diagonal knife score marks across the centre working area of the board.
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 28; i++) {
+    const sx = W * rand(0.22, 0.78);
+    const sy = H * rand(0.22, 0.78);
+    const len = rand(28, 86);
+    const ang = rand(-0.45, 0.45) + (Math.random() < 0.3 ? Math.PI * 0.5 : 0);
+    const dx = Math.cos(ang) * len * 0.5;
+    const dy = Math.sin(ang) * len * 0.5;
+    ctx.strokeStyle = `rgba(118, 68, 34, ${rand(0.12, 0.24)})`;
+    ctx.lineWidth = rand(0.8, 1.5);
+    ctx.beginPath();
+    ctx.moveTo(sx - dx, sy - dy);
+    ctx.lineTo(sx + dx, sy + dy);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(255, 230, 196, ${rand(0.1, 0.2)})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(sx - dx, sy - dy + 1);
+    ctx.lineTo(sx + dx, sy + dy + 1);
+    ctx.stroke();
+  }
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
 

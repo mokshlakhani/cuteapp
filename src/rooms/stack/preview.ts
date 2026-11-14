@@ -1,5 +1,6 @@
 import type { Preview } from '../../app/scene';
 import { clamp, rand } from '../../core/math';
+import { mix } from '../../core/color';
 import { ease, Spring } from '../../design/motion';
 import { springs } from '../../design/tokens';
 import { reducedMotion } from '../../render/camera';
@@ -62,12 +63,52 @@ export function stackPreview(): Preview {
       else g.moveTo(px, py);
     }
     g.closePath();
-    const f = g.createLinearGradient(-W * 0.3, -H, W * 0.3, H);
-    f.addColorStop(0, col);
-    f.addColorStop(1, deep);
+    g.save();
+    g.clip();
+    const f = g.createLinearGradient(-W * 0.35, -H, W * 0.4, H);
+    f.addColorStop(0, mix(col, '#ffffff', 0.28));
+    f.addColorStop(0.45, col);
+    f.addColorStop(1, mix(deep, '#4A3931', 0.25));
     g.fillStyle = f;
-    g.fill();
-    gloss(g, -W * 0.4, -H * 0.45, W * 0.3, H * 0.22, 0.5);
+    g.fillRect(-W * 1.1, -H * 1.1, W * 2.2, H * 2.2);
+
+    // Per-stone mineral character: sedimentary band on bottom stone, quartz vein on middle stone, mineral speckles on all.
+    if (i === 0) {
+      g.strokeStyle = 'rgba(255, 248, 236, 0.34)';
+      g.lineWidth = Math.max(1.5, H * 0.22);
+      g.beginPath();
+      g.moveTo(-W * 1.05, H * 0.12);
+      g.quadraticCurveTo(0, -H * 0.08, W * 1.05, H * 0.18);
+      g.stroke();
+    } else if (i === 1) {
+      g.strokeStyle = 'rgba(250, 252, 248, 0.48)';
+      g.lineWidth = Math.max(1, H * 0.11);
+      g.beginPath();
+      g.moveTo(-W * 0.55, -H * 0.9);
+      g.quadraticCurveTo(-W * 0.12, 0, W * 0.38, H * 0.95);
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(58, 42, 34, 0.16)';
+    for (let s = 0; s < 14; s++) {
+      const a0 = (s + i * 5) * 2.39996;
+      const rr = Math.sqrt((s + 0.5) / 14) * 0.82;
+      g.beginPath();
+      g.arc(Math.cos(a0) * W * rr, Math.sin(a0) * H * rr, Math.max(0.7, H * 0.055), 0, Math.PI * 2);
+      g.fill();
+    }
+    // Warm underside ambient occlusion band.
+    const uSh = g.createLinearGradient(0, H * 0.2, 0, H);
+    uSh.addColorStop(0, 'rgba(50, 34, 28, 0)');
+    uSh.addColorStop(1, 'rgba(50, 34, 28, 0.24)');
+    g.fillStyle = uSh;
+    g.fillRect(-W * 1.1, H * 0.2, W * 2.2, H * 0.9);
+    g.restore();
+
+    g.strokeStyle = 'rgba(68, 48, 40, 0.28)';
+    g.lineWidth = Math.max(1, H * 0.06);
+    g.stroke();
+    gloss(g, -W * 0.4, -H * 0.46, W * 0.34, H * 0.24, 0.78);
+    gloss(g, -W * 0.1, -H * 0.62, W * 0.13, H * 0.09, 0.5);
     sprites.set(key, c);
     return c;
   };
@@ -89,7 +130,8 @@ export function stackPreview(): Preview {
       const u = Math.min(w * 0.76, h * 0.74);
       const cx = x + w / 2;
       const floor = y + h * 0.8;
-      contactShadow(ctx, theme.current, cx + u * 0.02, floor, u * 0.5, u * 0.07, 0.3);
+      contactShadow(ctx, theme.current, cx + u * 0.03, floor + 1, u * 0.54, u * 0.085, 0.44);
+      contactShadow(ctx, theme.current, cx + u * 0.01, floor, u * 0.34, u * 0.048, 0.28);
       const breathe = reducedMotion ? 0 : Math.sin(time * 1.1) * 0.006;
       const coming = ease.inOutCubic(clamp(clock / DROP, 0, 1));
       const going = ease.inOutCubic(clamp((clock - DROP - SIT) / LIFT, 0, 1));
@@ -103,7 +145,15 @@ export function stackPreview(): Preview {
         const top = i === 2;
         // Gone before it reaches the top of the card.
         const above = 1 - coming + going;
-        if (top) ctx.globalAlpha = clamp((0.7 - above) / 0.4, 0, 1);
+        const topAlpha = clamp((0.7 - above) / 0.4, 0, 1);
+        // Inter-stone contact shadow cast onto the stone below.
+        if (i === 1) {
+          contactShadow(ctx, theme.current, sx + u * 0.015, py + H * 0.96, a * u * 0.92, H * 0.28, 0.34);
+        } else if (top && topAlpha > 0.02) {
+          const proximity = clamp(1 - above * 1.8, 0, 1);
+          contactShadow(ctx, theme.current, sx + u * 0.01, py + H * 0.96, a * u * (0.88 - above * 0.25), H * 0.26, 0.32 * proximity * topAlpha);
+        }
+        if (top) ctx.globalAlpha = topAlpha;
         const sy = top ? py - above * FROM * u : py;
         ctx.drawImage(stone(i, Math.round(u)), sx - a * u, sy - H, a * u * 2, H * 2);
         if (top) {

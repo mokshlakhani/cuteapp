@@ -123,11 +123,17 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
   glow(t.glowWarm, w * 0.8, h * 0.1, big * 0.7, 0.3);
   glow(t.glowCool, w * 0.15, h * 0.88, big * 0.75, 0.3);
 
-  // A soft pool of light from the upper left, like a window nearby.
+  // A soft pool of light from the upper left, like a window nearby, plus a soft secondary pool lower right.
   const pool = ctx.createRadialGradient(w * 0.25, h * 0.12, 0, w * 0.25, h * 0.12, Math.max(w, h) * 0.75);
-  pool.addColorStop(0, rgba('#ffe6c4', t.light ? 0.3 : 0.1));
+  pool.addColorStop(0, rgba('#ffe6c4', t.light ? 0.32 : 0.12));
   pool.addColorStop(1, rgba('#ffffff', 0));
   ctx.fillStyle = pool;
+  ctx.fillRect(0, 0, w, h);
+
+  const pool2 = ctx.createRadialGradient(w * 0.76, h * 0.68, 0, w * 0.76, h * 0.68, Math.max(w, h) * 0.52);
+  pool2.addColorStop(0, rgba('#ffd9b8', t.light ? 0.16 : 0.07));
+  pool2.addColorStop(1, rgba('#ffffff', 0));
+  ctx.fillStyle = pool2;
   ctx.fillRect(0, 0, w, h);
 
   if (b.spot) {
@@ -160,25 +166,28 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, t: Th
 
   // The room falls softly into shade at its edges, so the eye settles on
   // the toy in the middle.
-  const vg = ctx.createRadialGradient(w / 2, h * 0.48, Math.min(w, h) * 0.42, w / 2, h * 0.48, Math.hypot(w, h) * 0.62);
+  const vg = ctx.createRadialGradient(w / 2, h * 0.48, Math.min(w, h) * 0.38, w / 2, h * 0.48, Math.hypot(w, h) * 0.62);
   vg.addColorStop(0, `rgba(${t.shadowRgb},0)`);
-  vg.addColorStop(1, `rgba(${t.shadowRgb},${(t.light ? 0.14 : 0.2) * t.shadowStrength})`);
+  vg.addColorStop(0.65, `rgba(${t.shadowRgb},${(t.light ? 0.05 : 0.08) * t.shadowStrength})`);
+  vg.addColorStop(1, `rgba(${t.shadowRgb},${(t.light ? 0.18 : 0.25) * t.shadowStrength})`);
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, w, h);
 }
 
 // ——— lighting ———
 
-/** Warm, soft contact shadow on the floor. */
+/** Warm, soft contact shadow on the floor, with a slightly darker core right under the object. */
 export function contactShadow(ctx: CanvasRenderingContext2D, t: Theme, x: number, y: number, rx: number, ry: number, alpha = 0.22) {
   if (rx <= 0.5 || ry <= 0.2 || alpha <= 0.002) return;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(1, ry / rx);
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
-  const a = Math.min(0.6, alpha * t.shadowStrength);
-  g.addColorStop(0, `rgba(${t.shadowRgb},${a})`);
-  g.addColorStop(0.55, `rgba(${t.shadowRgb},${a * 0.45})`);
+  const a = Math.min(0.65, alpha * t.shadowStrength);
+  const core = Math.min(0.75, a * 1.28);
+  g.addColorStop(0, `rgba(${t.shadowRgb},${core})`);
+  g.addColorStop(0.28, `rgba(${t.shadowRgb},${a * 0.88})`);
+  g.addColorStop(0.58, `rgba(${t.shadowRgb},${a * 0.44})`);
   g.addColorStop(1, `rgba(${t.shadowRgb},0)`);
   ctx.fillStyle = g;
   ctx.beginPath();

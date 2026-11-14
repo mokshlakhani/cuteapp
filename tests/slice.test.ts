@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { corners, cutAll, ellipsoid, faceNormal, massProps, most, onSkin, outside, revolve, shell, split, type Plane, type Poly } from '../src/rooms/slice/polyhedron';
+import { corners, cutAll, ellipsoid, faceNormal, massProps, most, onSkin, outside, repeatsCut, revolve, shell, snapPlane, split, type Plane, type Poly } from '../src/rooms/slice/polyhedron';
 import { SLICE_FRUITS } from '../src/rooms/slice/fruits';
 import { orderFor } from '../src/rooms/slice/game';
 
@@ -119,5 +119,106 @@ describe('slice orders', () => {
       expect(recent.slice(-5).some((p) => p.cuts === o.cuts && p.target === o.target)).toBe(false);
       recent.push(o);
     }
+  });
+});
+
+describe('cuts through a common point', () => {
+  const whole = ellipsoid(1, 1, 1, 24, 36);
+  const V = massProps(whole).volume;
+  /** A plane holding the line through (px, 0, pz) along y, turned `deg` round it, then nudged `miss` off it. */
+  const through = (px: number, pz: number, deg: number, miss = 0): Plane => {
+    const a = (deg * Math.PI) / 180;
+    const n: [number, number, number] = [Math.cos(a), 0, Math.sin(a)];
+    return { n, d: n[0] * px + n[2] * pz + miss };
+  };
+  /** Cut as the room does: line each cut up with the ones before, then throw away only real slivers. */
+  const slice = (planes: Plane[], min: number, snap: boolean) => {
+    let pieces: Poly[] = [whole];
+    const made: Plane[] = [];
+    for (const raw of planes) {
+      const pl = snap ? snapPlane(raw, made, 1, 0.12) : raw;
+      const res = cutAll(pieces, pl, V * min, made.length);
+      if (!res.split) continue;
+      pieces = res.pieces;
+      made.push(pl);
+    }
+    return pieces;
+  };
+
+  it('three cuts through one line make six pieces', () => {
+    for (const [px, pz] of [
+      [0, 0],
+      [0.3, 0.2],
+      [0.55, -0.35],
+    ])
+      expect(slice([through(px, pz, 10), through(px, pz, 70), through(px, pz, 130)], 0.0006, true)).toHaveLength(6);
+  });
+
+  it('a third cut that just misses the crossing still makes six, wherever the crossing is', () => {
+    for (const [px, pz] of [
+      [0, 0],
+      [0.3, 0.2],
+      [0.55, -0.35],
+      [-0.6, 0.4],
+      [0.75, 0.35],
+      [0.85, 0.2],
+    ])
+      for (const miss of [-0.1, -0.06, -0.03, -0.01, 0.01, 0.03, 0.06, 0.1]) {
+        const pieces = slice([through(px, pz, 10), through(px, pz, 70), through(px, pz, 130, miss)], 0.0006, true);
+        expect(pieces, `at ${px},${pz} missing by ${miss}`).toHaveLength(6);
+        expect(pieces.reduce((s, p) => s + massProps(p).volume, 0) / V).toBeCloseTo(1, 5);
+      }
+  });
+
+  it('four cuts through one line make eight', () => {
+    expect(slice([through(0.2, 0.1, 0), through(0.2, 0.1, 45, 0.02), through(0.2, 0.1, 90, -0.03), through(0.2, 0.1, 135, 0.04)], 0.0006, true)).toHaveLength(8);
+  });
+
+  it('a cut that clearly misses the crossing is left as drawn, and makes its seventh piece', () => {
+    const third = through(0, 0, 130, 0.3);
+    expect(snapPlane(third, [through(0, 0, 10), through(0, 0, 70)], 1, 0.12)).toBe(third);
+    expect(slice([through(0, 0, 10), through(0, 0, 70), third], 0.0006, true)).toHaveLength(7);
+  });
+
+  it('a cut on top of one already made is a repeat; one beside it is not', () => {
+    const made = [through(0, 0, 10)];
+    expect(repeatsCut(through(0, 0, 11, 0.01), made, 1, 0.06)).toBe(true);
+    expect(repeatsCut(through(0, 0, 190, -0.01), made, 1, 0.06)).toBe(true);
+    expect(repeatsCut(through(0, 0, 10, 0.2), made, 1, 0.06)).toBe(false);
+    expect(repeatsCut(through(0, 0, 40), made, 1, 0.06)).toBe(false);
+  });
+
+  it('(the old sliver rule alone lost a piece when the crossing sat off to one side)', () => {
+    // Out near the skin the outer wedges are small: at 0.4% of the fruit they were thrown away, leaving five.
+    expect(slice([through(0.75, 0.35, 10), through(0.75, 0.35, 70), through(0.75, 0.35, 130)], 0.004, false)).toHaveLength(5);
+    expect(slice([through(0.75, 0.35, 10), through(0.75, 0.35, 70), through(0.75, 0.35, 130)], 0.0006, true)).toHaveLength(6);
+  });
+});
+
+describe('cuts aimed at a crossing on a fruit that has turned', () => {
+  const whole = ellipsoid(1, 1, 1, 24, 36);
+  const V = massProps(whole).volume;
+  it('a cut through the crossing on the near side, tilted off the line behind it, still makes six', () => {
+    // Two cuts meeting along the y axis; the third passes through where that
+    // line comes out at the top (0, 1, 0) but leans away from it further in.
+    const made: Plane[] = [];
+    let pieces: Poly[] = [whole];
+    for (const raw of [plane([1, 0, 0.2]), plane([0.3, 0, 1])]) {
+      pieces = cutAll(pieces, raw, V * 0.0006, made.length).pieces;
+      made.push(raw);
+    }
+    for (const lean of [-0.25, -0.1, 0.1, 0.25]) {
+      const n = plane([1, lean, -1]).n;
+      const raw: Plane = { n, d: n[1] * 1 + 0.03 };
+      const pl = snapPlane(raw, made, 1, 0.12);
+      expect(pl).not.toBe(raw);
+      expect(cutAll(pieces, pl, V * 0.0006, 2).pieces, `leaning ${lean}`).toHaveLength(6);
+    }
+  });
+
+  it('a cut right across the line (the fruit turned a long way) is left alone', () => {
+    const made = [plane([1, 0, 0.2]), plane([0.3, 0, 1])];
+    const across = plane([0.2, 1, 0.1], 0.02);
+    expect(snapPlane(across, made, 1, 0.12)).toBe(across);
   });
 });
